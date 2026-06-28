@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "760620662222",
+    "project_id": "touchgrass-today",
+    "storage_bucket": "touchgrass-today.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:760620662222:android:24eb4525163b18f8a53f9f",
+        "android_client_info": {
+          "package_name": "com.example.touchgrass"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "760620662222-7146o5g5dujpvku7cjm7t6nsi256dp26.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCtqpl4n1ArMxotfbCttJbnLrjIqBvn3mc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "760620662222-7146o5g5dujpvku7cjm7t6nsi256dp26.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "760620662222-tk26k1ak9an2qpnq13au080sfihj66dq.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.touchgrass"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

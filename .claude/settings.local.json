@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter analyze *)",
+      "Bash(Get-ChildItem -Path . -Recurse -Force)",
+      "Bash(Select-Object FullName)",
+      "Bash(Sort-Object FullName)",
+      "Bash(ConvertTo-Json -Depth 100)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\tahee\\\\touchgrass\" -Directory)",
+      "Bash(Select-Object Name)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\tahee\\\\touchgrass\" -Recurse -Directory)",
+      "Bash(ConvertTo-Csv -NoTypeInformation)",
+      "Bash(Select-Object -Skip 1)",
+      "Bash(flutter pub *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\tahee\\\\touchgrass\" -Directory)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\tahee\\\\touchgrass\\\\lib\" -Directory | Where-Object { $_.Name -in 'providers', 'models', 'services', 'core' } | ForEach-Object { Write-Host \"=== $\\($_.Name\\) ===\" ; Get-ChildItem -Path $_.FullName -Recurse -File | Select-Object Name })",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\tahee\\\\touchgrass\\\\lib\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\tahee\\\\touchgrass\" -Recurse)",
+      "Bash(Select-Object -First 50)",
+      "Bash(dart analyze *)",
+      "Bash(Test-Path \"c:\\\\Users\\\\tahee\\\\touchgrass\\\\firestore.rules\")",
+      "Bash(Remove-Item \"c:\\\\Users\\\\tahee\\\\touchgrass\\\\lib\\\\models\\\\daily_assignment_model.dart\" -Force)",
+      "Bash(Write-Host \"Deleted\")",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\tahee\\\\touchgrass\" -Recurse -Directory)",
+      "Bash(Get-ChildItem -Path lib -Recurse -File)"
+    ]
+  }
+}

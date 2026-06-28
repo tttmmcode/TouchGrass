@@ -1,0 +1,100 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isValidUserWrite() {
+      let allowed = ['displayName', 'photoUrl', 'xp', 'weeklyXp', 'weeklyXpResetDate',
+                     'level', 'streak', 'longestStreak', 'totalCompletions',
+                     'totalPhotosUploaded', 'rainyDayCount', 'currentLeague',
+                     'email', 'username', 'lastActiveDate', 'achievements',
+                     'achievementTimestamps', 'settings'];
+      return request.resource.data.keys().hasOnly(allowed.concat(['uid', 'createdAt']));
+    }
+
+    // ── Users ─────────────────────────────────────────────────────────────────
+    // Any signed-in user can read user documents (required for leaderboard queries).
+    // profilePublic filtering is enforced client-side in LeaderboardService.
+    // Writes are restricted to the document owner.
+    match /users/{userId} {
+      allow read: if isSignedIn();
+
+      // Allow initial document creation (new sign-up).
+      allow create: if isOwner(userId)
+        && request.resource.data.uid == userId
+        && isValidUserWrite();
+
+      // Allow limited field updates from the client.
+      allow update: if isOwner(userId)
+        && isValidUserWrite()
+        // Prevent the client from reducing XP or faking level.
+        && request.resource.data.xp >= resource.data.xp;
+
+      allow delete: if false;
+    }
+
+    // ── Per-user challenges (subcollection) ──────────────────────────────────
+    // users/{userId}/challenges/{date} — read/write by owner only.
+    match /users/{userId}/challenges/{challengeId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // ── Per-user memories (subcollection) ────────────────────────────────────
+    // users/{userId}/memories/{memoryId} — owner read/write; no deletion.
+    match /users/{userId}/memories/{memoryId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && request.resource.data.keys().hasAll(['userId', 'challengeId',
+           'challengeTitle', 'photoUrl', 'createdAt']);
+      // Captions may be edited after creation.
+      allow update: if isOwner(userId)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['caption', 'captionUpdatedAt']);
+      allow delete: if false;
+    }
+
+    // ── Challenges ────────────────────────────────────────────────────────────
+    // Challenge catalogue is read-only to authenticated users.
+    // Writes only via Cloud Functions (admin SDK bypasses these rules).
+    match /challenges/{challengeId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // ── Completions ───────────────────────────────────────────────────────────
+    // Users can create their own completions; no editing or deletion.
+    match /completions/{completionId} {
+      allow read: if isSignedIn()
+        && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.keys().hasAll(['userId', 'challengeId',
+           'photoUrl', 'verificationResult', 'completedAt', 'xpAwarded']);
+
+      allow update, delete: if false;
+    }
+
+    // ── Achievements ──────────────────────────────────────────────────────────
+    // Achievement catalogue is read-only; unlocked achievements are stored
+    // on the user document, not here.
+    match /achievements/{achievementId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // Deny everything else by default.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

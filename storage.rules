@@ -1,0 +1,30 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ── Profile photos ────────────────────────────────────────────────────
+    // Stored at: user_avatars/{userId}.png
+    // Owner can read/write; other signed-in users can read (for profile display).
+    match /user_avatars/{userId}.png {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId
+        && request.resource.size < 5 * 1024 * 1024   // 5 MB max
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // ── Challenge completion photos ────────────────────────────────────────
+    // Stored at: completion_photos/{userId}/{timestamp}.jpg
+    // Only the owner can write; reads scoped to owner.
+    match /completion_photos/{userId}/{fileName} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId
+        && request.resource.size < 10 * 1024 * 1024  // 10 MB max
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Deny everything else.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

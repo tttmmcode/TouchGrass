@@ -1,0 +1,31 @@
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "touchgrass-today",
+          "appId": "1:760620662222:android:24eb4525163b18f8a53f9f",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "touchgrass-today",
+          "configurations": {
+            "android": "1:760620662222:android:24eb4525163b18f8a53f9f",
+            "ios": "1:760620662222:ios:090673dfd5872772a53f9f",
+            "macos": "1:760620662222:ios:090673dfd5872772a53f9f",
+            "web": "1:760620662222:web:ebb0cf64619e43dca53f9f",
+            "windows": "1:760620662222:web:6af5874b1d791184a53f9f"
+          }
+        }
+      }
+    }
+  }
+}
