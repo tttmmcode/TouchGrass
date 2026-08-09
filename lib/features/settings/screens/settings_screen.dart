@@ -9,7 +9,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:shimmer/shimmer.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/route_names.dart';
@@ -20,7 +19,11 @@ import '../../../models/user_model.dart';
 import '../../../providers/settings_providers.dart';
 import '../../../providers/user_providers.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_motion.dart';
 import '../../../theme/app_spacing.dart';
+import '../../../widgets/error_retry_view.dart';
+import '../../../widgets/initials_avatar.dart';
+import '../../../widgets/loading_widgets.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -46,7 +49,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
       body: settingsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, _) => const Center(child: Text('Failed to load settings.')),
+        error: (e, _) => ErrorRetryView(
+          message: ErrorService.friendlyMessage(e),
+          onRetry: () => ref.invalidate(settingsProvider),
+        ),
         data: (settings) => ListView(
           padding: const EdgeInsets.fromLTRB(
             AppSpacing.screenHorizontal,
@@ -205,17 +211,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       .read(settingsProvider.notifier)
                       .toggleAchievementNotifications(),
                 ),
-                _Divider(isDark: isDark),
-                _NavTile(
-                  icon: Icons.people_outline_rounded,
-                  iconColor: isDark
-                      ? AppColors.onSurfaceVariantDark
-                      : AppColors.onSurfaceVariantLight,
-                  title: 'Friend Activity',
-                  subtitle: 'Coming soon',
-                  isDark: isDark,
-                  onTap: null,
-                ),
               ],
             ),
             const SizedBox(height: AppSpacing.xxl),
@@ -357,10 +352,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   onChanged: user != null
                       ? (val) => ref
                           .read(userRepositoryProvider)
-                          .updateUserFields(
-                            user.uid,
-                            {'settings.profilePublic': val},
-                          )
+                          .setProfilePublic(user.uid, val)
                       : (_) {},
                 ),
                 _Divider(isDark: isDark),
@@ -592,9 +584,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           backgroundColor: const Color(0xFF42A5F5),
           behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          margin: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppSpacing.radiusMd)),
+          margin: const EdgeInsets.all(AppSpacing.md),
         ),
       ),
       err: (e) => ScaffoldMessenger.of(context).showSnackBar(
@@ -606,9 +598,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           backgroundColor: AppColors.error,
           behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          margin: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppSpacing.radiusMd)),
+          margin: const EdgeInsets.all(AppSpacing.md),
         ),
       ),
     );
@@ -620,7 +612,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         isDark ? AppColors.surfaceVariantDark : AppColors.surfaceLight;
     final nameCtrl = TextEditingController(text: user.displayName);
     final usernameCtrl = TextEditingController(text: user.username);
+    try {
+      await _showEditProfileDialog(context, isDark, surface, nameCtrl, usernameCtrl, user);
+    } finally {
+      nameCtrl.dispose();
+      usernameCtrl.dispose();
+    }
+  }
 
+  Future<void> _showEditProfileDialog(
+    BuildContext context,
+    bool isDark,
+    Color surface,
+    TextEditingController nameCtrl,
+    TextEditingController usernameCtrl,
+    UserModel user,
+  ) async {
     final saved = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -699,19 +706,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
 
     if (saved != true || !mounted) return;
-    final updates = <String, dynamic>{};
     final newName = nameCtrl.text.trim();
     final newUsername = usernameCtrl.text.trim().toLowerCase();
+
     if (newName.isNotEmpty && newName != user.displayName) {
-      updates['displayName'] = newName;
-    }
-    if (newUsername.isNotEmpty && newUsername != user.username) {
-      updates['username'] = newUsername;
-    }
-    if (updates.isNotEmpty) {
       await ref
           .read(userRepositoryProvider)
-          .updateUserFields(user.uid, updates);
+          .updateUserFields(user.uid, {'displayName': newName});
+    }
+
+    if (newUsername.isNotEmpty && newUsername != user.username) {
+      final result = await ref.read(userRepositoryProvider).updateUsername(
+            uid: user.uid,
+            currentUsername: user.username,
+            newUsername: newUsername,
+          );
+      if (!mounted) return;
+      result.onErr((e) => ErrorService.showError(context, e));
     }
   }
 
@@ -1012,9 +1023,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     // Step 2: Determine provider so we know how to reauthenticate.
     final firebaseUser = ref.read(authServiceProvider).currentUser;
-    final isEmailUser = firebaseUser?.providerData
-            .any((p) => p.providerId == 'password') ??
-        false;
+    final providerId = firebaseUser?.providerData.isNotEmpty == true
+        ? firebaseUser!.providerData.first.providerId
+        : null;
+    final isEmailUser = providerId == 'password';
 
     // Step 3: For email users, collect their password before proceeding.
     String? password;
@@ -1026,7 +1038,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     // Step 4: Cascading delete (reauth → Firestore → Storage → Auth).
     final result = await ref.read(userRepositoryProvider).deleteAccount(
           uid: uid,
-          password: password, // null → Google reauth flow inside repository
+          password: password, // null → Google/Apple reauth flow inside repository
+          providerId: providerId,
         );
 
     if (!mounted) return;
@@ -1251,15 +1264,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   : () async {
                       setS(() => submitting = true);
                       try {
-                        await FirebaseFirestore.instance
-                            .collection(AppConstants.colFeedback)
-                            .add({
-                          'type': type,
-                          'message': ctrl.text.trim(),
-                          'userId': uid,
-                          'createdAt': FieldValue.serverTimestamp(),
-                          'appVersion': '1.0.0',
-                        });
+                        await ref.read(firestoreServiceProvider).addDocument(
+                          collection: AppConstants.colFeedback,
+                          data: {
+                            'type': type,
+                            'message': ctrl.text.trim(),
+                            'userId': uid,
+                            'createdAt': FieldValue.serverTimestamp(),
+                            'appVersion': '1.0.0',
+                          },
+                        );
                         if (ctx.mounted) Navigator.of(ctx).pop();
                         messenger.showSnackBar(SnackBar(
                           content: Text(
@@ -1273,13 +1287,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           backgroundColor: AppColors.grassGreen,
                           behavior: SnackBarBehavior.floating,
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
-                          margin: const EdgeInsets.all(16),
+                              borderRadius:
+                                  BorderRadius.circular(AppSpacing.radiusMd)),
+                          margin: const EdgeInsets.all(AppSpacing.md),
                         ));
-                      } catch (_) {
+                      } catch (e) {
                         setS(() => submitting = false);
-                        messenger.showSnackBar(const SnackBar(
-                          content: Text('Failed to send — please try again.'),
+                        messenger.showSnackBar(SnackBar(
+                          content: Text(ErrorService.friendlyMessage(e)),
                         ));
                       }
                     },
@@ -1783,15 +1798,16 @@ class _ProfileSummary extends StatelessWidget {
                     ? CachedNetworkImage(
                         imageUrl: user.photoUrl!,
                         fit: BoxFit.cover,
-                        placeholder: (ctx, url) => Shimmer.fromColors(
-                          baseColor: Colors.grey.shade300,
-                          highlightColor: Colors.grey.shade100,
-                          child: const ColoredBox(color: Colors.white),
+                        placeholder: (ctx, url) => const ShimmerBox(),
+                        errorWidget: (ctx, url, err) => InitialsAvatar(
+                          initials: initials,
+                          backgroundColor: AppColors.forestGreen,
                         ),
-                        errorWidget: (ctx, url, err) =>
-                            _Initials(initials: initials),
                       )
-                    : _Initials(initials: initials),
+                    : InitialsAvatar(
+                        initials: initials,
+                        backgroundColor: AppColors.forestGreen,
+                      ),
               ),
             ),
             const SizedBox(width: AppSpacing.md),
@@ -1831,29 +1847,6 @@ class _ProfileSummary extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Initials extends StatelessWidget {
-  const _Initials({required this.initials});
-  final String initials;
-
-  @override
-  Widget build(BuildContext context) {
-    return ColoredBox(
-      color: AppColors.forestGreen,
-      child: Center(
-        child: Text(
-          initials,
-          style: const TextStyle(
-            fontFamily: 'Nunito',
-            fontSize: 22,
-            fontWeight: FontWeight.w900,
-            color: Colors.white,
-          ),
         ),
       ),
     );
@@ -2395,47 +2388,63 @@ class _ThemeSelector extends StatelessWidget {
               return Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(right: 6),
-                  child: GestureDetector(
-                    onTap: () => onSelect(opt.$1),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? _accent.withValues(alpha: 0.13)
-                            : Colors.transparent,
-                        borderRadius:
-                            BorderRadius.circular(AppSpacing.radiusMd),
-                        border: Border.all(
+                  child: Semantics(
+                    button: true,
+                    selected: isSelected,
+                    label: '${opt.$3} theme${isSelected ? ', selected' : ''}',
+                    excludeSemantics: true,
+                    child: GestureDetector(
+                      onTap: () => onSelect(opt.$1),
+                      child: AnimatedContainer(
+                        duration: AppMotion.fast,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
                           color: isSelected
-                              ? _accent
-                              : (isDark
-                                  ? AppColors.outlineDark
-                                  : AppColors.outlineLight),
-                          width: isSelected ? 1.5 : 1,
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            opt.$2,
-                            size: 18,
-                            color: isSelected ? _accent : muted,
+                              ? _accent.withValues(alpha: 0.13)
+                              : Colors.transparent,
+                          borderRadius:
+                              BorderRadius.circular(AppSpacing.radiusMd),
+                          border: Border.all(
+                            color: isSelected
+                                ? _accent
+                                : (isDark
+                                    ? AppColors.outlineDark
+                                    : AppColors.outlineLight),
+                            width: isSelected ? 1.5 : 1,
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            opt.$3,
-                            style: TextStyle(
-                              fontFamily: 'Nunito',
-                              fontSize: 11,
-                              fontWeight: isSelected
-                                  ? FontWeight.w800
-                                  : FontWeight.w600,
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              opt.$2,
+                              size: 18,
                               color: isSelected ? _accent : muted,
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 4),
+                            Text(
+                              opt.$3,
+                              style: TextStyle(
+                                fontFamily: 'Nunito',
+                                fontSize: 11,
+                                fontWeight: isSelected
+                                    ? FontWeight.w800
+                                    : FontWeight.w600,
+                                color: isSelected ? _accent : muted,
+                              ),
+                            ),
+                            // Non-color state cue (Part G) — border/accent
+                            // alone isn't reliable for low-vision users.
+                            const SizedBox(height: 2),
+                            Icon(
+                              isSelected
+                                  ? Icons.check_circle_rounded
+                                  : Icons.circle_outlined,
+                              size: 12,
+                              color: isSelected ? _accent : muted.withValues(alpha: 0.4),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),

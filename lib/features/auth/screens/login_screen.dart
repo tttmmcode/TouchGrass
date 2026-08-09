@@ -3,10 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/errors/app_exception.dart';
+import '../../../providers/settings_providers.dart';
 import '../../../providers/user_providers.dart';
 import '../../../services/analytics_service.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_motion.dart';
 import '../../../theme/app_spacing.dart';
+import '../../../widgets/pressable_scale.dart';
 import '../widgets/social_sign_in_button.dart';
 
 // ── Root screen ───────────────────────────────────────────────────────────────
@@ -101,6 +104,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   void _showError(Object error) {
     if (!mounted) return;
+    // The user dismissing a native sign-in sheet is a normal action, not a
+    // failure — don't alarm them with a red error for their own cancellation.
+    if (error is AuthException && error.isCancellation) return;
     final message = error is AppException ? error.message : 'Sign-in failed.';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -111,8 +117,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         ),
         backgroundColor: AppColors.error,
         behavior: SnackBarBehavior.floating,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd)),
         margin: const EdgeInsets.all(AppSpacing.md),
       ),
     );
@@ -171,8 +177,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     child: SlideTransition(
                       position: _slideAnim,
                       child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 300),
-                        switchInCurve: Curves.easeOut,
+                        duration: AppMotion.standard,
+                        switchInCurve: AppMotion.standardCurve,
                         switchOutCurve: Curves.easeIn,
                         transitionBuilder: (child, animation) =>
                             FadeTransition(
@@ -224,14 +230,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
 // ── Hero section ──────────────────────────────────────────────────────────────
 
-class _HeroSection extends StatefulWidget {
+class _HeroSection extends ConsumerStatefulWidget {
   const _HeroSection();
 
   @override
-  State<_HeroSection> createState() => _HeroSectionState();
+  ConsumerState<_HeroSection> createState() => _HeroSectionState();
 }
 
-class _HeroSectionState extends State<_HeroSection>
+class _HeroSectionState extends ConsumerState<_HeroSection>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<Offset> _float;
@@ -242,11 +248,13 @@ class _HeroSectionState extends State<_HeroSection>
     _ctrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2200),
-    )..repeat(reverse: true);
+    );
     _float = Tween<Offset>(
       begin: const Offset(0, -0.035),
       end: const Offset(0, 0.035),
     ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+    // Continuous ambient loop — never runs when Reduce Motion is on.
+    if (!ref.read(reducedMotionProvider)) _ctrl.repeat(reverse: true);
   }
 
   @override
@@ -268,7 +276,7 @@ class _HeroSectionState extends State<_HeroSection>
             ),
             child: const Padding(
               padding: EdgeInsets.all(AppSpacing.xl),
-              child: Text('🌿', style: TextStyle(fontSize: 56)),
+              child: Text('🌿', style: TextStyle(fontSize: AppSpacing.emojiLogo)),
             ),
           ),
         ),
@@ -419,40 +427,43 @@ class _SocialSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: AppSpacing.md),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.25),
-              width: 1.5,
+        PressableScale(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.25),
+                width: AppSpacing.strokeRegular,
+              ),
             ),
-          ),
-          child: Material(
-            color: Colors.transparent,
-            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-            child: InkWell(
-              onTap: onEmailTap,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-              splashColor: Colors.white.withValues(alpha: 0.15),
-              highlightColor: Colors.white.withValues(alpha: 0.08),
-              child: const Padding(
-                padding: EdgeInsets.symmetric(vertical: 14),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.email_outlined, color: Colors.white, size: 20),
-                    SizedBox(width: AppSpacing.sm),
-                    Text(
-                      'Continue with Email',
-                      style: TextStyle(
-                        fontFamily: 'Nunito',
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
+            child: Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+              child: InkWell(
+                onTap: onEmailTap,
+                borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+                splashColor: Colors.white.withValues(alpha: 0.15),
+                highlightColor: Colors.white.withValues(alpha: 0.08),
+                child: const SizedBox(
+                  height: AppSpacing.buttonHeight,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.email_outlined,
+                          color: Colors.white, size: AppSpacing.iconSm),
+                      SizedBox(width: AppSpacing.md),
+                      Text(
+                        'Continue with Email',
+                        style: TextStyle(
+                          fontFamily: 'Nunito',
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -559,12 +570,15 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
         ),
         backgroundColor: AppColors.forestGreenDark,
         behavior: SnackBarBehavior.floating,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd)),
         margin: const EdgeInsets.all(AppSpacing.md),
       ),
     );
   }
+
+  static final BorderRadius _kFieldRadius =
+      BorderRadius.circular(AppSpacing.radiusTextField);
 
   InputDecoration _fieldDeco(String hint, IconData icon, {Widget? suffix}) {
     return InputDecoration(
@@ -574,33 +588,33 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
         fontSize: 14,
         color: Colors.white.withValues(alpha: 0.45),
       ),
-      prefixIcon:
-          Icon(icon, color: Colors.white.withValues(alpha: 0.6), size: 20),
+      prefixIcon: Icon(icon,
+          color: Colors.white.withValues(alpha: 0.6), size: AppSpacing.iconSm),
       suffixIcon: suffix,
       filled: true,
       fillColor: Colors.white.withValues(alpha: 0.12),
       contentPadding:
           const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: _kFieldRadius,
         borderSide:
             BorderSide(color: Colors.white.withValues(alpha: 0.2)),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: _kFieldRadius,
         borderSide:
             BorderSide(color: Colors.white.withValues(alpha: 0.2)),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: _kFieldRadius,
         borderSide: const BorderSide(color: Colors.white, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: _kFieldRadius,
         borderSide: const BorderSide(color: AppColors.error),
       ),
       focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: _kFieldRadius,
         borderSide: const BorderSide(color: AppColors.error, width: 1.5),
       ),
       errorStyle: const TextStyle(
@@ -617,8 +631,9 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
               ? Icons.visibility_outlined
               : Icons.visibility_off_outlined,
           color: Colors.white.withValues(alpha: 0.55),
-          size: 20,
+          size: AppSpacing.iconSm,
         ),
+        tooltip: obscure ? 'Show password' : 'Hide password',
         onPressed: onToggle,
       );
 
@@ -633,23 +648,36 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
           // Header row: back button + mode label
           Row(
             children: [
-              GestureDetector(
-                onTap: _isLoading ? null : widget.onBack,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Padding(
-                    padding: EdgeInsets.all(8),
-                    child: Icon(Icons.arrow_back_rounded,
-                        color: Colors.white, size: 20),
+              Semantics(
+                button: true,
+                label: 'Back to sign-in options',
+                excludeSemantics: true,
+                child: GestureDetector(
+                  onTap: _isLoading ? null : widget.onBack,
+                  // Visual badge stays 36x36; the tap target itself is
+                  // padded out to the 48x48 minimum around it.
+                  child: ConstrainedBox(
+                    constraints:
+                        const BoxConstraints(minWidth: 48, minHeight: 48),
+                    child: Center(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Padding(
+                          padding: EdgeInsets.all(AppSpacing.sm),
+                          child: Icon(Icons.arrow_back_rounded,
+                              color: Colors.white, size: AppSpacing.iconSm),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
               const SizedBox(width: AppSpacing.md),
               AnimatedSwitcher(
-                duration: const Duration(milliseconds: 200),
+                duration: AppMotion.fast,
                 child: Text(
                   _mode == _EmailMode.signIn ? 'Sign In' : 'Create Account',
                   key: ValueKey(_mode),
@@ -667,7 +695,7 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
 
           // Name field — sign-up only
           AnimatedSize(
-            duration: const Duration(milliseconds: 260),
+            duration: AppMotion.standard,
             curve: Curves.easeOut,
             child: _mode == _EmailMode.signUp
                 ? Padding(
@@ -679,6 +707,10 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
                       decoration: _fieldDeco(
                           'Your name', Icons.person_outline_rounded),
                       textCapitalization: TextCapitalization.words,
+                      textInputAction: TextInputAction.next,
+                      autofillHints: const [AutofillHints.name],
+                      onFieldSubmitted: (_) =>
+                          FocusScope.of(context).nextFocus(),
                       validator: (v) {
                         if (v == null || v.trim().isEmpty) {
                           return 'Name is required';
@@ -702,6 +734,9 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
                 _fieldDeco('Email address', Icons.email_outlined),
             keyboardType: TextInputType.emailAddress,
             autocorrect: false,
+            textInputAction: TextInputAction.next,
+            autofillHints: const [AutofillHints.email],
+            onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(),
             validator: (v) {
               if (v == null || v.trim().isEmpty) return 'Email is required';
               if (!v.contains('@') || !v.contains('.')) {
@@ -724,6 +759,17 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
               suffix: _eyeToggle(_obscurePassword,
                   () => setState(() => _obscurePassword = !_obscurePassword)),
             ),
+            textInputAction: _mode == _EmailMode.signUp
+                ? TextInputAction.next
+                : TextInputAction.done,
+            autofillHints: [
+              _mode == _EmailMode.signUp
+                  ? AutofillHints.newPassword
+                  : AutofillHints.password,
+            ],
+            onFieldSubmitted: (_) => _mode == _EmailMode.signUp
+                ? FocusScope.of(context).nextFocus()
+                : _submit(),
             validator: (v) {
               if (v == null || v.isEmpty) return 'Password is required';
               if (v.length < 6) return 'Must be at least 6 characters';
@@ -733,7 +779,7 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
 
           // Confirm password — sign-up only
           AnimatedSize(
-            duration: const Duration(milliseconds: 260),
+            duration: AppMotion.standard,
             curve: Curves.easeOut,
             child: _mode == _EmailMode.signUp
                 ? Padding(
@@ -751,6 +797,9 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
                             () => setState(
                                 () => _obscureConfirm = !_obscureConfirm)),
                       ),
+                      textInputAction: TextInputAction.done,
+                      autofillHints: const [AutofillHints.newPassword],
+                      onFieldSubmitted: (_) => _submit(),
                       validator: (v) {
                         if (v == null || v.isEmpty) {
                           return 'Please confirm your password';
@@ -768,41 +817,44 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
           const SizedBox(height: AppSpacing.lg),
 
           // Submit button
-          SizedBox(
-            height: 52,
-            child: Material(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-              elevation: 2,
-              shadowColor: Colors.black26,
-              child: InkWell(
-                onTap: _isLoading ? null : _submit,
-                borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-                child: Center(
-                  child: _isLoading
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            color: AppColors.forestGreen,
-                            strokeWidth: 2.5,
-                          ),
-                        )
-                      : AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 200),
-                          child: Text(
-                            _mode == _EmailMode.signIn
-                                ? 'Sign In'
-                                : 'Create Account',
-                            key: ValueKey(_mode),
-                            style: const TextStyle(
-                              fontFamily: 'Nunito',
-                              fontSize: 16,
-                              fontWeight: FontWeight.w900,
+          PressableScale(
+            enabled: !_isLoading,
+            child: SizedBox(
+              height: AppSpacing.buttonHeight,
+              child: Material(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+                elevation: 2,
+                shadowColor: Colors.black26,
+                child: InkWell(
+                  onTap: _isLoading ? null : _submit,
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+                  child: Center(
+                    child: _isLoading
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
                               color: AppColors.forestGreen,
+                              strokeWidth: 2.5,
+                            ),
+                          )
+                        : AnimatedSwitcher(
+                            duration: AppMotion.fast,
+                            child: Text(
+                              _mode == _EmailMode.signIn
+                                  ? 'Sign In'
+                                  : 'Create Account',
+                              key: ValueKey(_mode),
+                              style: const TextStyle(
+                                fontFamily: 'Nunito',
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                                color: AppColors.forestGreen,
+                              ),
                             ),
                           ),
-                        ),
+                  ),
                 ),
               ),
             ),
@@ -851,7 +903,7 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
                 child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
+                  duration: AppMotion.fast,
                   child: Text(
                     _mode == _EmailMode.signIn
                         ? 'Create account →'

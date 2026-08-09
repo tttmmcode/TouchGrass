@@ -4,6 +4,38 @@ import '../core/constants/app_constants.dart';
 import '../core/result.dart';
 import '../models/adventure_memory_model.dart';
 
+/// One page of a cursor-paginated memory query, plus the cursor needed to
+/// fetch the next page.
+class MemoryPage {
+  const MemoryPage({
+    required this.memories,
+    required this.lastDoc,
+    required this.hasMore,
+  });
+
+  final List<AdventureMemoryModel> memories;
+
+  /// The last raw document in this page — pass to [MemoryRepository.fetchNextPage]
+  /// as `startAfter` to continue from here. Null when the page was empty.
+  final QueryDocumentSnapshot<Map<String, dynamic>>? lastDoc;
+
+  /// True if the page was full (`memories.length == limit`), meaning there
+  /// may be more documents after it. A short page always means the end of
+  /// the collection has been reached.
+  final bool hasMore;
+
+  static MemoryPage fromSnapshot(
+    QuerySnapshot<Map<String, dynamic>> snap,
+    int limit,
+  ) =>
+      MemoryPage(
+        memories:
+            snap.docs.map(AdventureMemoryModel.fromFirestore).toList(),
+        lastDoc: snap.docs.isEmpty ? null : snap.docs.last,
+        hasMore: snap.docs.length >= limit,
+      );
+}
+
 class MemoryRepository {
   const MemoryRepository();
 
@@ -42,18 +74,38 @@ class MemoryRepository {
 
   // ── Read ──────────────────────────────────────────────────────────────────
 
-  /// Real-time stream of all memories for [userId], newest first.
-  Stream<List<AdventureMemoryModel>> watchMemories(
+  /// Real-time stream of the newest [limit] memories for [userId].
+  ///
+  /// This is the *first page* only — it stays live so a freshly completed
+  /// challenge (or an edited caption) always appears without a manual
+  /// refresh. Deeper history is fetched once via [fetchNextPage] instead of
+  /// widening this listener, so the realtime subscription never grows
+  /// unbounded as a user's history grows.
+  Stream<MemoryPage> watchFirstPage(
     String userId, {
-    int limit = AppConstants.mapHistoryLimit,
+    int limit = AppConstants.memoryPageSize,
   }) {
     return _col(userId)
         .orderBy('completionDate', descending: true)
         .limit(limit)
         .snapshots()
-        .map((snap) => snap.docs
-            .map(AdventureMemoryModel.fromFirestore)
-            .toList());
+        .map((snap) => MemoryPage.fromSnapshot(snap, limit));
+  }
+
+  /// Fetches the next page of memories strictly older than [startAfter],
+  /// newest-first. A one-time read (not realtime) — history beyond the
+  /// first page doesn't need to update live.
+  Future<MemoryPage> fetchNextPage({
+    required String userId,
+    required QueryDocumentSnapshot<Map<String, dynamic>> startAfter,
+    int limit = AppConstants.memoryPageSize,
+  }) async {
+    final snap = await _col(userId)
+        .orderBy('completionDate', descending: true)
+        .startAfterDocument(startAfter)
+        .limit(limit)
+        .get();
+    return MemoryPage.fromSnapshot(snap, limit);
   }
 
   /// Fetches a single memory by ID.

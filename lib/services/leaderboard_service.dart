@@ -29,26 +29,23 @@ class LeaderboardService {
 
   // ── Zone membership ────────────────────────────────────────────────────────
 
-  /// Whether [rank] falls in the promotion zone for a board of [total] entries.
+  /// Whether [rank] is among this week's top performers in a board of
+  /// [total] entries — a purely presentational highlight (bragging rights),
+  /// not a promise of league promotion.
   ///
-  /// Zones are only meaningful when the board is large enough to have both
-  /// zones without overlap.
-  bool isPromotion(int rank, int total) {
-    if (total <= AppConstants.promotionZoneCount + AppConstants.demotionZoneCount) {
-      return false;
-    }
+  /// League placement in TouchGrass is driven entirely by lifetime XP
+  /// (see [LeagueDef.forXp]), recalculated on every XP-earning action —
+  /// there is no separate weekly cohort promotion/demotion transaction.
+  /// This app has no backend (no Cloud Functions) capable of safely
+  /// ranking-and-moving every member of a league at a synchronized reset
+  /// instant, and Firestore security rules correctly forbid one client from
+  /// writing another user's `currentLeague`. Rather than imply a mechanic
+  /// that cannot exist, the leaderboard only ever celebrates real, current
+  /// performance.
+  bool isTopPerformer(int rank, int total) {
+    if (total <= AppConstants.promotionZoneCount) return false;
     return rank <= AppConstants.promotionZoneCount;
   }
-
-  bool isDemotion(int rank, int total) {
-    if (total <= AppConstants.promotionZoneCount + AppConstants.demotionZoneCount) {
-      return false;
-    }
-    return rank > total - AppConstants.demotionZoneCount;
-  }
-
-  bool isSafe(int rank, int total) =>
-      !isPromotion(rank, total) && !isDemotion(rank, total);
 
   // ── League helpers ─────────────────────────────────────────────────────────
 

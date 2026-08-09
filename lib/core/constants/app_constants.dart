@@ -31,7 +31,17 @@ abstract final class AppConstants {
   static const double aiConfidenceThreshold = 0.6;
   static const int aiVerificationTimeoutSeconds = 30;
   static const int aiGenerationTimeoutSeconds = 20;
-  static const int aiMaxRetries = 2;
+
+  /// Retry budget for quota-exceeded (429) responses from Gemini, with
+  /// exponential backoff starting at [aiRetryBaseMs].
+  static const int aiMaxRetries = 3;
+  static const int aiRetryBaseMs = 2000;
+
+  /// Single deterministic fallback used everywhere caption-prompt generation
+  /// is skipped or fails, so the user never sees inconsistent wording
+  /// depending on which failure path they happened to hit.
+  static const String defaultCaptionPrompt =
+      'What did you discover on your adventure today?';
 
   // Injected at build time: flutter run --dart-define=GEMINI_API_KEY=AIza...
   // Do NOT hardcode a real key here — use a Cloud Function proxy in production.
@@ -68,18 +78,21 @@ abstract final class AppConstants {
 
   // ── Pagination ────────────────────────────────────────────────────────────
   static const int defaultPageSize = 20;
-  static const int mapHistoryLimit = 100;
-  static const int challengeHistoryPageSize = 30;
+
+  /// Page size for cursor-paginated adventure memory queries (map + journal).
+  /// Replaces the old hard `mapHistoryLimit` cap — history now loads
+  /// incrementally instead of stopping after a fixed number of memories.
+  static const int memoryPageSize = 50;
 
   // ── Leaderboard ───────────────────────────────────────────────────────────
   /// Max entries per league leaderboard page.
   static const int leaderboardPageSize = 30;
 
-  /// Top N shown in promotion zone (highlighted green).
+  /// Top N highlighted as this week's leading performers on the leaderboard.
+  /// Presentational only — TouchGrass leagues are XP-tier based (see
+  /// [LeagueDef.forXp]); there is no separate weekly-rank promotion/demotion
+  /// transaction, so this does not affect league placement.
   static const int promotionZoneCount = 5;
-
-  /// Bottom N shown in demotion zone (highlighted red).
-  static const int demotionZoneCount = 5;
 
   // ── Weekly reset ──────────────────────────────────────────────────────────
 
@@ -110,8 +123,28 @@ abstract final class AppConstants {
   static const int imageMaxHeightPx = 1080;
   static const int imageQualityPercent = 85;
 
+  /// Must stay in sync with the size caps in storage.rules.
+  static const int maxCompletionPhotoBytes = 10 * 1024 * 1024;
+  static const int maxProfilePhotoBytes = 5 * 1024 * 1024;
+
+  // ── Network ───────────────────────────────────────────────────────────────
+  /// Ceiling for Storage/Firestore calls so a dropped connection mid-request
+  /// surfaces as a friendly timeout instead of hanging the UI indefinitely.
+  static const int networkTimeoutSeconds = 30;
+
   // ── Firestore collection names ────────────────────────────────────────────
   static const String colUsers = 'users';
+
+  /// Public mirror of the safe-to-share subset of a user's document
+  /// (displayName, username, photoUrl, xp, weeklyXp, streak, currentLeague).
+  /// Leaderboard/league queries read from here instead of [colUsers] so
+  /// no client can read another user's private fields (e.g. email).
+  static const String colLeaderboardPublic = 'leaderboard_public';
+
+  /// Username-claim registry: doc ID is the lowercase username, data is
+  /// `{'uid': <owner>}`. Enforces uniqueness via a transaction in
+  /// UserRepository — never written to directly.
+  static const String colUsernames = 'usernames';
 
   /// Subcollection under users/{uid}/challenges/{date}
   static const String colUserChallenges = 'challenges';

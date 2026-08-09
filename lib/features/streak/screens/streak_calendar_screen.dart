@@ -312,6 +312,7 @@ class _MonthNavigator extends StatelessWidget {
         IconButton(
           icon: Icon(Icons.chevron_left_rounded, color: onSurface),
           onPressed: onPrev,
+          tooltip: 'Previous month',
         ),
         Text(
           '${_months[displayMonth.month - 1]} ${displayMonth.year}',
@@ -328,6 +329,7 @@ class _MonthNavigator extends StatelessWidget {
             color: canGoNext ? onSurface : outline,
           ),
           onPressed: canGoNext ? onNext : null,
+          tooltip: 'Next month',
         ),
       ],
     );
@@ -336,7 +338,54 @@ class _MonthNavigator extends StatelessWidget {
 
 // ── Calendar grid ─────────────────────────────────────────────────────────────
 
-enum _DayState { future, today, completed, rainyDay, missed }
+/// Formats a calendar-day [DateTime] (year/month/day only) as "yyyy-MM-dd".
+/// Must stay in sync with [UserRepository.dateKeyForCalendarDay] — both
+/// derive keys for the same [UserModel.frozenDates] values.
+@visibleForTesting
+String dateKeyForDay(DateTime d) =>
+    '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+@visibleForTesting
+enum CalendarDayState { future, today, completed, rainyDay, missed }
+
+/// Pure day-state resolution for one calendar cell — extracted from
+/// [_CalendarGrid] so the frozen/missed/completed/future logic (and its
+/// DST-safety, calendar-field-arithmetic requirement) is directly
+/// unit-testable without building a widget tree. [now] and [userCreatedAt]
+/// are passed in rather than read from `DateTime.now()` so tests are
+/// deterministic; callers must pass local (not UTC) values.
+@visibleForTesting
+CalendarDayState resolveCalendarDayState({
+  required DateTime day,
+  required DateTime now,
+  required Set<String> completedDates,
+  required Set<String> frozenDates,
+  DateTime? userCreatedAt,
+}) {
+  final today = DateTime(now.year, now.month, now.day);
+  final dayOnly = DateTime(day.year, day.month, day.day);
+  final key = dateKeyForDay(dayOnly);
+
+  if (dayOnly.isAfter(today)) return CalendarDayState.future;
+  if (dayOnly == today) {
+    return completedDates.contains(key)
+        ? CalendarDayState.completed
+        : CalendarDayState.today;
+  }
+
+  if (completedDates.contains(key)) return CalendarDayState.completed;
+
+  // If the user was created after this date, it's not a missed day.
+  if (userCreatedAt != null) {
+    final created =
+        DateTime(userCreatedAt.year, userCreatedAt.month, userCreatedAt.day);
+    if (dayOnly.isBefore(created)) return CalendarDayState.future;
+  }
+
+  if (frozenDates.contains(key)) return CalendarDayState.rainyDay;
+
+  return CalendarDayState.missed;
+}
 
 class _CalendarGrid extends StatelessWidget {
   const _CalendarGrid({
@@ -363,46 +412,32 @@ class _CalendarGrid extends StatelessWidget {
   Set<String> _completedDates() {
     return completions.map((c) {
       final d = c.completedAt.toLocal();
-      return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      return dateKeyForDay(DateTime(d.year, d.month, d.day));
     }).toSet();
   }
 
-  String _dateKey(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
-  _DayState _stateFor(DateTime day, Set<String> completedDates) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final dayOnly = DateTime(day.year, day.month, day.day);
-
-    if (dayOnly.isAfter(today)) return _DayState.future;
-    if (dayOnly == today) {
-      return completedDates.contains(_dateKey(dayOnly))
-          ? _DayState.completed
-          : _DayState.today;
-    }
-
-    if (completedDates.contains(_dateKey(dayOnly))) return _DayState.completed;
-
-    // If the user was created after this date, it's not a missed day.
-    if (user != null) {
-      final created =
-          DateTime(user!.createdAt.year, user!.createdAt.month, user!.createdAt.day);
-      if (dayOnly.isBefore(created)) return _DayState.future;
-    }
-
-    // Check if this could be a rainy day: a Firestore event per rainy-day-used
-    // isn't tracked granularly per-day, so we approximate: if the streak was
-    // maintained without a completion doc, show rainy-day color. Since we can't
-    // easily determine per-day rainy use from the current data model without
-    // extra reads, we mark missed days as missed and leave rainy-day display
-    // for the streak stats summary above.
-    return _DayState.missed;
+  CalendarDayState _stateFor(
+    DateTime day,
+    Set<String> completedDates,
+    Set<String> frozenDates,
+  ) {
+    // createdAt is stored/parsed as UTC — convert to local before extracting
+    // the calendar day so it's compared in the same reference frame as
+    // `day` (built from local calendar fields), the same DST-safety
+    // reasoning as UserRepository.awardCompletionRewards.
+    return resolveCalendarDayState(
+      day: day,
+      now: DateTime.now(),
+      completedDates: completedDates,
+      frozenDates: frozenDates,
+      userCreatedAt: user?.createdAt.toLocal(),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final completedDates = _completedDates();
+    final frozenDates = user?.frozenDates.toSet() ?? const <String>{};
     final firstOfMonth = DateTime(displayMonth.year, displayMonth.month, 1);
     // weekday: 1=Mon…7=Sun, grid starts Monday
     final startOffset = (firstOfMonth.weekday - 1) % 7;
@@ -445,8 +480,9 @@ class _CalendarGrid extends StatelessWidget {
             if (index < startOffset) return const SizedBox.shrink();
             final dayNum = index - startOffset + 1;
             final day = DateTime(displayMonth.year, displayMonth.month, dayNum);
-            final state = _stateFor(day, completedDates);
+            final state = _stateFor(day, completedDates, frozenDates);
             return _DayCell(
+              date: day,
               dayNum: dayNum,
               state: state,
               surface: surface,
@@ -462,6 +498,7 @@ class _CalendarGrid extends StatelessWidget {
 
 class _DayCell extends StatelessWidget {
   const _DayCell({
+    required this.date,
     required this.dayNum,
     required this.state,
     required this.surface,
@@ -469,11 +506,28 @@ class _DayCell extends StatelessWidget {
     required this.outline,
   });
 
+  final DateTime date;
   final int dayNum;
-  final _DayState state;
+  final CalendarDayState state;
   final Color surface;
   final Color onSurface;
   final Color outline;
+
+  static const _months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+
+  String get _semanticLabel {
+    final dateLabel = '${_months[date.month - 1]} ${date.day}';
+    return switch (state) {
+      CalendarDayState.completed => '$dateLabel, challenge completed',
+      CalendarDayState.rainyDay => '$dateLabel, Rainy Day freeze used',
+      CalendarDayState.missed => '$dateLabel, missed',
+      CalendarDayState.today => '$dateLabel, today',
+      CalendarDayState.future => dateLabel,
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -483,51 +537,55 @@ class _DayCell extends StatelessWidget {
     BoxBorder? border;
 
     switch (state) {
-      case _DayState.completed:
+      case CalendarDayState.completed:
         bg = AppColors.grassGreen;
         textColor = Colors.white;
         icon = const Icon(Icons.check_rounded, color: Colors.white, size: 10);
-      case _DayState.rainyDay:
+      case CalendarDayState.rainyDay:
         bg = AppColors.skyBlue.withValues(alpha: 0.25);
         textColor = AppColors.skyBlue;
         icon = const Text('🌧', style: TextStyle(fontSize: 9));
         border = Border.all(color: AppColors.skyBlue.withValues(alpha: 0.5));
-      case _DayState.missed:
+      case CalendarDayState.missed:
         bg = AppColors.error.withValues(alpha: 0.12);
         textColor = AppColors.error.withValues(alpha: 0.7);
         icon = null;
         border = Border.all(color: AppColors.error.withValues(alpha: 0.25));
-      case _DayState.today:
+      case CalendarDayState.today:
         bg = AppColors.forestGreen.withValues(alpha: 0.15);
         textColor = AppColors.forestGreen;
         border = Border.all(color: AppColors.forestGreen, width: 1.5);
         icon = null;
-      case _DayState.future:
+      case CalendarDayState.future:
         bg = Colors.transparent;
         textColor = onSurface.withValues(alpha: 0.25);
         icon = null;
     }
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(6),
-        border: border,
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            '$dayNum',
-            style: TextStyle(
-              fontFamily: 'Nunito',
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              color: textColor,
+    return Semantics(
+      label: _semanticLabel,
+      excludeSemantics: true,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(6),
+          border: border,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              '$dayNum',
+              style: TextStyle(
+                fontFamily: 'Nunito',
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: textColor,
+              ),
             ),
-          ),
-          ?icon,
-        ],
+            ?icon,
+          ],
+        ),
       ),
     );
   }
@@ -592,7 +650,7 @@ class _LegendItem extends StatelessWidget {
         DecoratedBox(
           decoration: BoxDecoration(
             color: color,
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(AppSpacing.radiusXs),
             border: hasBorder
                 ? Border.all(color: borderColor!, width: 1.5)
                 : null,

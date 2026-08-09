@@ -4,15 +4,21 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_performance/firebase_performance.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shimmer/shimmer.dart';
 
 import '../../../core/constants/app_constants.dart';
+import '../../../core/services/error_service.dart';
 import '../../../models/leaderboard_entry_model.dart';
 import '../../../models/league_definition.dart';
 import '../../../providers/leaderboard_providers.dart';
+import '../../../providers/settings_providers.dart';
+import '../../../services/leaderboard_service.dart';
 import '../../../services/perf_service.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_motion.dart';
 import '../../../theme/app_spacing.dart';
+import '../../../widgets/error_retry_view.dart';
+import '../../../widgets/initials_avatar.dart';
+import '../../../widgets/loading_widgets.dart';
 
 class LeaderboardScreen extends ConsumerStatefulWidget {
   const LeaderboardScreen({super.key});
@@ -55,7 +61,7 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
     final myLeague = ref.watch(currentUserLeagueProvider);
     final currentUid = ref.watch(currentUidProvider);
     final boardAsync = ref.watch(leagueBoardProvider(_selected.id));
-    final resetAsync = ref.watch(weeklyResetCountdownProvider);
+    final reducedMotion = ref.watch(reducedMotionProvider);
 
     if (!_traceCompleted && boardAsync.hasValue) {
       _traceCompleted = true;
@@ -77,7 +83,6 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
           // ── League header ───────────────────────────────────────────────
           _LeagueHeader(
             league: _selected,
-            resetLabel: resetAsync.valueOrNull ?? '…',
             isDark: isDark,
           ),
 
@@ -85,13 +90,18 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
           Expanded(
             child: boardAsync.when(
               loading: () => const _BoardLoading(),
-              error: (e, _) => _BoardError(error: e),
+              error: (e, _) => _BoardError(
+                error: e,
+                onRetry: () =>
+                    ref.invalidate(leagueBoardProvider(_selected.id)),
+              ),
               data: (entries) => entries.isEmpty
                   ? _EmptyBoard(league: _selected)
                   : _Board(
                       entries: entries,
                       currentUid: currentUid,
                       isDark: isDark,
+                      reducedMotion: reducedMotion,
                     ),
             ),
           ),
@@ -230,10 +240,21 @@ class _LeagueChip extends StatelessWidget {
             ? AppColors.onSurfaceVariantDark
             : AppColors.onSurfaceVariantLight);
 
-    return GestureDetector(
+    final semanticLabel = StringBuffer('${league.name} League')
+      ..write(isMyLeague ? ', your league' : '')
+      ..write(isLocked ? ', locked' : '')
+      ..write(isSelected ? ', selected' : '');
+
+    return Semantics(
+      button: true,
+      selected: isSelected,
+      label: semanticLabel.toString(),
+      excludeSemantics: true,
+      child: GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
+        duration: AppMotion.fast,
+        curve: AppMotion.standardCurve,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
           color: bg,
@@ -282,6 +303,7 @@ class _LeagueChip extends StatelessWidget {
           ],
         ),
       ),
+      ),
     );
   }
 }
@@ -291,20 +313,14 @@ class _LeagueChip extends StatelessWidget {
 class _LeagueHeader extends StatelessWidget {
   const _LeagueHeader({
     required this.league,
-    required this.resetLabel,
     required this.isDark,
   });
 
   final LeagueDef league;
-  final String resetLabel;
   final bool isDark;
 
   @override
   Widget build(BuildContext context) {
-    final muted = isDark
-        ? AppColors.onSurfaceVariantDark
-        : AppColors.onSurfaceVariantLight;
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(
           AppSpacing.screenHorizontal, 10, AppSpacing.screenHorizontal, 8),
@@ -325,19 +341,46 @@ class _LeagueHeader extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          Icon(Icons.timer_outlined, size: 13, color: muted),
-          const SizedBox(width: 4),
-          Text(
-            'Resets in $resetLabel',
-            style: TextStyle(
-              fontFamily: 'Nunito',
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: muted,
-            ),
-          ),
+          // Isolated so the 30s-ticking countdown only rebuilds this row,
+          // not the whole leaderboard screen (and its list of entries).
+          _ResetCountdown(isDark: isDark),
         ],
       ),
+    );
+  }
+}
+
+/// Ticking "Resets in Xh Ym" label. A separate [ConsumerWidget] so watching
+/// [weeklyResetCountdownProvider] only rebuilds this small row every 30s
+/// instead of the entire leaderboard screen (header, nav bar, board list).
+class _ResetCountdown extends ConsumerWidget {
+  const _ResetCountdown({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final resetLabel =
+        ref.watch(weeklyResetCountdownProvider).valueOrNull ?? '…';
+    final muted = isDark
+        ? AppColors.onSurfaceVariantDark
+        : AppColors.onSurfaceVariantLight;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.timer_outlined, size: 13, color: muted),
+        const SizedBox(width: 4),
+        Text(
+          'Resets in $resetLabel',
+          style: TextStyle(
+            fontFamily: 'Nunito',
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: muted,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -349,100 +392,56 @@ class _Board extends StatelessWidget {
     required this.entries,
     required this.currentUid,
     required this.isDark,
+    required this.reducedMotion,
   });
 
   final List<LeaderboardEntryModel> entries;
   final String? currentUid;
   final bool isDark;
+  final bool reducedMotion;
 
   @override
   Widget build(BuildContext context) {
     final total = entries.length;
-    const svc = _ZoneService();
+    const service = LeaderboardService();
 
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 8),
-      itemCount: entries.length + (_hasZoneHeaders(total) ? 2 : 0),
+      itemCount: entries.length + (_hasHeader(total) ? 1 : 0),
       itemBuilder: (context, rawIdx) {
-        // Inject zone-header rows when the board is large enough.
-        if (_hasZoneHeaders(total)) {
-          // "SAFE ZONE" separator appears before the first safe-zone entry.
-          if (rawIdx == AppConstants.promotionZoneCount) {
-            return _ZoneHeader(
-              label: 'SAFE ZONE',
-              color: isDark
-                  ? AppColors.onSurfaceVariantDark
-                  : AppColors.onSurfaceVariantLight,
-            );
-          }
-          // "DEMOTION ZONE" separator appears before the first demotion entry.
-          if (rawIdx ==
-              AppConstants.promotionZoneCount +
-                  1 +
-                  (total -
-                      AppConstants.promotionZoneCount -
-                      AppConstants.demotionZoneCount)) {
-            return const _ZoneHeader(
-              label: 'DEMOTION ZONE',
-              color: Color(0xFFFC4E6F),
-            );
-          }
+        // "TOP THIS WEEK" separator appears after the leading top performers.
+        if (_hasHeader(total) && rawIdx == AppConstants.promotionZoneCount) {
+          return const _SectionDivider(
+            label: 'TOP THIS WEEK',
+            color: AppColors.achievementGold,
+          );
         }
 
-        // Adjust entry index to skip injected header rows.
-        final entryIdx = _entryIndex(rawIdx, total);
+        final entryIdx = _hasHeader(total) && rawIdx > AppConstants.promotionZoneCount
+            ? rawIdx - 1
+            : rawIdx;
         if (entryIdx >= total) return const SizedBox.shrink();
         final entry = entries[entryIdx];
         final isMe = entry.userId == currentUid;
-        final zone = svc.zone(entry.rank, total);
+        final isTopPerformer = service.isTopPerformer(entry.rank, total);
 
         return _RankRow(
           entry: entry,
           isCurrentUser: isMe,
-          zone: zone,
+          isTopPerformer: isTopPerformer,
           isDark: isDark,
           index: entryIdx,
+          reducedMotion: reducedMotion,
         );
       },
     );
   }
 
-  bool _hasZoneHeaders(int total) =>
-      total >
-      AppConstants.promotionZoneCount + AppConstants.demotionZoneCount;
-
-  int _entryIndex(int rawIdx, int total) {
-    if (!_hasZoneHeaders(total)) return rawIdx;
-    if (rawIdx < AppConstants.promotionZoneCount) return rawIdx;
-    if (rawIdx == AppConstants.promotionZoneCount) return -1; // header
-    final safeZoneSize =
-        total - AppConstants.promotionZoneCount - AppConstants.demotionZoneCount;
-    final demotionHeaderRaw =
-        AppConstants.promotionZoneCount + 1 + safeZoneSize;
-    if (rawIdx < demotionHeaderRaw) return rawIdx - 1;
-    if (rawIdx == demotionHeaderRaw) return -1; // header
-    return rawIdx - 2;
-  }
+  bool _hasHeader(int total) => total > AppConstants.promotionZoneCount;
 }
 
-enum _Zone { promotion, safe, demotion }
-
-class _ZoneService {
-  const _ZoneService();
-
-  _Zone zone(int rank, int total) {
-    if (total <=
-        AppConstants.promotionZoneCount + AppConstants.demotionZoneCount) {
-      return _Zone.safe;
-    }
-    if (rank <= AppConstants.promotionZoneCount) return _Zone.promotion;
-    if (rank > total - AppConstants.demotionZoneCount) return _Zone.demotion;
-    return _Zone.safe;
-  }
-}
-
-class _ZoneHeader extends StatelessWidget {
-  const _ZoneHeader({required this.label, required this.color});
+class _SectionDivider extends StatelessWidget {
+  const _SectionDivider({required this.label, required this.color});
 
   final String label;
   final Color color;
@@ -490,16 +489,18 @@ class _RankRow extends StatefulWidget {
   const _RankRow({
     required this.entry,
     required this.isCurrentUser,
-    required this.zone,
+    required this.isTopPerformer,
     required this.isDark,
     required this.index,
+    required this.reducedMotion,
   });
 
   final LeaderboardEntryModel entry;
   final bool isCurrentUser;
-  final _Zone zone;
+  final bool isTopPerformer;
   final bool isDark;
   final int index;
+  final bool reducedMotion;
 
   @override
   State<_RankRow> createState() => _RankRowState();
@@ -524,6 +525,10 @@ class _RankRowState extends State<_RankRow>
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
 
+    if (widget.reducedMotion) {
+      _ctrl.value = 1.0;
+      return;
+    }
     final delay = Duration(milliseconds: (widget.index * 30).clamp(0, 500));
     Future<void>.delayed(delay, () {
       if (mounted) _ctrl.forward();
@@ -536,21 +541,14 @@ class _RankRowState extends State<_RankRow>
     super.dispose();
   }
 
-  Color _zoneBg(BuildContext context) {
-    switch (widget.zone) {
-      case _Zone.promotion:
-        return widget.isCurrentUser
-            ? AppColors.grassGreen.withValues(alpha: 0.12)
-            : const Color(0xFF52B788).withValues(alpha: 0.07);
-      case _Zone.demotion:
-        return widget.isCurrentUser
-            ? AppColors.grassGreen.withValues(alpha: 0.12)
-            : const Color(0xFFFC4E6F).withValues(alpha: 0.06);
-      case _Zone.safe:
-        return widget.isCurrentUser
-            ? AppColors.grassGreen.withValues(alpha: 0.08)
-            : Colors.transparent;
+  Color _rowBg(BuildContext context) {
+    if (widget.isCurrentUser) {
+      return AppColors.grassGreen.withValues(alpha: 0.12);
     }
+    if (widget.isTopPerformer) {
+      return AppColors.grassGreen.withValues(alpha: 0.07);
+    }
+    return Colors.transparent;
   }
 
   @override
@@ -578,7 +576,7 @@ class _RankRowState extends State<_RankRow>
       child: SlideTransition(
         position: _slide,
         child: ColoredBox(
-          color: _zoneBg(context),
+          color: _rowBg(context),
           child: Padding(
             padding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -739,44 +737,24 @@ class _Avatar extends StatelessWidget {
               ? CachedNetworkImage(
                   imageUrl: entry.photoUrl!,
                   fit: BoxFit.cover,
-                  placeholder: (ctx, url) => Shimmer.fromColors(
-                    baseColor: Colors.grey.shade300,
-                    highlightColor: Colors.grey.shade100,
-                    child: const ColoredBox(color: Colors.white),
-                  ),
-                  errorWidget: (ctx, url, err) => _InitialsFill(
+                  placeholder: (ctx, url) => const ShimmerBox(),
+                  errorWidget: (ctx, url, err) => InitialsAvatar(
                     initials: entry.initials,
-                    isMe: isMe,
+                    backgroundColor: isMe
+                        ? AppColors.forestGreen
+                        : AppColors.grassGreen.withValues(alpha: 0.20),
+                    textColor: isMe ? Colors.white : AppColors.forestGreen,
+                    fontSize: 13,
                   ),
                 )
-              : _InitialsFill(initials: entry.initials, isMe: isMe),
-        ),
-      ),
-    );
-  }
-}
-
-class _InitialsFill extends StatelessWidget {
-  const _InitialsFill({required this.initials, required this.isMe});
-
-  final String initials;
-  final bool isMe;
-
-  @override
-  Widget build(BuildContext context) {
-    return ColoredBox(
-      color: isMe
-          ? AppColors.forestGreen
-          : AppColors.grassGreen.withValues(alpha: 0.20),
-      child: Center(
-        child: Text(
-          initials,
-          style: TextStyle(
-            fontFamily: 'Nunito',
-            fontSize: 13,
-            fontWeight: FontWeight.w900,
-            color: isMe ? Colors.white : AppColors.forestGreen,
-          ),
+              : InitialsAvatar(
+                  initials: entry.initials,
+                  backgroundColor: isMe
+                      ? AppColors.forestGreen
+                      : AppColors.grassGreen.withValues(alpha: 0.20),
+                  textColor: isMe ? Colors.white : AppColors.forestGreen,
+                  fontSize: 13,
+                ),
         ),
       ),
     );
@@ -1003,25 +981,16 @@ class _BoardLoading extends StatelessWidget {
 }
 
 class _BoardError extends StatelessWidget {
-  const _BoardError({required this.error});
+  const _BoardError({required this.error, required this.onRetry});
 
   final Object error;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Text(
-          'Could not load leaderboard.\nPlease try again.',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontFamily: 'Nunito',
-            fontSize: 14,
-            color: Theme.of(context).colorScheme.error,
-          ),
-        ),
-      ),
+    return ErrorRetryView(
+      message: ErrorService.friendlyMessage(error),
+      onRetry: onRetry,
     );
   }
 }

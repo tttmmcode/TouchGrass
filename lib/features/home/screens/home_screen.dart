@@ -1,23 +1,34 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_performance/firebase_performance.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../companions/companion.dart';
+import '../../../companions/companion_widget.dart';
 import '../../../core/constants/app_constants.dart';
-import '../../../models/completion_model.dart';
+import '../../../core/constants/route_names.dart';
+import '../../../core/services/error_service.dart';
 import '../../../models/user_model.dart';
 import '../../../models/weather_model.dart';
 import '../../../providers/assignment_providers.dart';
 import '../../../providers/challenge_providers.dart';
+import '../../../providers/companion_providers.dart';
+import '../../../providers/settings_providers.dart';
 import '../../../providers/user_providers.dart';
 import '../../../providers/weather_providers.dart';
 import '../../../services/analytics_service.dart';
 import '../../../services/perf_service.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_elevation.dart';
 import '../../../theme/app_spacing.dart';
+import '../../../widgets/error_retry_view.dart';
+import '../../../widgets/initials_avatar.dart';
+import '../../../widgets/loading_widgets.dart';
+import '../../../widgets/pressable_scale.dart';
 import '../widgets/challenge_node.dart';
 import '../widgets/todays_challenge_card.dart';
 
@@ -53,7 +64,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       body: pathAsync.when(
         data: (nodes) => _AdventureTrail(nodes: nodes),
         loading: () => const _TrailLoading(),
-        error: (e, _) => _TrailError(message: e.toString()),
+        error: (e, _) => _TrailError(
+          message: ErrorService.friendlyMessage(e),
+          onRetry: () {
+            ref.invalidate(todaysChallengeProvider);
+            ref.invalidate(recentCompletionsProvider);
+          },
+        ),
       ),
     );
   }
@@ -72,6 +89,11 @@ class _AdventureTrail extends StatefulWidget {
 class _AdventureTrailState extends State<_AdventureTrail> {
   final _scrollCtrl = ScrollController();
   bool _challengeViewLogged = false;
+
+  // Guards the active node's camera-entry tap against a rapid double-tap
+  // pushing two camera routes onto the stack. Resets once the pushed route
+  // is popped.
+  bool _navigatingToCamera = false;
 
   @override
   void dispose() {
@@ -100,9 +122,60 @@ class _AdventureTrailState extends State<_AdventureTrail> {
         extra: node.completion,
       );
     } else if (node is ActivePathNode) {
-      context.pushNamed('camera');
+      if (_navigatingToCamera) return;
+      _navigatingToCamera = true;
+      context.pushNamed('camera').then((_) {
+        if (mounted) setState(() => _navigatingToCamera = false);
+      });
+    } else if (node is LockedPathNode) {
+      final todayDayNumber = widget.nodes.first.dayNumber;
+      final daysAway = node.dayNumber - todayDayNumber;
+      _showTrailInfoDialog(
+        context,
+        emoji: '🔒',
+        title: 'Day ${node.dayNumber} is locked',
+        message: daysAway == 1
+            ? "This adventure unlocks tomorrow — come back after you've "
+                "finished today's challenge!"
+            : "This adventure unlocks in $daysAway days. Keep completing "
+                'daily challenges to reach it!',
+      );
+    } else if (node is MissedPathNode) {
+      _showTrailInfoDialog(
+        context,
+        emoji: '🌱',
+        title: 'Day ${node.dayNumber} was missed',
+        message: 'Every explorer has an off day — it happens. Focus on '
+            "today's challenge and keep your adventure moving forward!",
+      );
     }
-    // MissedPathNode — locked, do nothing.
+  }
+
+  void _showTrailInfoDialog(
+    BuildContext context, {
+    required String emoji,
+    required String title,
+    required String message,
+  }) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: AppSpacing.emojiSm)),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(child: Text(title)),
+          ],
+        ),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -145,12 +218,25 @@ class _AdventureTrailState extends State<_AdventureTrail> {
                   children: [
                     SizedBox(height: AppSpacing.sm),
                     _TrailHeader(),
-                    SizedBox(height: AppSpacing.sm),
-                    _WeatherPill(),
                   ],
                 ),
               ),
             ),
+            if (todayNode is ActivePathNode)
+              const SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  AppSpacing.screenHorizontal,
+                  AppSpacing.sm,
+                  AppSpacing.screenHorizontal,
+                  0,
+                ),
+                sliver: SliverToBoxAdapter(
+                  child: _FadeSlideIn(
+                    delay: Duration(milliseconds: 30),
+                    child: RepaintBoundary(child: _TrailCompanion()),
+                  ),
+                ),
+              ),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(
                 AppSpacing.screenHorizontal,
@@ -201,18 +287,23 @@ class _AdventureTrailState extends State<_AdventureTrail> {
 
 // ── Landscape background — layered painted scene ──────────────────────────────
 
-class _LandscapeBackground extends StatefulWidget {
+class _LandscapeBackground extends ConsumerStatefulWidget {
   const _LandscapeBackground({this.scrollOffset = 0});
   final double scrollOffset;
 
   @override
-  State<_LandscapeBackground> createState() => _LandscapeBackgroundState();
+  ConsumerState<_LandscapeBackground> createState() =>
+      _LandscapeBackgroundState();
 }
 
-class _LandscapeBackgroundState extends State<_LandscapeBackground>
+class _LandscapeBackgroundState extends ConsumerState<_LandscapeBackground>
     with TickerProviderStateMixin {
   late final AnimationController _cloudCtrl;
   late final AnimationController _ambientCtrl;
+  // Persists across the many ephemeral _LandscapePainter instances created
+  // each animation frame, so the expensive static-layer Picture it records
+  // survives from one frame to the next instead of being rebuilt every time.
+  final _staticLayerCache = _StaticLayerCache();
 
   @override
   void initState() {
@@ -220,11 +311,15 @@ class _LandscapeBackgroundState extends State<_LandscapeBackground>
     _cloudCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 45),
-    )..repeat();
+    );
     _ambientCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 80),
-    )..repeat();
+    );
+    if (!ref.read(reducedMotionProvider)) {
+      _cloudCtrl.repeat();
+      _ambientCtrl.repeat();
+    }
   }
 
   @override
@@ -237,6 +332,14 @@ class _LandscapeBackgroundState extends State<_LandscapeBackground>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final reduceMotion = ref.watch(reducedMotionProvider);
+    if (reduceMotion) {
+      if (_cloudCtrl.isAnimating) _cloudCtrl.stop();
+      if (_ambientCtrl.isAnimating) _ambientCtrl.stop();
+    } else {
+      if (!_cloudCtrl.isAnimating) _cloudCtrl.repeat();
+      if (!_ambientCtrl.isAnimating) _ambientCtrl.repeat();
+    }
     return AnimatedBuilder(
       animation: Listenable.merge([_cloudCtrl, _ambientCtrl]),
       builder: (_, _) => RepaintBoundary(
@@ -246,6 +349,7 @@ class _LandscapeBackgroundState extends State<_LandscapeBackground>
             ambientProgress: _ambientCtrl.value,
             scrollOffset: widget.scrollOffset,
             isDark: isDark,
+            staticCache: _staticLayerCache,
           ),
           child: const SizedBox.expand(),
         ),
@@ -254,35 +358,79 @@ class _LandscapeBackgroundState extends State<_LandscapeBackground>
   }
 }
 
+/// Caches the recorded [ui.Picture] for _LandscapePainter's static layers
+/// (mountains/forest/hills/foreground — everything that depends only on
+/// size/isDark/scrollOffset, never on the animated cloud/ambient progress),
+/// keyed on the inputs it was built from. Lives on _LandscapeBackgroundState
+/// so it survives across the many ephemeral painter instances created each
+/// animation frame.
+class _StaticLayerCache {
+  ui.Picture? picture;
+  Size? size;
+  bool? isDark;
+  double? scrollOffset;
+}
+
 class _LandscapePainter extends CustomPainter {
   const _LandscapePainter({
     required this.cloudProgress,
     required this.ambientProgress,
     required this.scrollOffset,
     required this.isDark,
+    required this.staticCache,
   });
 
   final double cloudProgress;
   final double ambientProgress;
   final double scrollOffset;
   final bool isDark;
+  final _StaticLayerCache staticCache;
 
   @override
   void paint(Canvas canvas, Size size) {
     _paintSky(canvas, size);
     if (!isDark) _paintSunRays(canvas, size);
 
-    _withShift(canvas, scrollOffset * 0.03, () => _paintFarMountains(canvas, size));
-    _withShift(canvas, scrollOffset * 0.07, () => _paintMidMountains(canvas, size));
-    _withShift(canvas, scrollOffset * 0.11, () => _paintMidForest(canvas, size));
-    _withShift(canvas, scrollOffset * 0.16, () => _paintNearHills(canvas, size));
-    _withShift(canvas, scrollOffset * 0.22, () => _paintForeground(canvas, size));
+    // Far mountains → mid mountains → mid forest → near hills → foreground:
+    // none of these depend on cloudProgress/ambientProgress, only on
+    // (size, isDark, scrollOffset) — reconstructing their trig-heavy Paths
+    // on every animation frame is pure waste, so they're recorded once into
+    // a cached Picture and replayed instead. Grass/flowers/clouds/birds/haze
+    // stay live below, unchanged, preserving the exact original z-order.
+    canvas.drawPicture(_staticLayersPicture(size));
+
     _withShift(canvas, scrollOffset * 0.22, () => _paintGrassBlades(canvas, size));
     _withShift(canvas, scrollOffset * 0.22, () => _paintFlowers(canvas, size));
 
     if (!isDark) _paintClouds(canvas, size);
     _paintBirds(canvas, size);
     if (!isDark) _paintAtmosphericHaze(canvas, size);
+  }
+
+  ui.Picture _staticLayersPicture(Size size) {
+    final cache = staticCache;
+    if (cache.picture != null &&
+        cache.size == size &&
+        cache.isDark == isDark &&
+        cache.scrollOffset == scrollOffset) {
+      return cache.picture!;
+    }
+
+    final recorder = ui.PictureRecorder();
+    final recordCanvas = Canvas(recorder);
+    _withShift(recordCanvas, scrollOffset * 0.03, () => _paintFarMountains(recordCanvas, size));
+    _withShift(recordCanvas, scrollOffset * 0.07, () => _paintMidMountains(recordCanvas, size));
+    _withShift(recordCanvas, scrollOffset * 0.11, () => _paintMidForest(recordCanvas, size));
+    _withShift(recordCanvas, scrollOffset * 0.16, () => _paintNearHills(recordCanvas, size));
+    _withShift(recordCanvas, scrollOffset * 0.22, () => _paintForeground(recordCanvas, size));
+    final picture = recorder.endRecording();
+
+    cache
+      ..picture = picture
+      ..size = size
+      ..isDark = isDark
+      ..scrollOffset = scrollOffset;
+    return picture;
   }
 
   void _withShift(Canvas canvas, double dy, VoidCallback paint) {
@@ -754,14 +902,14 @@ class _LandscapePainter extends CustomPainter {
 
 // ── Ambient falling leaves — painted teardrop shapes ─────────────────────────
 
-class _AmbientLeaves extends StatefulWidget {
+class _AmbientLeaves extends ConsumerStatefulWidget {
   const _AmbientLeaves();
 
   @override
-  State<_AmbientLeaves> createState() => _AmbientLeavesState();
+  ConsumerState<_AmbientLeaves> createState() => _AmbientLeavesState();
 }
 
-class _AmbientLeavesState extends State<_AmbientLeaves>
+class _AmbientLeavesState extends ConsumerState<_AmbientLeaves>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
 
@@ -771,7 +919,8 @@ class _AmbientLeavesState extends State<_AmbientLeaves>
     _ctrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 14),
-    )..repeat();
+    );
+    if (!ref.read(reducedMotionProvider)) _ctrl.repeat();
   }
 
   @override
@@ -783,6 +932,12 @@ class _AmbientLeavesState extends State<_AmbientLeaves>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final reduceMotion = ref.watch(reducedMotionProvider);
+    if (reduceMotion) {
+      if (_ctrl.isAnimating) _ctrl.stop();
+    } else if (!_ctrl.isAnimating) {
+      _ctrl.repeat();
+    }
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (_, _) => RepaintBoundary(
@@ -855,14 +1010,14 @@ class _LeafPainter extends CustomPainter {
 
 // ── Floating pollen particles ─────────────────────────────────────────────────
 
-class _PollenSystem extends StatefulWidget {
+class _PollenSystem extends ConsumerStatefulWidget {
   const _PollenSystem();
 
   @override
-  State<_PollenSystem> createState() => _PollenSystemState();
+  ConsumerState<_PollenSystem> createState() => _PollenSystemState();
 }
 
-class _PollenSystemState extends State<_PollenSystem>
+class _PollenSystemState extends ConsumerState<_PollenSystem>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
 
@@ -872,7 +1027,8 @@ class _PollenSystemState extends State<_PollenSystem>
     _ctrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 22),
-    )..repeat();
+    );
+    if (!ref.read(reducedMotionProvider)) _ctrl.repeat();
   }
 
   @override
@@ -884,6 +1040,12 @@ class _PollenSystemState extends State<_PollenSystem>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final reduceMotion = ref.watch(reducedMotionProvider);
+    if (reduceMotion) {
+      if (_ctrl.isAnimating) _ctrl.stop();
+    } else if (!_ctrl.isAnimating) {
+      _ctrl.repeat();
+    }
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (_, _) => RepaintBoundary(
@@ -969,8 +1131,7 @@ class _TrailHeader extends ConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final firstName =
-        FirebaseAuth.instance.currentUser?.displayName?.split(' ').first ??
-            'Explorer';
+        userAsync.valueOrNull?.displayName.split(' ').first ?? 'Explorer';
 
     final nameColor = isDark ? Colors.white : AppColors.forestGreenDark;
     final labelColor = isDark
@@ -987,9 +1148,12 @@ class _TrailHeader extends ConsumerWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              const _HeaderAvatar(),
+              const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Row(
                       children: [
@@ -1008,6 +1172,7 @@ class _TrailHeader extends ConsumerWidget {
                     ),
                     Text(
                       firstName,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontFamily: 'Nunito',
                         fontSize: 28,
@@ -1019,13 +1184,23 @@ class _TrailHeader extends ConsumerWidget {
                   ],
                 ),
               ),
-              userAsync.maybeWhen(
-                data: (user) => user != null
-                    ? _CompactStatsPills(user: user)
-                    : const SizedBox.shrink(),
-                orElse: () => const SizedBox.shrink(),
-              ),
+              const SizedBox(width: AppSpacing.xs),
+              const _HeaderWeather(),
             ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          // Stats pills get their own row rather than sharing the header row
+          // with the avatar/greeting/weather — on narrow phones, four
+          // elements competing for one row left too little width for the
+          // greeting text and risked truncation.
+          userAsync.maybeWhen(
+            data: (user) => user != null
+                ? Align(
+                    alignment: Alignment.centerLeft,
+                    child: _CompactStatsPills(user: user),
+                  )
+                : const SizedBox.shrink(),
+            orElse: () => const SizedBox.shrink(),
           ),
           const SizedBox(height: AppSpacing.sm),
           userAsync.maybeWhen(
@@ -1071,10 +1246,19 @@ class _CompactStatsPills extends ConsumerWidget {
           ),
         ),
         const SizedBox(width: AppSpacing.sm),
-        GestureDetector(
-          onTap: () => _showStreakCalendar(context, ref, user),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
+        Semantics(
+          button: true,
+          label: '${user.streak} day streak. Tap to view streak calendar.',
+          excludeSemantics: true,
+          child: PressableScale(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => context.pushNamed('streakCalendar'),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                child: Center(
+                  child: DecoratedBox(
+          decoration: BoxDecoration(
               gradient: AppColors.gradientStreak,
               borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
             ),
@@ -1101,373 +1285,27 @@ class _CompactStatsPills extends ConsumerWidget {
                 ],
               ),
             ),
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       ],
     );
   }
 
-  void _showStreakCalendar(BuildContext context, WidgetRef ref, UserModel user) {
-    final completions = ref.read(recentCompletionsProvider).valueOrNull ?? [];
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _StreakCalendarSheet(
-        user: user,
-        completions: completions,
-      ),
-    );
-  }
 }
 
-// ── Streak calendar bottom sheet ──────────────────────────────────────────────
 
-class _StreakCalendarSheet extends StatelessWidget {
-  const _StreakCalendarSheet({
-    required this.user,
-    required this.completions,
-  });
-
-  final UserModel user;
-  final List<CompletionModel> completions;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? AppColors.surfaceDark : AppColors.surfaceLight;
-    final strong = isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
-    final muted = isDark
-        ? AppColors.onSurfaceVariantDark
-        : AppColors.onSurfaceVariantLight;
-
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-
-    // Build a set of completed days (date-only) from the last 30 days.
-    final completedDays = <DateTime>{
-      for (final c in completions) c.dateOnly,
-    };
-
-    // Build the 30-day grid from newest to oldest.
-    final days = List.generate(
-      30,
-      (i) => today.subtract(Duration(days: i)),
-    ).reversed.toList();
-
-    return DraggableScrollableSheet(
-      initialChildSize: 0.55,
-      minChildSize: 0.40,
-      maxChildSize: 0.75,
-      builder: (context, scrollCtrl) => DecoratedBox(
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          children: [
-            const SizedBox(height: AppSpacing.sm),
-            // Drag handle
-            Center(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: muted.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-                ),
-                child: const SizedBox(width: 36, height: 4),
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-
-            // Header
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.screenHorizontal,
-              ),
-              child: Row(
-                children: [
-                  const Text('🔥', style: TextStyle(fontSize: 22)),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Streak Calendar',
-                    style: TextStyle(
-                      fontFamily: 'Nunito',
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      color: strong,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-
-            // Stats row
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.screenHorizontal,
-              ),
-              child: Row(
-                children: [
-                  _StatChip(
-                    label: 'Current',
-                    value: '${user.streak} days',
-                    color: const Color(0xFFFF6B35),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  _StatChip(
-                    label: 'Completed',
-                    value: '${user.totalCompletions}',
-                    color: AppColors.grassGreen,
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  _StatChip(
-                    label: 'Level',
-                    value: '${user.level}',
-                    color: AppColors.achievementGold,
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  _StatChip(
-                    label: 'Freezes',
-                    value: '${user.settings.streakFreezesOwned} ❄️',
-                    color: const Color(0xFF42A5F5),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-
-            // Day grid
-            Expanded(
-              child: SingleChildScrollView(
-                controller: scrollCtrl,
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.screenHorizontal,
-                  0,
-                  AppSpacing.screenHorizontal,
-                  AppSpacing.xxl,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Last 30 Days',
-                      style: TextStyle(
-                        fontFamily: 'Nunito',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: muted,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 7,
-                        crossAxisSpacing: 6,
-                        mainAxisSpacing: 6,
-                        childAspectRatio: 1,
-                      ),
-                      itemCount: days.length,
-                      itemBuilder: (context, i) {
-                        final day = days[i];
-                        final isToday = day == today;
-                        final done = completedDays.contains(day);
-                        final isFuture = day.isAfter(today);
-
-                        Color cellColor;
-                        Color textColor;
-
-                        if (isFuture) {
-                          cellColor = Colors.transparent;
-                          textColor = Colors.transparent;
-                        } else if (done) {
-                          cellColor = AppColors.grassGreen;
-                          textColor = Colors.white;
-                        } else if (isToday) {
-                          cellColor = AppColors.grassGreen.withValues(alpha: 0.25);
-                          textColor = AppColors.grassGreen;
-                        } else {
-                          cellColor = isDark
-                              ? Colors.white.withValues(alpha: 0.06)
-                              : Colors.black.withValues(alpha: 0.06);
-                          textColor = muted.withValues(alpha: 0.5);
-                        }
-
-                        return DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: cellColor,
-                            borderRadius:
-                                BorderRadius.circular(AppSpacing.radiusSm),
-                            border: isToday && !done
-                                ? Border.all(
-                                    color: AppColors.grassGreen,
-                                    width: 1.5,
-                                  )
-                                : null,
-                          ),
-                          child: Center(
-                            child: Text(
-                              '${day.day}',
-                              style: TextStyle(
-                                fontFamily: 'Nunito',
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                                color: textColor,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: AppSpacing.lg),
-
-                    // Legend
-                    Row(
-                      children: [
-                        _LegendDot(
-                          color: AppColors.grassGreen,
-                          label: 'Completed',
-                          isDark: isDark,
-                        ),
-                        const SizedBox(width: AppSpacing.md),
-                        _LegendDot(
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.06)
-                              : Colors.black.withValues(alpha: 0.06),
-                          label: 'Missed',
-                          isDark: isDark,
-                        ),
-                        const SizedBox(width: AppSpacing.md),
-                        _LegendDot(
-                          color: AppColors.grassGreen.withValues(alpha: 0.25),
-                          label: 'Today',
-                          isDark: isDark,
-                          border: true,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StatChip extends StatelessWidget {
-  const _StatChip({
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  final String label;
-  final String value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Expanded(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-          border: Border.all(color: color.withValues(alpha: 0.25)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          child: Column(
-            children: [
-              Text(
-                value,
-                style: TextStyle(
-                  fontFamily: 'Nunito',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                  color: color,
-                ),
-              ),
-              Text(
-                label,
-                style: TextStyle(
-                  fontFamily: 'Nunito',
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: isDark
-                      ? AppColors.onSurfaceVariantDark
-                      : AppColors.onSurfaceVariantLight,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _LegendDot extends StatelessWidget {
-  const _LegendDot({
-    required this.color,
-    required this.label,
-    required this.isDark,
-    this.border = false,
-  });
-
-  final Color color;
-  final String label;
-  final bool isDark;
-  final bool border;
-
-  @override
-  Widget build(BuildContext context) {
-    final textColor = isDark
-        ? AppColors.onSurfaceVariantDark
-        : AppColors.onSurfaceVariantLight;
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(4),
-            border: border
-                ? Border.all(color: AppColors.grassGreen, width: 1.5)
-                : null,
-          ),
-          child: const SizedBox(width: 14, height: 14),
-        ),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: TextStyle(
-            fontFamily: 'Nunito',
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: textColor,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _TrailXpBar extends StatelessWidget {
+class _TrailXpBar extends ConsumerWidget {
   const _TrailXpBar({required this.user, required this.isDark});
   final UserModel user;
   final bool isDark;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final reducedMotion = ref.watch(reducedMotionProvider);
     final trackColor = isDark
         ? Colors.white.withValues(alpha: 0.12)
         : AppColors.forestGreen.withValues(alpha: 0.12);
@@ -1491,7 +1329,8 @@ class _TrailXpBar extends StatelessWidget {
         const SizedBox(height: 4),
         TweenAnimationBuilder<double>(
           tween: Tween(begin: 0, end: target),
-          duration: const Duration(milliseconds: 1200),
+          duration:
+              reducedMotion ? Duration.zero : const Duration(milliseconds: 1200),
           curve: Curves.easeOutCubic,
           builder: (_, progress, _) => LayoutBuilder(
             builder: (_, constraints) {
@@ -1524,91 +1363,159 @@ class _TrailXpBar extends StatelessWidget {
   }
 }
 
-// ── Weather pill ──────────────────────────────────────────────────────────────
+// ── Header avatar — leading profile photo, opens Profile tab ─────────────────
 
-class _WeatherPill extends ConsumerWidget {
-  const _WeatherPill();
+class _HeaderAvatar extends ConsumerWidget {
+  const _HeaderAvatar();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final weatherAsync = ref.watch(weatherProvider);
-    return weatherAsync.maybeWhen(
-      data: (weather) => weather != null
-          ? Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.screenHorizontal,
+    final user = ref.watch(currentUserProvider).valueOrNull;
+    final initials = (user?.displayName.isNotEmpty ?? false)
+        ? user!.displayName[0].toUpperCase()
+        : '?';
+
+    return Semantics(
+      button: true,
+      label: 'Open profile',
+      excludeSemantics: true,
+      child: PressableScale(
+        child: GestureDetector(
+          onTap: () => context.go(RouteNames.profile),
+          child: DecoratedBox(
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: AppElevation.low,
+            ),
+            child: SizedBox(
+              width: AppSpacing.avatarMd,
+              height: AppSpacing.avatarMd,
+              child: ClipOval(
+                child: user?.photoUrl != null
+                    ? CachedNetworkImage(
+                        imageUrl: user!.photoUrl!,
+                        fit: BoxFit.cover,
+                        placeholder: (ctx, url) => const ShimmerBox(),
+                        errorWidget: (ctx, url, err) => InitialsAvatar(
+                          initials: initials,
+                          backgroundColor: AppColors.forestGreen,
+                        ),
+                      )
+                    : InitialsAvatar(
+                        initials: initials,
+                        backgroundColor: AppColors.forestGreen,
+                      ),
               ),
-              child: _WeatherPillContent(weather: weather),
-            )
-          : const SizedBox.shrink(),
-      orElse: () => const SizedBox.shrink(),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
 
-class _WeatherPillContent extends StatelessWidget {
-  const _WeatherPillContent({required this.weather});
-  final WeatherModel weather;
+// ── Header weather — compact icon + temperature only ─────────────────────────
+
+class _HeaderWeather extends ConsumerWidget {
+  const _HeaderWeather();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final weather = ref.watch(weatherProvider).valueOrNull;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.09)
-              : Colors.white.withValues(alpha: 0.55),
-          borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-          border: Border.all(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.10)
-                : AppColors.grassGreen.withValues(alpha: 0.28),
+    final textColor = isDark ? Colors.white : AppColors.forestGreen;
+
+    return Semantics(
+      button: true,
+      label: weather != null
+          ? 'Weather: ${weather.condition}, '
+              '${weather.tempFahrenheitRounded} degrees. Tap for details.'
+          : 'Weather unavailable',
+      excludeSemantics: true,
+      child: PressableScale(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _showWeatherDetail(context, weather),
+          child: ConstrainedBox(
+            // Minimum 48x48 touch target even though the visible chip is
+            // more compact.
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            child: Center(
+              child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.09)
+                  : Colors.white.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+              border: Border.all(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.10)
+                    : AppColors.grassGreen.withValues(alpha: 0.28),
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.sm,
+                vertical: AppSpacing.sm,
+              ),
+              child: weather != null
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(weather.emoji,
+                            style: const TextStyle(fontSize: 15)),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${weather.tempFahrenheitRounded}°',
+                          style: TextStyle(
+                            fontFamily: 'Nunito',
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: textColor,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Icon(
+                      Icons.cloud_outlined,
+                      size: AppSpacing.iconSm,
+                      color: textColor.withValues(alpha: 0.55),
+                    ),
+            ),
+              ),
+            ),
           ),
         ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(weather.emoji, style: const TextStyle(fontSize: 15)),
-              const SizedBox(width: 6),
-              Text(
-                '${weather.tempFahrenheitRounded}°F',
-                style: TextStyle(
-                  fontFamily: 'Nunito',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  color: isDark ? Colors.white : AppColors.forestGreen,
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 5),
-                child: Text(
-                  '·',
-                  style: TextStyle(
-                    fontFamily: 'Nunito',
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: isDark
-                        ? Colors.white38
-                        : AppColors.forestGreen.withValues(alpha: 0.4),
-                  ),
-                ),
-              ),
-              Text(
-                weather.condition,
-                style: TextStyle(
-                  fontFamily: 'Nunito',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? Colors.white70 : AppColors.forestGreenDark,
-                ),
-              ),
-            ],
-          ),
+      ),
+    );
+  }
+
+  void _showWeatherDetail(BuildContext context, WeatherModel? weather) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Text(weather?.emoji ?? '🌥️',
+                style: const TextStyle(fontSize: AppSpacing.emojiSm)),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Text(weather?.condition ?? 'Weather unavailable'),
+            ),
+          ],
         ),
+        content: Text(
+          weather != null
+              ? '${weather.tempFahrenheitRounded}°F · ${weather.outdoorAdvice}'
+              : "We couldn't get your local weather. Check location "
+                  'permission in Settings to enable it.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Got it'),
+          ),
+        ],
       ),
     );
   }
@@ -1623,68 +1530,99 @@ class _TrailJunction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final lineColor = isDark
-        ? AppColors.grassGreenLight.withValues(alpha: 0.18)
-        : AppColors.grassGreen.withValues(alpha: 0.25);
+    final bg = isDark
+        ? AppColors.grassGreenLight.withValues(alpha: 0.14)
+        : AppColors.grassGreen.withValues(alpha: 0.12);
     final textColor = isDark
         ? AppColors.onSurfaceVariantDark
-        : AppColors.forestGreenDark.withValues(alpha: 0.6);
+        : AppColors.forestGreenDark.withValues(alpha: 0.7);
 
+    // Section separation via spacing alone — no divider lines.
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.screenHorizontal,
         AppSpacing.xxl,
         AppSpacing.screenHorizontal,
-        AppSpacing.sm,
+        AppSpacing.md,
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: lineColor,
-                borderRadius: BorderRadius.circular(2),
-              ),
-              child: const SizedBox(height: 2),
-            ),
+      child: Center(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
           ),
-          const SizedBox(width: AppSpacing.sm),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                completedCount == 0
-                    ? Icons.route_rounded
-                    : Icons.check_circle_outline_rounded,
-                size: 12,
-                color: textColor,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                completedCount == 0
-                    ? 'YOUR TRAIL'
-                    : '$completedCount DONE',
-                style: TextStyle(
-                  fontFamily: 'Nunito',
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.md,
+              vertical: AppSpacing.xs,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  completedCount == 0
+                      ? Icons.route_rounded
+                      : Icons.check_circle_outline_rounded,
+                  size: AppSpacing.iconTiny,
                   color: textColor,
-                  letterSpacing: 1.0,
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: lineColor,
-                borderRadius: BorderRadius.circular(2),
-              ),
-              child: const SizedBox(height: 2),
+                const SizedBox(width: AppSpacing.xs),
+                Text(
+                  completedCount == 0
+                      ? 'YOUR TRAIL'
+                      : '$completedCount DONE',
+                  style: TextStyle(
+                    fontFamily: 'Nunito',
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: textColor,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Trail companion — a small guide beside today's challenge ─────────────────
+//
+// Only shown while today's challenge is still active (not yet completed),
+// so it reads as "come on, let's go" rather than a stale leftover greeting.
+// Message is chosen deterministically per day (not random) so it doesn't
+// flicker between rebuilds, and only one companion is ever on screen.
+
+class _TrailCompanion extends ConsumerWidget {
+  const _TrailCompanion();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final companionType = ref.watch(activeCompanionProvider);
+    final user = ref.watch(currentUserProvider).valueOrNull;
+    if (user == null) return const SizedBox.shrink();
+
+    final dayOfYear = DateTime.now()
+        .difference(DateTime(DateTime.now().year))
+        .inDays;
+    final messages = user.streak >= 3
+        ? companionType.streakMessages
+        : companionType.encouragementMessages;
+    final message = messages[dayOfYear % messages.length];
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Semantics(
+        label: '${companionType.displayName} says: $message',
+        excludeSemantics: true,
+        child: CompanionView(
+          type: companionType,
+          mood: CompanionMood.encourage,
+          size: AppSpacing.avatarLg,
+          message: message,
+        ),
       ),
     );
   }
@@ -1785,40 +1723,16 @@ class _TrailLoading extends StatelessWidget {
 // ── Error ─────────────────────────────────────────────────────────────────────
 
 class _TrailError extends StatelessWidget {
-  const _TrailError({required this.message});
+  const _TrailError({required this.message, required this.onRetry});
   final String message;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
         const Positioned.fill(child: _LandscapeBackground()),
-        Center(
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.xxl),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.warning_amber_rounded,
-                  size: 48,
-                  color: AppColors.warmYellow,
-                ),
-                const SizedBox(height: AppSpacing.lg),
-                Text(
-                  'Something went wrong',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                Text(
-                  message,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
-            ),
-          ),
-        ),
+        ErrorRetryView(message: message, onRetry: onRetry),
       ],
     );
   }

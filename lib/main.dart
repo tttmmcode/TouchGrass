@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/router/app_router.dart';
+import 'core/utils/accessibility_prefs.dart';
 import 'firebase_options.dart';
 import 'providers/auth_providers.dart';
 import 'providers/settings_providers.dart';
@@ -28,16 +29,25 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final startupTrace = PerfService.startTrace(PerfService.traceStartup);
   await _initFirebase();
-  await startupTrace?.stop();
 
-  await SystemChrome.setPreferredOrientations([
+  // Started only once Firebase Performance is actually available — starting
+  // it earlier would throw internally (Performance isn't initialized until
+  // Firebase.initializeApp() resolves) and silently never record. This
+  // measures the post-Firebase-init, pre-first-frame segment; true cold
+  // start time is already captured by Performance Monitoring's own
+  // automatic app-start trace.
+  final startupTrace = PerfService.startTrace(PerfService.traceStartup);
+
+  // Independent of each other (and both already past the Firebase-init
+  // await above), so run concurrently instead of blocking one on the other.
+  final orientationFuture = SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
-
   final onboardingComplete = await _resolveOnboardingStatus();
+  await orientationFuture;
+  await startupTrace?.stop();
 
   runApp(ProviderScope(
     overrides: [
@@ -45,6 +55,13 @@ Future<void> main() async {
     ],
     child: const TouchGrassApp(),
   ));
+
+  // Requesting notification permission triggers a native OS dialog — defer
+  // it until after the first frame renders so it never blocks (or precedes)
+  // the user's first view of the app.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    NotificationService().initialize();
+  });
 }
 
 /// Reads (and backfills) the onboarding-complete flag from [SharedPreferences].
@@ -72,8 +89,9 @@ Future<void> _initFirebase() async {
     // Must be registered before runApp — FCM requires a top-level handler.
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-    // Request permission and subscribe to notification topics.
-    await NotificationService().initialize();
+    // Notification permission request + topic subscription moved to after
+    // the first frame (see main()) — it triggers a native OS dialog and
+    // shouldn't block startup.
 
     // Crashlytics is unsupported on web.
     if (!kIsWeb) {
@@ -113,14 +131,31 @@ class TouchGrassApp extends ConsumerWidget {
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: themeMode,
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(
-          textScaler: TextScaler.linear(textScale),
-          disableAnimations: reducedMotion,
-          highContrast: highContrast,
-        ),
-        child: child!,
-      ),
+      builder: (context, child) {
+        // Compose with the ambient (real, OS-reactive) MediaQuery instead of
+        // replacing it outright — otherwise a user who enabled Dynamic Type,
+        // Reduce Motion, or Increase Contrast at the OS level would see none
+        // of it unless they *also* separately set the equivalent toggle
+        // inside TouchGrass's own Settings screen.
+        final ambient = MediaQuery.of(context);
+        return MediaQuery(
+          data: ambient.copyWith(
+            textScaler: TextScaler.linear(combinedTextScale(
+              systemTextScale: ambient.textScaler.scale(1.0),
+              appTextScale: textScale,
+            )),
+            disableAnimations: combinedReducedMotion(
+              systemReducedMotion: ambient.disableAnimations,
+              appReducedMotion: reducedMotion,
+            ),
+            highContrast: combinedHighContrast(
+              systemHighContrast: ambient.highContrast,
+              appHighContrast: highContrast,
+            ),
+          ),
+          child: child!,
+        );
+      },
       routerConfig: router,
     );
   }

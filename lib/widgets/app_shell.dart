@@ -7,9 +7,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/constants/route_names.dart';
+import '../providers/connectivity_providers.dart';
 import '../providers/map_providers.dart';
 import '../providers/notification_providers.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_spacing.dart';
 
 /// The root scaffold that wraps all main-tab screens.
@@ -85,8 +87,8 @@ class _AppShellState extends ConsumerState<AppShell> {
           SnackBar(
             content: Row(
               children: [
-                const Text('🌿', style: TextStyle(fontSize: 20)),
-                const SizedBox(width: 12),
+                const Text('🌿', style: TextStyle(fontSize: AppSpacing.emojiSm)),
+                const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -120,19 +122,78 @@ class _AppShellState extends ConsumerState<AppShell> {
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 4),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
             ),
-            margin: const EdgeInsets.all(16),
+            margin: const EdgeInsets.all(AppSpacing.lg),
           ),
         );
       });
     });
 
-    return Scaffold(
-      body: widget.navigationShell,
-      bottomNavigationBar: _BottomNav(
-        selectedIndex: widget.navigationShell.currentIndex,
-        onDestinationSelected: _onTabSelected,
+    final isOnline = ref.watch(isOnlineProvider).valueOrNull ?? true;
+
+    return PopScope(
+      canPop: widget.navigationShell.currentIndex == 0,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        // System back from a non-Home tab returns to Home instead of
+        // exiting the app, matching the bottom nav's own affordance.
+        _onTabSelected(0);
+      },
+      child: Scaffold(
+        body: Column(
+          children: [
+            _OfflineBanner(visible: !isOnline),
+            Expanded(child: widget.navigationShell),
+          ],
+        ),
+        bottomNavigationBar: _BottomNav(
+          selectedIndex: widget.navigationShell.currentIndex,
+          onDestinationSelected: _onTabSelected,
+        ),
+      ),
+    );
+  }
+}
+
+/// Thin persistent banner shown app-wide while offline, so a screen stuck
+/// loading (e.g. a Firestore stream with no cached data yet) reads as
+/// "waiting to reconnect" rather than an unexplained hang.
+class _OfflineBanner extends StatelessWidget {
+  const _OfflineBanner({required this.visible});
+  final bool visible;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: AppMotion.standard,
+      curve: AppMotion.standardCurve,
+      height: visible ? 34 : 0,
+      width: double.infinity,
+      color: AppColors.warning,
+      alignment: Alignment.center,
+      clipBehavior: Clip.hardEdge,
+      child: Semantics(
+        liveRegion: true,
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cloud_off_rounded,
+                size: AppSpacing.iconTiny, color: Colors.white),
+            SizedBox(width: AppSpacing.sm),
+            Text(
+              "You're offline — some content may be out of date",
+              style: TextStyle(
+                fontFamily: 'Nunito',
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+                color: Colors.white,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
       ),
     );
   }

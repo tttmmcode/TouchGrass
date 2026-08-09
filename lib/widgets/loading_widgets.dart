@@ -26,7 +26,7 @@ class LoadingOverlay extends StatelessWidget {
       children: [
         child,
         if (isLoading) ...[
-          const ModalBarrier(dismissible: false, color: Color(0x55000000)),
+          const ModalBarrier(dismissible: false, color: AppColors.overlayScrim),
           Center(
             child: Card(
               shape: RoundedRectangleBorder(
@@ -83,20 +83,57 @@ class LoadingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final base =
-        isDark ? const Color(0xFF2A3D30) : const Color(0xFFE0EDE5);
-    final highlight =
-        isDark ? const Color(0xFF3A5040) : const Color(0xFFF4FAF6);
 
     return Shimmer.fromColors(
-      baseColor: base,
-      highlightColor: highlight,
+      baseColor: AppColors.shimmerBase(isDark),
+      highlightColor: AppColors.shimmerHighlight(isDark),
       child: Container(
         height: height,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(borderRadius),
         ),
+      ),
+    );
+  }
+}
+
+// ── ShimmerBox ────────────────────────────────────────────────────────────────
+
+/// Theme-aware shimmer placeholder for a single shape (avatar, thumbnail,
+/// or any other loading region) — the shared building block behind
+/// [CachedNetworkImage]'s `placeholder` across the app, so every loading
+/// avatar/photo shimmers with the same, dark-mode-correct colors.
+class ShimmerBox extends StatelessWidget {
+  const ShimmerBox({
+    super.key,
+    this.width,
+    this.height,
+    this.shape = BoxShape.rectangle,
+    this.borderRadius,
+  });
+
+  final double? width;
+  final double? height;
+  final BoxShape shape;
+
+  /// Ignored when [shape] is [BoxShape.circle].
+  final BorderRadius? borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Shimmer.fromColors(
+      baseColor: AppColors.shimmerBase(isDark),
+      highlightColor: AppColors.shimmerHighlight(isDark),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: shape,
+          borderRadius: shape == BoxShape.circle ? null : borderRadius,
+        ),
+        child: SizedBox(width: width, height: height),
       ),
     );
   }
@@ -149,11 +186,11 @@ class LoadingScreen extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text('🌿', style: TextStyle(fontSize: 56)),
+              const Text('🌿', style: TextStyle(fontSize: AppSpacing.emojiLogo)),
               const SizedBox(height: AppSpacing.xl),
               const SizedBox(
-                width: 32,
-                height: 32,
+                width: AppSpacing.iconXl,
+                height: AppSpacing.iconXl,
                 child: CircularProgressIndicator(
                   color: AppColors.forestGreen,
                   strokeWidth: 3,

@@ -116,8 +116,13 @@ List<PathNode> _buildPathNodes(
   );
 
   // Past 13 days — completed or missed. Skip days before Day 1.
+  // Calendar-field arithmetic, not Duration subtraction — see
+  // resolveStreakOutcome in UserRepository for why: subtracting a fixed
+  // elapsed duration from a local midnight isn't guaranteed to land on the
+  // next local midnight across a DST transition, which would make the
+  // completedByDate lookup below miss a genuinely-completed day.
   for (var i = 1; i <= 13; i++) {
-    final day = today.subtract(Duration(days: i));
+    final day = DateTime(today.year, today.month, today.day - i);
     final dayNum = todayDayNumber - i;
     if (dayNum <= 0) break; // don't show Day 0 or negative days
     final completion = completedByDate[day];
@@ -128,9 +133,11 @@ List<PathNode> _buildPathNodes(
     );
   }
 
-  // Future 7 days — shown as locked so the trail always has nodes to scroll through.
-  for (var i = 1; i <= 7; i++) {
-    final day = today.add(Duration(days: i));
+  // Future days — shown as locked so the trail always has a long path of
+  // nodes ahead to scroll through, reinforcing the sense that the journey
+  // continues indefinitely rather than visibly running out after a week.
+  for (var i = 1; i <= 30; i++) {
+    final day = DateTime(today.year, today.month, today.day + i);
     nodes.add(LockedPathNode(date: day, dayNumber: todayDayNumber + i));
   }
 

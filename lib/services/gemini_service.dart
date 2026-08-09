@@ -9,10 +9,6 @@ import '../core/errors/app_exception.dart';
 // Update this when Google deprecates the current model.
 const _kModel = 'gemini-2.5-flash';
 
-// Retry budget for quota-exceeded (429) responses.
-const _kMaxRetries = 3;
-const _kRetryBaseMs = 2000;
-
 // ── Verification result ───────────────────────────────────────────────────────
 
 class VerificationResult {
@@ -47,6 +43,8 @@ class GeminiService {
     required String challengeTitle,
     required String challengeDescription,
     required String challengeCategory,
+    String? challengeObjective,
+    String? challengeSuccessCriteria,
   }) async {
     if (AppConstants.geminiApiKey.isEmpty) {
       throw const VerificationException(
@@ -68,9 +66,17 @@ Rules:
 - reason is one short sentence
 ''';
 
-    final challengeContext =
-        'Challenge: "$challengeTitle". Description: $challengeDescription. '
-        'Category: $challengeCategory.';
+    final contextParts = [
+      'Challenge: "$challengeTitle".',
+      'Description: $challengeDescription.',
+      if (challengeObjective != null && challengeObjective.isNotEmpty)
+        'Objective: $challengeObjective.',
+      if (challengeSuccessCriteria != null &&
+          challengeSuccessCriteria.isNotEmpty)
+        'Success criteria: $challengeSuccessCriteria.',
+      'Category: $challengeCategory.',
+    ];
+    final challengeContext = contextParts.join(' ');
 
     try {
       final raw = await _withRetry(() => _model.generateContent([
@@ -87,7 +93,7 @@ Rules:
       if (text == null || text.isEmpty) {
         throw VerificationException.apiError('Empty response from Gemini');
       }
-      return _parse(text);
+      return parseVerificationResult(text);
     } on VerificationException {
       rethrow;
     } catch (e) {
@@ -121,28 +127,29 @@ Rules:
           ));
 
       final text = response.text?.trim() ?? '';
-      if (text.isEmpty) return 'What did you discover on your adventure today?';
+      if (text.isEmpty) return AppConstants.defaultCaptionPrompt;
       return text;
     } catch (_) {
-      return "What was the most memorable moment from today's challenge?";
+      return AppConstants.defaultCaptionPrompt;
     }
   }
 
-  /// Retries [fn] up to [_kMaxRetries] times on quota-exceeded (429) errors,
-  /// with exponential backoff starting at [_kRetryBaseMs] ms.
+  /// Retries [fn] up to [AppConstants.aiMaxRetries] times on quota-exceeded
+  /// (429) errors, with exponential backoff starting at
+  /// [AppConstants.aiRetryBaseMs].
   Future<T> _withRetry<T>(Future<T> Function() fn) async {
-    for (var attempt = 0; attempt <= _kMaxRetries; attempt++) {
+    for (var attempt = 0; attempt <= AppConstants.aiMaxRetries; attempt++) {
       try {
         return await fn();
       } catch (e) {
         final isQuota = e.toString().toLowerCase().contains('quota') ||
             e.toString().contains('429') ||
             e.toString().toLowerCase().contains('resource_exhausted');
-        if (!isQuota || attempt == _kMaxRetries) rethrow;
-        final delay = _kRetryBaseMs * (1 << attempt); // 2s, 4s, 8s
+        if (!isQuota || attempt == AppConstants.aiMaxRetries) rethrow;
+        final delay = AppConstants.aiRetryBaseMs * (1 << attempt); // 2s, 4s, 8s
         debugPrint(
             '[GeminiService] quota exceeded — retrying in ${delay}ms '
-            '(attempt ${attempt + 1}/$_kMaxRetries)');
+            '(attempt ${attempt + 1}/${AppConstants.aiMaxRetries})');
         await Future<void>.delayed(Duration(milliseconds: delay));
       }
     }
@@ -150,7 +157,13 @@ Rules:
     throw StateError('_withRetry exited loop unexpectedly');
   }
 
-  VerificationResult _parse(String text) {
+  /// Extracts and validates a [VerificationResult] from Gemini's raw text
+  /// response. Public (rather than a private `_parse`) and
+  /// [visibleForTesting] specifically so this parsing/validation logic —
+  /// the actual "did verification pass or fail" decision — can be unit
+  /// tested directly without a live Gemini call.
+  @visibleForTesting
+  VerificationResult parseVerificationResult(String text) {
     try {
       // Extract the JSON object even when Gemini wraps it in prose or fences.
       final start = text.indexOf('{');

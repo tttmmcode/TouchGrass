@@ -2,11 +2,12 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:shimmer/shimmer.dart';
 
+import '../../../core/constants/route_names.dart';
 import '../../../models/completion_model.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_spacing.dart';
+import '../../../widgets/loading_widgets.dart';
 
 class ChallengeDetailScreen extends StatefulWidget {
   const ChallengeDetailScreen({
@@ -70,7 +71,9 @@ class _ChallengeDetailScreenState extends State<ChallengeDetailScreen>
             pinned: true,
             leading: IconButton(
               icon: const Icon(Icons.arrow_back_rounded),
-              onPressed: () => context.pop(),
+              onPressed: () => context.canPop()
+                  ? context.pop()
+                  : context.go(RouteNames.home),
             ),
             flexibleSpace: FlexibleSpaceBar(
               background: c.photoUrl.isNotEmpty
@@ -79,11 +82,7 @@ class _ChallengeDetailScreenState extends State<ChallengeDetailScreen>
                       fit: BoxFit.cover,
                       width: double.infinity,
                       height: double.infinity,
-                      placeholder: (ctx, url) => Shimmer.fromColors(
-                        baseColor: Colors.grey.shade300,
-                        highlightColor: Colors.grey.shade100,
-                        child: const ColoredBox(color: Colors.white),
-                      ),
+                      placeholder: (ctx, url) => const ShimmerBox(),
                       errorWidget: (ctx, url, err) => DecoratedBox(
                         decoration: const BoxDecoration(
                           gradient: AppColors.gradientForest,
@@ -191,6 +190,15 @@ class _ChallengeDetailScreenState extends State<ChallengeDetailScreen>
                           value: c.verificationResult['reason'] as String,
                           isDark: isDark,
                           valueColor: AppColors.grassGreen,
+                        ),
+                      ],
+                      if (c.caption != null && c.caption!.isNotEmpty) ...[
+                        const SizedBox(height: AppSpacing.md),
+                        _StatRow(
+                          icon: Icons.chat_bubble_outline_rounded,
+                          label: 'Your Note',
+                          value: c.caption!,
+                          isDark: isDark,
                         ),
                       ],
                       const SizedBox(height: AppSpacing.xxxxl),

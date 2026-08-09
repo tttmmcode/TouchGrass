@@ -3,18 +3,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shimmer/shimmer.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/route_names.dart';
+import '../../../core/services/error_service.dart';
+import '../../../models/achievement_definition.dart';
+import '../../../models/achievement_model.dart';
 import '../../../models/challenge_model.dart';
 import '../../../models/completion_model.dart';
 import '../../../models/user_model.dart';
 import '../../../providers/achievement_providers.dart';
 import '../../../providers/challenge_providers.dart';
+import '../../../providers/settings_providers.dart';
 import '../../../providers/user_providers.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_motion.dart';
 import '../../../theme/app_spacing.dart';
+import '../../../widgets/error_retry_view.dart';
+import '../../../widgets/initials_avatar.dart';
+import '../../../widgets/loading_widgets.dart';
 
 // ── Design tokens for this screen ─────────────────────────────────────────────
 const double _kPad = 24;
@@ -40,7 +47,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     _shineCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 3),
-    )..repeat();
+    );
+    // Purely decorative continuous loop — never starts under Reduce Motion.
+    if (!ref.read(reducedMotionProvider)) _shineCtrl.repeat();
   }
 
   @override
@@ -71,7 +80,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             ? _ProfileBody(user: user, shineCtrl: _shineCtrl)
             : const Center(child: Text('Not signed in')),
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, _) => const Center(child: Text('Error loading profile')),
+        error: (e, _) => ErrorRetryView(
+          message: ErrorService.friendlyMessage(e),
+          onRetry: () => ref.invalidate(currentUserProvider),
+        ),
       ),
     );
   }
@@ -87,7 +99,7 @@ class _ProfileBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final achievements = ref.watch(achievementStatusProvider);
+    final achievements = ref.watch(achievementModelsProvider);
     final completionsAsync = ref.watch(recentCompletionsProvider);
     final completions = completionsAsync.valueOrNull ?? const [];
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -141,7 +153,7 @@ class _ProfileBody extends ConsumerWidget {
               title: 'Achievements',
               icon: Icons.emoji_events_rounded,
               trailing: _AchievementCount(
-                earned: achievements.where((a) => a.earned).length,
+                earned: achievements.where((a) => a.isUnlocked).length,
                 total: achievements.length,
               ),
             ),
@@ -160,7 +172,7 @@ class _ProfileBody extends ConsumerWidget {
             itemCount: achievements.length,
             itemBuilder: (context, i) => RepaintBoundary(
               child: _AchievementBadge(
-                status: achievements[i],
+                model: achievements[i],
                 user: user,
                 shineCtrl: shineCtrl,
                 index: i,
@@ -476,37 +488,18 @@ class _Avatar extends StatelessWidget {
               ? CachedNetworkImage(
                   imageUrl: user.photoUrl!,
                   fit: BoxFit.cover,
-                  placeholder: (ctx, url) => Shimmer.fromColors(
-                    baseColor: Colors.grey.shade300,
-                    highlightColor: Colors.grey.shade100,
-                    child: const ColoredBox(color: Colors.white),
+                  placeholder: (ctx, url) => const ShimmerBox(),
+                  errorWidget: (ctx, url, err) => InitialsAvatar(
+                    initials: initials,
+                    backgroundColor: AppColors.forestGreenDark,
+                    fontSize: 28,
                   ),
-                  errorWidget: (ctx, url, err) => _Initials(initials: initials),
                 )
-              : _Initials(initials: initials),
-        ),
-      ),
-    );
-  }
-}
-
-class _Initials extends StatelessWidget {
-  const _Initials({required this.initials});
-  final String initials;
-
-  @override
-  Widget build(BuildContext context) {
-    return ColoredBox(
-      color: AppColors.forestGreenDark,
-      child: Center(
-        child: Text(
-          initials,
-          style: const TextStyle(
-            fontFamily: 'Nunito',
-            fontSize: 28,
-            fontWeight: FontWeight.w900,
-            color: Colors.white,
-          ),
+              : InitialsAvatar(
+                  initials: initials,
+                  backgroundColor: AppColors.forestGreenDark,
+                  fontSize: 28,
+                ),
         ),
       ),
     );
@@ -632,7 +625,7 @@ class _StatChip extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: Colors.white, size: 20),
+            Icon(icon, color: Colors.white, size: AppSpacing.iconSm),
             const SizedBox(height: 6),
             TweenAnimationBuilder<int>(
               tween: IntTween(begin: 0, end: value),
@@ -838,7 +831,10 @@ class _ExplorationStats extends StatelessWidget {
       _TileData(
         icon: Icons.emoji_nature_rounded,
         value: _topCategory(),
-        label: 'Top Category',
+        // Computed from the recent-completions feed (capped, not full
+        // history) — labeled "Recent" rather than "Top" so it doesn't
+        // imply an all-time analysis it isn't.
+        label: 'Recent Favorite',
         accent: AppColors.grassGreen,
       ),
       _TileData(
@@ -939,26 +935,26 @@ class _ExplorationTile extends StatelessWidget {
 
 // ── Achievement badge ─────────────────────────────────────────────────────────
 
-class _AchievementBadge extends StatefulWidget {
+class _AchievementBadge extends ConsumerStatefulWidget {
   const _AchievementBadge({
-    required this.status,
+    required this.model,
     required this.user,
     required this.shineCtrl,
     required this.index,
     required this.isDark,
   });
 
-  final AchievementStatus status;
+  final AchievementModel model;
   final UserModel user;
   final AnimationController shineCtrl;
   final int index;
   final bool isDark;
 
   @override
-  State<_AchievementBadge> createState() => _AchievementBadgeState();
+  ConsumerState<_AchievementBadge> createState() => _AchievementBadgeState();
 }
 
-class _AchievementBadgeState extends State<_AchievementBadge>
+class _AchievementBadgeState extends ConsumerState<_AchievementBadge>
     with SingleTickerProviderStateMixin {
   late final AnimationController _entry;
   late final Animation<double> _fade;
@@ -969,7 +965,7 @@ class _AchievementBadgeState extends State<_AchievementBadge>
     super.initState();
     _entry = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 380),
+      duration: AppMotion.long,
     );
     _fade = CurvedAnimation(parent: _entry, curve: Curves.easeOut);
     _slide = Tween<Offset>(
@@ -977,6 +973,10 @@ class _AchievementBadgeState extends State<_AchievementBadge>
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _entry, curve: Curves.easeOutCubic));
 
+    if (ref.read(reducedMotionProvider)) {
+      _entry.value = 1.0;
+      return;
+    }
     final delay = Duration(milliseconds: (widget.index * 35).clamp(0, 600));
     Future<void>.delayed(delay, () {
       if (mounted) _entry.forward();
@@ -996,7 +996,7 @@ class _AchievementBadgeState extends State<_AchievementBadge>
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => _AchievementSheet(
-        status: widget.status,
+        model: widget.model,
         user: widget.user,
       ),
     );
@@ -1004,8 +1004,8 @@ class _AchievementBadgeState extends State<_AchievementBadge>
 
   @override
   Widget build(BuildContext context) {
-    final def = widget.status.def;
-    final earned = widget.status.earned;
+    final def = widget.model.def;
+    final earned = widget.model.isUnlocked;
     final isDark = widget.isDark;
 
     final bg = earned
@@ -1126,102 +1126,18 @@ class _AchievementBadgeState extends State<_AchievementBadge>
 
 // ── Achievement detail sheet ──────────────────────────────────────────────────
 
-class _AchievementSheet extends StatelessWidget {
-  const _AchievementSheet({required this.status, required this.user});
+class _AchievementSheet extends ConsumerWidget {
+  const _AchievementSheet({required this.model, required this.user});
 
-  final AchievementStatus status;
+  // Progress/label computation intentionally lives only on [AchievementModel]
+  // (via AchievementService/AchievementDefinition) — this sheet must never
+  // recompute it locally, or the two can silently drift apart.
+  final AchievementModel model;
   final UserModel user;
 
-  ({double progress, String current, String target}) _progressFor() {
-    final def = status.def;
-    final u = user;
-    return switch (def.id) {
-      'first_touch' => (
-          progress: (u.totalCompletions / 1).clamp(0.0, 1.0),
-          current: '${u.totalCompletions} challenge${u.totalCompletions == 1 ? '' : 's'}',
-          target: '1 challenge',
-        ),
-      'challenges_5' => (
-          progress: (u.totalCompletions / 5).clamp(0.0, 1.0),
-          current: '${u.totalCompletions} / 5',
-          target: '5 challenges',
-        ),
-      'challenges_10' => (
-          progress: (u.totalCompletions / 10).clamp(0.0, 1.0),
-          current: '${u.totalCompletions} / 10',
-          target: '10 challenges',
-        ),
-      'challenges_25' => (
-          progress: (u.totalCompletions / 25).clamp(0.0, 1.0),
-          current: '${u.totalCompletions} / 25',
-          target: '25 challenges',
-        ),
-      'challenges_50' => (
-          progress: (u.totalCompletions / 50).clamp(0.0, 1.0),
-          current: '${u.totalCompletions} / 50',
-          target: '50 challenges',
-        ),
-      'challenges_100' => (
-          progress: (u.totalCompletions / 100).clamp(0.0, 1.0),
-          current: '${u.totalCompletions} / 100',
-          target: '100 challenges',
-        ),
-      'streak_3' => (
-          progress: (u.streak / 3).clamp(0.0, 1.0),
-          current: '${u.streak} day${u.streak == 1 ? '' : 's'}',
-          target: '3-day streak',
-        ),
-      'streak_7' => (
-          progress: (u.streak / 7).clamp(0.0, 1.0),
-          current: '${u.streak} / 7 days',
-          target: '7-day streak',
-        ),
-      'streak_30' => (
-          progress: (u.streak / 30).clamp(0.0, 1.0),
-          current: '${u.streak} / 30 days',
-          target: '30-day streak',
-        ),
-      'streak_100' => (
-          progress: (u.streak / 100).clamp(0.0, 1.0),
-          current: '${u.streak} / 100 days',
-          target: '100-day streak',
-        ),
-      'xp_100' => (
-          progress: (u.xp / 100).clamp(0.0, 1.0),
-          current: '${u.xp} XP',
-          target: '100 XP',
-        ),
-      'xp_500' => (
-          progress: (u.xp / 500).clamp(0.0, 1.0),
-          current: '${u.xp} / 500 XP',
-          target: '500 XP',
-        ),
-      'xp_1000' => (
-          progress: (u.xp / 1000).clamp(0.0, 1.0),
-          current: '${u.xp} / 1,000 XP',
-          target: '1,000 XP',
-        ),
-      'xp_2500' => (
-          progress: (u.xp / 2500).clamp(0.0, 1.0),
-          current: '${u.xp} / 2,500 XP',
-          target: '2,500 XP',
-        ),
-      'level_5' => (
-          progress: (u.level / 5).clamp(0.0, 1.0),
-          current: 'Level ${u.level}',
-          target: 'Level 5',
-        ),
-      'level_10' => (
-          progress: (u.level / 10).clamp(0.0, 1.0),
-          current: 'Level ${u.level}',
-          target: 'Level 10',
-        ),
-      _ => (progress: 0.0, current: '—', target: '—'),
-    };
-  }
-
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final reducedMotion = ref.watch(reducedMotionProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? AppColors.surfaceDark : AppColors.surfaceLight;
     final textStrong =
@@ -1232,9 +1148,8 @@ class _AchievementSheet extends StatelessWidget {
     final trackColor =
         isDark ? AppColors.surfaceVariantDark : AppColors.surfaceVariantLight;
 
-    final def = status.def;
-    final earned = status.earned;
-    final info = _progressFor();
+    final def = model.def;
+    final earned = model.isUnlocked;
 
     return Container(
       decoration: BoxDecoration(
@@ -1343,7 +1258,7 @@ class _AchievementSheet extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  info.current,
+                  model.progressLabel,
                   style: TextStyle(
                     fontFamily: 'Nunito',
                     fontSize: 13,
@@ -1355,8 +1270,9 @@ class _AchievementSheet extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             TweenAnimationBuilder<double>(
-              tween: Tween<double>(begin: 0, end: info.progress),
-              duration: const Duration(milliseconds: 900),
+              tween: Tween<double>(begin: 0, end: model.progressFraction),
+              duration:
+                  reducedMotion ? Duration.zero : const Duration(milliseconds: 900),
               curve: Curves.easeOutCubic,
               builder: (_, value, _) => LayoutBuilder(
                 builder: (_, constraints) {
@@ -1391,7 +1307,7 @@ class _AchievementSheet extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '${(info.progress * 100).round()}% complete',
+                  '${model.completionPercentage.round()}% complete',
                   style: TextStyle(
                     fontFamily: 'Nunito',
                     fontSize: 11,
@@ -1400,7 +1316,7 @@ class _AchievementSheet extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  'Goal: ${info.target}',
+                  model.rarity.label,
                   style: TextStyle(
                     fontFamily: 'Nunito',
                     fontSize: 11,

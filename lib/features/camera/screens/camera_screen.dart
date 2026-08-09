@@ -12,13 +12,20 @@ import '../../../companions/companion.dart';
 import '../../../companions/companion_widget.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/route_names.dart';
+import '../../../core/utils/image_compression.dart';
 import '../../../models/achievement_definition.dart';
 import '../../../models/challenge_model.dart';
+import '../../../models/league_definition.dart';
 import '../../../providers/camera_providers.dart';
 import '../../../providers/challenge_providers.dart';
+import '../../../providers/map_providers.dart';
+import '../../../providers/settings_providers.dart';
 import '../../../services/perf_service.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_motion.dart';
 import '../../../theme/app_spacing.dart';
+import '../../../widgets/pressable_scale.dart';
+import '../utils/celebration_utils.dart';
 
 // ── Root ─────────────────────────────────────────────────────────────────────
 
@@ -52,6 +59,10 @@ class _IdleView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final notifier = ref.read(cameraFlowProvider.notifier);
+
+    if (challenge != null && challenge!.isCompleted) {
+      return _AlreadyCompletedView(challenge: challenge!);
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -87,6 +98,94 @@ class _IdleView extends ConsumerWidget {
                 primary: false,
               ),
               const SizedBox(height: AppSpacing.xl),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Friendly recovery state for direct/deep-link camera entry after today's
+/// challenge is already completed (the normal Home flow never shows the
+/// camera pick buttons in this case, but a stale screen or manual route
+/// could still land here — this avoids letting the user redo the flow only
+/// to be rejected at final submission).
+class _AlreadyCompletedView extends StatelessWidget {
+  const _AlreadyCompletedView({required this.challenge});
+  final ChallengeModel challenge;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Complete Challenge'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => context.go(RouteNames.home),
+        ),
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.screenHorizontal),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(challenge.emoji, style: const TextStyle(fontSize: 64)),
+              const SizedBox(height: AppSpacing.lg),
+              const Text(
+                "You've already completed today's challenge!",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'Nunito',
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                'Nice work on "${challenge.title}". Come back tomorrow for a new adventure.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'Nunito',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xxl),
+              PressableScale(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: AppColors.gradientForest,
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => context.go(RouteNames.home),
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+                      child: const SizedBox(
+                        height: AppSpacing.buttonHeight,
+                        child: Center(
+                          child: Text(
+                            'Back to Home',
+                            style: TextStyle(
+                              fontFamily: 'Nunito',
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -219,40 +318,42 @@ class _PickButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (primary) {
-      return DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: AppColors.gradientForest,
-          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.forestGreen.withValues(alpha: 0.35),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-            child: SizedBox(
-              height: AppSpacing.buttonHeight,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(icon, color: Colors.white, size: 20),
-                  const SizedBox(width: AppSpacing.sm),
-                  Text(
-                    label,
-                    style: const TextStyle(
-                      fontFamily: 'Nunito',
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
+      return PressableScale(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: AppColors.gradientForest,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.forestGreen.withValues(alpha: 0.35),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+              child: SizedBox(
+                height: AppSpacing.buttonHeight,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(icon, color: Colors.white, size: AppSpacing.iconSm),
+                    const SizedBox(width: AppSpacing.sm),
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontFamily: 'Nunito',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -265,33 +366,35 @@ class _PickButton extends StatelessWidget {
     final textColor =
         isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border.all(color: borderColor, width: 1.5),
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-          child: SizedBox(
-            height: AppSpacing.buttonHeight,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, color: textColor, size: 20),
-                const SizedBox(width: AppSpacing.sm),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontFamily: 'Nunito',
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: textColor,
+    return PressableScale(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border.all(color: borderColor, width: AppSpacing.strokeRegular),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+            child: SizedBox(
+              height: AppSpacing.buttonHeight,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, color: textColor, size: AppSpacing.iconSm),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontFamily: 'Nunito',
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: textColor,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -309,7 +412,8 @@ class _LiveCameraView extends ConsumerStatefulWidget {
   ConsumerState<_LiveCameraView> createState() => _LiveCameraViewState();
 }
 
-class _LiveCameraViewState extends ConsumerState<_LiveCameraView> {
+class _LiveCameraViewState extends ConsumerState<_LiveCameraView>
+    with WidgetsBindingObserver {
   CameraController? _controller;
   bool _initialized = false;
   bool _capturing = false;
@@ -319,13 +423,29 @@ class _LiveCameraViewState extends ConsumerState<_LiveCameraView> {
   bool _isRearCamera = true;
   FlashMode _flashMode = FlashMode.off;
   Offset? _focusPoint;
-  final _picker = ImagePicker();
   final _launchTrace = PerfService.startTrace(PerfService.traceCameraLaunch);
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _requestAndInit();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // If the user backed out to system Settings to grant camera permission
+    // (from the denied/permanently-denied screen) and returns, re-check
+    // rather than leaving them stuck on the "Camera Access Required" screen.
+    if (state == AppLifecycleState.resumed &&
+        !_initialized &&
+        (_permDenied || _permPermanentlyDenied)) {
+      setState(() {
+        _permDenied = false;
+        _permPermanentlyDenied = false;
+      });
+      _requestAndInit();
+    }
   }
 
   Future<void> _requestAndInit() async {
@@ -388,9 +508,15 @@ class _LiveCameraViewState extends ConsumerState<_LiveCameraView> {
     await _initCamera();
   }
 
+  static const _flashCycle = [
+    FlashMode.off,
+    FlashMode.auto,
+    FlashMode.always,
+  ];
+
   Future<void> _toggleFlash() async {
-    final next =
-        _flashMode == FlashMode.off ? FlashMode.always : FlashMode.off;
+    final next = _flashCycle[
+        (_flashCycle.indexOf(_flashMode) + 1) % _flashCycle.length];
     try {
       await _controller?.setFlashMode(next);
     } catch (_) {}
@@ -414,6 +540,7 @@ class _LiveCameraViewState extends ConsumerState<_LiveCameraView> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller?.dispose();
     super.dispose();
   }
@@ -425,27 +552,14 @@ class _LiveCameraViewState extends ConsumerState<_LiveCameraView> {
     setState(() => _capturing = true);
     try {
       final file = await ctrl.takePicture();
-      final bytes = await file.readAsBytes();
+      final rawBytes = await file.readAsBytes();
+      final bytes = await compressJpeg(rawBytes);
       if (!mounted) return;
       ref.read(cameraFlowProvider.notifier).setBytes(bytes);
     } catch (_) {
       if (!mounted) return;
       setState(() => _capturing = false);
     }
-  }
-
-  Future<void> _pickFromGallery() async {
-    try {
-      final xFile = await _picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: AppConstants.imageMaxWidthPx.toDouble(),
-        maxHeight: AppConstants.imageMaxHeightPx.toDouble(),
-        imageQuality: AppConstants.imageQualityPercent,
-      );
-      if (xFile == null || !mounted) return;
-      final bytes = await xFile.readAsBytes();
-      ref.read(cameraFlowProvider.notifier).setBytes(bytes);
-    } catch (_) {}
   }
 
   @override
@@ -587,17 +701,21 @@ class _LiveCameraViewState extends ConsumerState<_LiveCameraView> {
                       shape: const CircleBorder(),
                       child: IconButton(
                         icon: Icon(
-                          _flashMode == FlashMode.off
-                              ? Icons.flash_off_rounded
-                              : Icons.flash_on_rounded,
+                          switch (_flashMode) {
+                            FlashMode.auto => Icons.flash_auto_rounded,
+                            FlashMode.off => Icons.flash_off_rounded,
+                            _ => Icons.flash_on_rounded,
+                          },
                           color: _flashMode == FlashMode.off
                               ? Colors.white
                               : Colors.amber,
                         ),
                         onPressed: _toggleFlash,
-                        tooltip: _flashMode == FlashMode.off
-                            ? 'Flash off'
-                            : 'Flash on',
+                        tooltip: switch (_flashMode) {
+                          FlashMode.auto => 'Flash auto',
+                          FlashMode.off => 'Flash off',
+                          _ => 'Flash on',
+                        },
                       ),
                     ),
                   ],
@@ -623,21 +741,31 @@ class _LiveCameraViewState extends ConsumerState<_LiveCameraView> {
                       color: Colors.black54,
                       shape: const CircleBorder(),
                       child: InkWell(
-                        onTap: _pickFromGallery,
+                        onTap: () => ref
+                            .read(cameraFlowProvider.notifier)
+                            .pickImage(ImageSource.gallery),
                         customBorder: const CircleBorder(),
-                        child: const SizedBox(
-                          width: 48,
-                          height: 48,
-                          child: Icon(Icons.photo_library_rounded,
-                              color: Colors.white, size: 22),
+                        child: Semantics(
+                          button: true,
+                          label: 'Choose photo from gallery',
+                          child: const SizedBox(
+                            width: 48,
+                            height: 48,
+                            child: Icon(Icons.photo_library_rounded,
+                                color: Colors.white, size: 22),
+                          ),
                         ),
                       ),
                     ),
 
                     // Shutter
-                    GestureDetector(
-                      onTap: _capturing ? null : _capture,
-                      child: _ShutterButton(capturing: _capturing),
+                    Semantics(
+                      button: true,
+                      label: _capturing ? 'Capturing photo' : 'Take photo',
+                      child: GestureDetector(
+                        onTap: _capturing ? null : _capture,
+                        child: _ShutterButton(capturing: _capturing),
+                      ),
                     ),
 
                     // Flip camera
@@ -647,11 +775,15 @@ class _LiveCameraViewState extends ConsumerState<_LiveCameraView> {
                       child: InkWell(
                         onTap: _switchCamera,
                         customBorder: const CircleBorder(),
-                        child: const SizedBox(
-                          width: 48,
-                          height: 48,
-                          child: Icon(Icons.flip_camera_ios_rounded,
-                              color: Colors.white, size: 22),
+                        child: Semantics(
+                          button: true,
+                          label: 'Switch camera',
+                          child: const SizedBox(
+                            width: 48,
+                            height: 48,
+                            child: Icon(Icons.flip_camera_ios_rounded,
+                                color: Colors.white, size: 22),
+                          ),
                         ),
                       ),
                     ),
@@ -802,16 +934,17 @@ class _PermissionDeniedView extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.xxxl),
               if (permanent)
-                DecoratedBox(
+                PressableScale(
+                  child: DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: AppColors.gradientForest,
-                    borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
                   ),
                   child: Material(
                     color: Colors.transparent,
                     child: InkWell(
                       onTap: openAppSettings,
-                      borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
                       child: const SizedBox(
                         height: AppSpacing.buttonHeight,
                         child: Center(
@@ -819,8 +952,8 @@ class _PermissionDeniedView extends StatelessWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(Icons.settings_rounded,
-                                  color: Colors.white, size: 18),
-                              SizedBox(width: 8),
+                                  color: Colors.white, size: AppSpacing.iconSm),
+                              SizedBox(width: AppSpacing.sm),
                               Text(
                                 'Open Settings',
                                 style: TextStyle(
@@ -836,18 +969,19 @@ class _PermissionDeniedView extends StatelessWidget {
                       ),
                     ),
                   ),
-                )
+                ))
               else
-                DecoratedBox(
+                PressableScale(
+                  child: DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: AppColors.gradientForest,
-                    borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
                   ),
                   child: Material(
                     color: Colors.transparent,
                     child: InkWell(
                       onTap: onRetry,
-                      borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
                       child: const SizedBox(
                         height: AppSpacing.buttonHeight,
                         child: Center(
@@ -864,7 +998,7 @@ class _PermissionDeniedView extends StatelessWidget {
                       ),
                     ),
                   ),
-                ),
+                )),
               const SizedBox(height: AppSpacing.md),
               TextButton(
                 onPressed: onBack,
@@ -1009,43 +1143,45 @@ class _PreviewView extends ConsumerWidget {
                       const SizedBox(height: AppSpacing.md),
                     ],
                     // Submit button
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: AppColors.gradientForest,
-                        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-                      ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: () => ref.read(cameraFlowProvider.notifier).verify(),
-                          borderRadius:
-                              BorderRadius.circular(AppSpacing.radiusMd),
-                          child: SizedBox(
-                            height: AppSpacing.buttonHeight,
-                            child: Center(
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    AppConstants.geminiApiKey.isEmpty
-                                        ? Icons.check_circle_outline_rounded
-                                        : Icons.auto_awesome_rounded,
-                                    color: Colors.white,
-                                    size: 18,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    AppConstants.geminiApiKey.isEmpty
-                                        ? 'Submit Photo'
-                                        : 'Verify with AI',
-                                    style: const TextStyle(
-                                      fontFamily: 'Nunito',
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w800,
+                    PressableScale(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: AppColors.gradientForest,
+                          borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () => ref.read(cameraFlowProvider.notifier).verify(),
+                            borderRadius:
+                                BorderRadius.circular(AppSpacing.radiusButton),
+                            child: SizedBox(
+                              height: AppSpacing.buttonHeight,
+                              child: Center(
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      AppConstants.geminiApiKey.isEmpty
+                                          ? Icons.check_circle_outline_rounded
+                                          : Icons.auto_awesome_rounded,
                                       color: Colors.white,
+                                      size: AppSpacing.iconSm,
                                     ),
-                                  ),
-                                ],
+                                    const SizedBox(width: AppSpacing.sm),
+                                    Text(
+                                      AppConstants.geminiApiKey.isEmpty
+                                          ? 'Submit Photo'
+                                          : 'Verify with AI',
+                                      style: const TextStyle(
+                                        fontFamily: 'Nunito',
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -1077,27 +1213,22 @@ class _PreviewView extends ConsumerWidget {
 
 // ── Verifying ─────────────────────────────────────────────────────────────────
 
-class _VerifyingView extends StatefulWidget {
+class _VerifyingView extends ConsumerStatefulWidget {
   const _VerifyingView({required this.state});
   final CameraVerifying state;
 
   @override
-  State<_VerifyingView> createState() => _VerifyingViewState();
+  ConsumerState<_VerifyingView> createState() => _VerifyingViewState();
 }
 
-class _VerifyingViewState extends State<_VerifyingView>
+class _VerifyingViewState extends ConsumerState<_VerifyingView>
     with SingleTickerProviderStateMixin {
-  static const _messages = [
-    'Uploading your adventure…',
-    'Analyzing your photo…',
-    'Checking your discovery…',
-    'Looking for nature…',
-    'Preparing results…',
-    'Almost there…',
-  ];
+  static const _stageMessages = {
+    VerifyingStage.analyzing: 'Checking your adventure…',
+    VerifyingStage.uploading: 'Saving your adventure…',
+    VerifyingStage.saving: 'Finalizing your adventure…',
+  };
 
-  int _msgIndex = 0;
-  Timer? _timer;
   late final AnimationController _pulse;
 
   @override
@@ -1106,17 +1237,13 @@ class _VerifyingViewState extends State<_VerifyingView>
     _pulse = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1100),
-    )..repeat(reverse: true);
-    _timer = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (mounted) {
-        setState(() => _msgIndex = (_msgIndex + 1) % _messages.length);
-      }
-    });
+    );
+    // Continuous ambient loop — never runs when Reduce Motion is on.
+    if (!ref.read(reducedMotionProvider)) _pulse.repeat(reverse: true);
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
     _pulse.dispose();
     super.dispose();
   }
@@ -1132,6 +1259,25 @@ class _VerifyingViewState extends State<_VerifyingView>
           DecoratedBox(
             decoration:
                 BoxDecoration(color: Colors.black.withValues(alpha: 0.65)),
+          ),
+          Positioned(
+            top: 0,
+            left: 0,
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.sm),
+                child: Material(
+                  color: Colors.black45,
+                  shape: const CircleBorder(),
+                  child: IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    tooltip: 'Cancel',
+                    onPressed: () =>
+                        ref.read(cameraFlowProvider.notifier).cancelVerification(),
+                  ),
+                ),
+              ),
+            ),
           ),
           Center(
             child: Column(
@@ -1170,12 +1316,12 @@ class _VerifyingViewState extends State<_VerifyingView>
                 ),
                 const SizedBox(height: AppSpacing.xl),
                 AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 380),
+                  duration: AppMotion.long,
                   transitionBuilder: (child, anim) =>
                       FadeTransition(opacity: anim, child: child),
                   child: Text(
-                    _messages[_msgIndex],
-                    key: ValueKey(_msgIndex),
+                    _stageMessages[widget.state.stage]!,
+                    key: ValueKey(widget.state.stage),
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       fontFamily: 'Nunito',
@@ -1269,12 +1415,54 @@ class _CaptionViewState extends ConsumerState<_CaptionView> {
                     ],
                   ),
                 ),
-                const Spacer(),
-                Padding(
-                  padding: const EdgeInsets.all(AppSpacing.screenHorizontal),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
+                // Expanded + scrollable (not a bare Spacer + fixed content)
+                // so opening the keyboard on a short phone shrinks/scrolls
+                // this region instead of overflowing — the prompt card +
+                // multi-line text field + button can easily exceed the
+                // remaining height once the keyboard takes ~250-300px.
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) => SingleChildScrollView(
+                      reverse: true,
+                      child: ConstrainedBox(
+                        constraints:
+                            BoxConstraints(minHeight: constraints.maxHeight),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.all(
+                                  AppSpacing.screenHorizontal),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                      // Only claim AI verification when Gemini actually ran
+                      // (its result map carries 'confidence') — never shown
+                      // for the no-API-key auto-approve path.
+                      if (widget.state.pendingVerificationResult
+                          .containsKey('confidence')) ...[
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.check_circle_rounded,
+                                size: 15,
+                                color: AppColors.grassGreen
+                                    .withValues(alpha: 0.9)),
+                            const SizedBox(width: 5),
+                            Text(
+                              'Adventure verified!',
+                              style: TextStyle(
+                                fontFamily: 'Nunito',
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color:
+                                    AppColors.grassGreen.withValues(alpha: 0.9),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                      ],
                       // AI prompt
                       DecoratedBox(
                         decoration: BoxDecoration(
@@ -1314,7 +1502,7 @@ class _CaptionViewState extends ConsumerState<_CaptionView> {
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.10),
                           borderRadius:
-                              BorderRadius.circular(AppSpacing.radiusMd),
+                              BorderRadius.circular(AppSpacing.radiusTextField),
                           border: Border.all(
                               color: Colors.white.withValues(alpha: 0.25)),
                         ),
@@ -1347,39 +1535,42 @@ class _CaptionViewState extends ConsumerState<_CaptionView> {
                         ),
                       ),
                       const SizedBox(height: AppSpacing.md),
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: AppColors.gradientForest,
-                          borderRadius:
-                              BorderRadius.circular(AppSpacing.radiusMd),
-                        ),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: _submitting ? null : _submit,
+                      PressableScale(
+                        enabled: !_submitting,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: AppColors.gradientForest,
                             borderRadius:
-                                BorderRadius.circular(AppSpacing.radiusMd),
-                            child: SizedBox(
-                              height: AppSpacing.buttonHeight,
-                              child: Center(
-                                child: _submitting
-                                    ? const SizedBox(
-                                        width: 22,
-                                        height: 22,
-                                        child: CircularProgressIndicator(
-                                          color: Colors.white,
-                                          strokeWidth: 2.5,
+                                BorderRadius.circular(AppSpacing.radiusButton),
+                          ),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: _submitting ? null : _submit,
+                              borderRadius:
+                                  BorderRadius.circular(AppSpacing.radiusButton),
+                              child: SizedBox(
+                                height: AppSpacing.buttonHeight,
+                                child: Center(
+                                  child: _submitting
+                                      ? const SizedBox(
+                                          width: 22,
+                                          height: 22,
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2.5,
+                                          ),
+                                        )
+                                      : const Text(
+                                          'Share Adventure',
+                                          style: TextStyle(
+                                            fontFamily: 'Nunito',
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w800,
+                                            color: Colors.white,
+                                          ),
                                         ),
-                                      )
-                                    : const Text(
-                                        'Share Adventure',
-                                        style: TextStyle(
-                                          fontFamily: 'Nunito',
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w800,
-                                          color: Colors.white,
-                                        ),
-                                      ),
+                                ),
                               ),
                             ),
                           ),
@@ -1387,6 +1578,12 @@ class _CaptionViewState extends ConsumerState<_CaptionView> {
                       ),
                       const SizedBox(height: AppSpacing.lg),
                     ],
+                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -1400,33 +1597,52 @@ class _CaptionViewState extends ConsumerState<_CaptionView> {
 
 // ── Success ───────────────────────────────────────────────────────────────────
 
-class _SuccessView extends StatefulWidget {
+class _SuccessView extends ConsumerStatefulWidget {
   const _SuccessView({required this.state});
   final CameraSuccess state;
 
   @override
-  State<_SuccessView> createState() => _SuccessViewState();
+  ConsumerState<_SuccessView> createState() => _SuccessViewState();
 }
 
-class _SuccessViewState extends State<_SuccessView>
+class _SuccessViewState extends ConsumerState<_SuccessView>
     with SingleTickerProviderStateMixin {
   late final ConfettiController _confetti;
   late final AnimationController _anim;
   late final CompanionType _companionType;
   late final String _companionMessage;
+  late final bool _reducedMotion;
+  late final CelebrationTier _celebrationTier;
 
   @override
   void initState() {
     super.initState();
-    _confetti = ConfettiController(
-      duration: Duration(seconds: widget.state.leveledUp ? 6 : 3),
+    _reducedMotion = ref.read(reducedMotionProvider);
+    _celebrationTier = resolveCelebrationTier(
+      leveledUp: widget.state.leveledUp,
+      newAchievements: widget.state.newAchievements,
+      leagueChanged: widget.state.leagueChanged,
     );
+    _confetti = ConfettiController(
+      duration: Duration(
+          seconds: confettiDurationSecondsFor(_celebrationTier)),
+    );
+    // Fast, front-loaded reveal — the celebration and photo should appear
+    // almost immediately, XP/streak follow quickly, achievement cards last.
     _anim = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1400),
+      duration: const Duration(milliseconds: 1100),
     );
-    _confetti.play();
-    _anim.forward();
+    if (_reducedMotion) {
+      // Skip the confetti burst and the staggered reveal — show the final
+      // completion state immediately. XP/level/achievement rewards are
+      // already persisted server-side by this point, so this is purely a
+      // display choice and never affects what was actually earned.
+      _anim.value = 1.0;
+    } else {
+      _confetti.play();
+      _anim.forward();
+    }
 
     final hasAchievements = widget.state.newAchievements.isNotEmpty;
     final isStreakMilestone =
@@ -1469,25 +1685,40 @@ class _SuccessViewState extends State<_SuccessView>
 
   @override
   Widget build(BuildContext context) {
-    final checkAnim =
-        _curve(0.00, 0.45, curve: Curves.elasticOut);
+    // Fast, front-loaded stagger (Part 11): celebration + photo appear
+    // almost immediately, title/XP/streak follow quickly, achievement
+    // cards reveal last.
+    final checkAnim = _curve(0.00, 0.30, curve: Curves.elasticOut);
+    final photoFade = _curve(0.10, 0.40);
+    final photoSlide = Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero)
+        .animate(_curve(0.10, 0.40));
     final titleSlide =
-        Tween<Offset>(begin: const Offset(0, 0.4), end: Offset.zero)
-            .animate(_curve(0.30, 0.65));
-    final titleFade = _curve(0.30, 0.65);
-    final xpFade = _curve(0.50, 0.80);
+        Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero)
+            .animate(_curve(0.25, 0.50));
+    final titleFade = _curve(0.25, 0.50);
+    final xpFade = _curve(0.35, 0.60);
     final streakAnim =
-        _curve(0.60, 0.90, curve: Curves.elasticOut);
+        _curve(0.50, 0.75, curve: Curves.elasticOut);
     final levelAnim =
-        _curve(0.70, 0.95, curve: Curves.elasticOut);
+        _curve(0.55, 0.80, curve: Curves.elasticOut);
+    // Reveals after the achievement cards (0.65–1.00) so the level-up/league
+    // banners read as the celebration's closing beat rather than competing
+    // with them — these sit lower in the layout, so a later reveal matches.
+    final postAchieveAnim =
+        _curve(0.78, 1.00, curve: Curves.elasticOut);
+    final detailFade = _curve(0.60, 0.85);
     final btnSlide =
         Tween<Offset>(begin: const Offset(0, 0.5), end: Offset.zero)
-            .animate(_curve(0.75, 1.00));
-    final btnFade = _curve(0.75, 1.00);
+            .animate(_curve(0.80, 1.00));
+    final btnFade = _curve(0.80, 1.00);
     final achieveSlide =
         Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero)
-            .animate(_curve(0.80, 1.00));
-    final achieveFade = _curve(0.78, 1.00);
+            .animate(_curve(0.65, 1.00));
+    final achieveFade = _curve(0.65, 1.00);
+
+    final completion = widget.state.completion;
+    final hasCaption = completion.caption != null && completion.caption!.isNotEmpty;
+    final hasLocation = completion.location != null;
 
     return Scaffold(
       body: Stack(
@@ -1500,28 +1731,79 @@ class _SuccessViewState extends State<_SuccessView>
             child: Center(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.xxl,
+                  horizontal: AppSpacing.screenHorizontal,
                   vertical: AppSpacing.xl,
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // ── TOP: celebration heading ──
                     ScaleTransition(
                       scale: checkAnim,
                       child: const Text('✅',
-                          style: TextStyle(fontSize: 84)),
+                          style: TextStyle(fontSize: 72)),
                     ),
-                    const SizedBox(height: AppSpacing.md),
+                    const SizedBox(height: AppSpacing.sm),
+                    FadeTransition(
+                      opacity: titleFade,
+                      child: const Text(
+                        'Adventure Complete!',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontFamily: 'Nunito',
+                          fontSize: 32,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                          height: 1.1,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
                     FadeTransition(
                       opacity: titleFade,
                       child: CompanionView(
                         type: _companionType,
                         mood: CompanionMood.cheer,
-                        size: 100,
+                        size: 88,
                         message: _companionMessage,
                       ),
                     ),
-                    const SizedBox(height: AppSpacing.md),
+                    const SizedBox(height: AppSpacing.lg),
+
+                    // ── MIDDLE: large captured photo ──
+                    FadeTransition(
+                      opacity: photoFade,
+                      child: SlideTransition(
+                        position: photoSlide,
+                        child: ClipRRect(
+                          borderRadius:
+                              BorderRadius.circular(AppSpacing.radiusLg),
+                          child: Image.network(
+                            completion.photoUrl,
+                            height: 220,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) =>
+                                const SizedBox.shrink(),
+                            loadingBuilder: (_, child, progress) =>
+                                progress == null
+                                    ? child
+                                    : const SizedBox(
+                                        height: 220,
+                                        child: Center(
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white54,
+                                            strokeWidth: 2,
+                                          ),
+                                        ),
+                                      ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+
+                    // ── BELOW PHOTO: challenge title ──
                     FadeTransition(
                       opacity: titleFade,
                       child: SlideTransition(
@@ -1529,20 +1811,20 @@ class _SuccessViewState extends State<_SuccessView>
                         child: Column(
                           children: [
                             Text(widget.state.emoji,
-                                style: const TextStyle(fontSize: 46)),
-                            const SizedBox(height: AppSpacing.md),
+                                style: const TextStyle(fontSize: 40)),
+                            const SizedBox(height: AppSpacing.sm),
                             Text(
                               widget.state.challengeTitle,
                               textAlign: TextAlign.center,
                               style: const TextStyle(
                                 fontFamily: 'Nunito',
-                                fontSize: 24,
+                                fontSize: 22,
                                 fontWeight: FontWeight.w900,
                                 color: Colors.white,
                                 height: 1.2,
                               ),
                             ),
-                            const SizedBox(height: AppSpacing.sm),
+                            const SizedBox(height: 4),
                             const Text(
                               'Challenge Complete!',
                               style: TextStyle(
@@ -1557,16 +1839,16 @@ class _SuccessViewState extends State<_SuccessView>
                       ),
                     ),
                     const SizedBox(height: AppSpacing.xl),
-                    // XP counter
+                    // ── XP earned ──
                     FadeTransition(
                       opacity: xpFade,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.18),
+                          color: AppColors.xpGold.withValues(alpha: 0.18),
                           borderRadius:
                               BorderRadius.circular(AppSpacing.radiusFull),
                           border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.3),
+                              color: AppColors.xpGold.withValues(alpha: 0.5),
                               width: 1.5),
                         ),
                         child: Padding(
@@ -1583,8 +1865,9 @@ class _SuccessViewState extends State<_SuccessView>
                                 tween: IntTween(
                                     begin: 0,
                                     end: widget.state.xpAwarded),
-                                duration:
-                                    const Duration(milliseconds: 1400),
+                                duration: _reducedMotion
+                                    ? Duration.zero
+                                    : AppMotion.hero,
                                 curve: Curves.easeOut,
                                 builder: (_, xp, _) => Text(
                                   '+$xp XP',
@@ -1592,7 +1875,7 @@ class _SuccessViewState extends State<_SuccessView>
                                     fontFamily: 'Nunito',
                                     fontSize: 28,
                                     fontWeight: FontWeight.w900,
-                                    color: Colors.white,
+                                    color: AppColors.xpGold,
                                   ),
                                 ),
                               ),
@@ -1616,7 +1899,11 @@ class _SuccessViewState extends State<_SuccessView>
                               horizontal: AppSpacing.lg,
                               vertical: AppSpacing.sm),
                           child: Text(
-                            '🔥 ${widget.state.newStreak} day streak',
+                            '🔥 ${streakCelebrationLabel(
+                              newStreak: widget.state.newStreak,
+                              streakIncreased: widget.state.streakIncreased,
+                              rainyDayConsumed: widget.state.rainyDayConsumed,
+                            )}',
                             style: const TextStyle(
                               fontFamily: 'Nunito',
                               fontSize: 16,
@@ -1627,46 +1914,6 @@ class _SuccessViewState extends State<_SuccessView>
                         ),
                       ),
                     ),
-                    // Level-up banner
-                    if (widget.state.leveledUp) ...[
-                      const SizedBox(height: AppSpacing.md),
-                      ScaleTransition(
-                        scale: levelAnim,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: Colors.amber.withValues(alpha: 0.22),
-                            borderRadius:
-                                BorderRadius.circular(AppSpacing.radiusMd),
-                            border: Border.all(
-                                color: Colors.amber.withValues(alpha: 0.7),
-                                width: 1.5),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: AppSpacing.xl,
-                                vertical: AppSpacing.sm),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Text('🏆',
-                                    style: TextStyle(fontSize: 18)),
-                                const SizedBox(width: AppSpacing.sm),
-                                Text(
-                                  'LEVEL UP! · Level ${widget.state.newLevel}',
-                                  style: const TextStyle(
-                                    fontFamily: 'Nunito',
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w900,
-                                    color: Colors.amber,
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
                     // Rainy Day consumed notification
                     if (widget.state.rainyDayConsumed) ...[
                       const SizedBox(height: AppSpacing.md),
@@ -1747,9 +1994,56 @@ class _SuccessViewState extends State<_SuccessView>
                         ),
                       ),
                     ],
+
+                    // ── Caption (user's reflection) ──
+                    if (hasCaption) ...[
+                      const SizedBox(height: AppSpacing.lg),
+                      FadeTransition(
+                        opacity: detailFade,
+                        child: Text(
+                          '"${completion.caption}"',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontFamily: 'Nunito',
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            fontStyle: FontStyle.italic,
+                            color: Colors.white70,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                    // ── Location recorded ──
+                    if (hasLocation) ...[
+                      const SizedBox(height: AppSpacing.xs),
+                      FadeTransition(
+                        opacity: detailFade,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.location_on_rounded,
+                                size: 13,
+                                color: Colors.white.withValues(alpha: 0.6)),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Location recorded',
+                              style: TextStyle(
+                                fontFamily: 'Nunito',
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white.withValues(alpha: 0.6),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
                     // Achievement unlock cards
                     if (widget.state.newAchievements.isNotEmpty) ...[
-                      const SizedBox(height: AppSpacing.md),
+                      const SizedBox(height: AppSpacing.lg),
                       SlideTransition(
                         position: achieveSlide,
                         child: FadeTransition(
@@ -1760,37 +2054,189 @@ class _SuccessViewState extends State<_SuccessView>
                         ),
                       ),
                     ],
+
+                    // Level-up banner
+                    if (widget.state.leveledUp) ...[
+                      const SizedBox(height: AppSpacing.lg),
+                      ScaleTransition(
+                        scale: postAchieveAnim,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withValues(alpha: 0.22),
+                            borderRadius:
+                                BorderRadius.circular(AppSpacing.radiusMd),
+                            border: Border.all(
+                                color: Colors.amber.withValues(alpha: 0.7),
+                                width: 1.5),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.xl,
+                                vertical: AppSpacing.sm),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text('🏆',
+                                    style: TextStyle(fontSize: 18)),
+                                const SizedBox(width: AppSpacing.sm),
+                                Text(
+                                  'LEVEL UP! · Level ${widget.state.newLevel}',
+                                  style: const TextStyle(
+                                    fontFamily: 'Nunito',
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.amber,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+
+                    // League change banner — only when the canonical
+                    // XP-tier league actually changed this completion; never
+                    // a separate weekly promotion/demotion mechanic.
+                    if (widget.state.leagueChanged) ...[
+                      const SizedBox(height: AppSpacing.md),
+                      ScaleTransition(
+                        scale: postAchieveAnim,
+                        child: Builder(builder: (context) {
+                          final league =
+                              LeagueDef.withId(widget.state.newLeague);
+                          if (league == null) return const SizedBox.shrink();
+                          return DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: league.color.withValues(alpha: 0.22),
+                              borderRadius:
+                                  BorderRadius.circular(AppSpacing.radiusMd),
+                              border: Border.all(
+                                  color: league.color.withValues(alpha: 0.7),
+                                  width: 1.5),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: AppSpacing.xl,
+                                  vertical: AppSpacing.sm),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(league.emoji,
+                                      style: const TextStyle(fontSize: 18)),
+                                  const SizedBox(width: AppSpacing.sm),
+                                  Text(
+                                    'New League · ${league.name}',
+                                    style: TextStyle(
+                                      fontFamily: 'Nunito',
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w900,
+                                      color: league.color,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }),
+                      ),
+                    ],
                     const SizedBox(height: AppSpacing.xxxl),
+
+                    // ── BOTTOM ACTIONS ──
+                    // Primary: View Adventure / View on Map (56px, 16px radius)
+                    // Secondary: Continue (48px)
                     FadeTransition(
                       opacity: btnFade,
                       child: SlideTransition(
                         position: btnSlide,
-                        child: SizedBox(
-                          width: double.infinity,
-                          height: AppSpacing.buttonHeight,
-                          child: Material(
-                            color: Colors.white,
-                            borderRadius:
-                                BorderRadius.circular(AppSpacing.radiusMd),
-                            elevation: 6,
-                            shadowColor: Colors.black26,
-                            child: InkWell(
-                              onTap: () => context.go(RouteNames.home),
-                              borderRadius:
-                                  BorderRadius.circular(AppSpacing.radiusMd),
-                              child: const Center(
-                                child: Text(
-                                  'Back to Home',
-                                  style: TextStyle(
-                                    fontFamily: 'Nunito',
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w900,
-                                    color: AppColors.forestGreen,
+                        child: Column(
+                          children: [
+                            PressableScale(
+                              child: SizedBox(
+                                width: double.infinity,
+                                height: AppSpacing.buttonHeight,
+                                child: Material(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(
+                                      AppSpacing.radiusButton),
+                                  elevation: 6,
+                                  shadowColor: Colors.black26,
+                                  child: InkWell(
+                                    onTap: () {
+                                      ref
+                                          .read(pendingMapFocusProvider
+                                              .notifier)
+                                          .state = completion.id;
+                                      context.go(RouteNames.map);
+                                    },
+                                    borderRadius: BorderRadius.circular(
+                                        AppSpacing.radiusButton),
+                                    child: const Center(
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.map_rounded,
+                                              color: AppColors.forestGreen,
+                                              size: AppSpacing.iconSm),
+                                          SizedBox(width: AppSpacing.sm),
+                                          Text(
+                                            'View on Map',
+                                            style: TextStyle(
+                                              fontFamily: 'Nunito',
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w900,
+                                              color: AppColors.forestGreen,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
+                            const SizedBox(height: AppSpacing.sm),
+                            PressableScale(
+                              child: SizedBox(
+                                width: double.infinity,
+                                height: 48,
+                                child: Material(
+                                  color: Colors.transparent,
+                                  borderRadius: BorderRadius.circular(
+                                      AppSpacing.radiusButton),
+                                  child: InkWell(
+                                    onTap: () => context.go(RouteNames.home),
+                                    borderRadius: BorderRadius.circular(
+                                        AppSpacing.radiusButton),
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        border: Border.all(
+                                          color: Colors.white
+                                              .withValues(alpha: 0.4),
+                                        ),
+                                        borderRadius: BorderRadius.circular(
+                                            AppSpacing.radiusButton),
+                                      ),
+                                      child: const Center(
+                                        child: Text(
+                                          'Continue',
+                                          style: TextStyle(
+                                            fontFamily: 'Nunito',
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -1805,7 +2251,7 @@ class _SuccessViewState extends State<_SuccessView>
             child: ConfettiWidget(
               confettiController: _confetti,
               blastDirectionality: BlastDirectionality.explosive,
-              numberOfParticles: widget.state.leveledUp ? 50 : 28,
+              numberOfParticles: confettiParticleCountFor(_celebrationTier),
               gravity: 0.18,
               emissionFrequency: 0.06,
               maxBlastForce: 28,
@@ -1838,6 +2284,10 @@ class _FailureView extends ConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final confidence = state.confidence;
     final explanation = state.explanation;
+    // After a couple of retries, gently point toward Submit Anyway instead
+    // of leaving the user to loop the same failure indefinitely.
+    final retryCount = ref.watch(verificationRetryCountProvider);
+    final showOverrideNudge = retryCount >= 2 && state.bytes != null;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -1902,9 +2352,15 @@ class _FailureView extends ConsumerWidget {
                               const Icon(Icons.error_outline_rounded,
                                   color: AppColors.error, size: 22),
                               const SizedBox(width: 8),
-                              const Text(
-                                'Verification Failed',
-                                style: TextStyle(
+                              // "Failed" implies AI reached a verdict (a
+                              // genuine content rejection, which carries a
+                              // confidence score); anything without one is a
+                              // service problem, not a verdict on the photo.
+                              Text(
+                                confidence != null
+                                    ? 'Verification Failed'
+                                    : 'Verification Unavailable',
+                                style: const TextStyle(
                                   fontFamily: 'Nunito',
                                   fontSize: 16,
                                   fontWeight: FontWeight.w900,
@@ -1972,61 +2428,127 @@ class _FailureView extends ConsumerWidget {
                   const SizedBox(height: AppSpacing.lg),
 
                   // Try again
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: AppColors.gradientForest,
-                      borderRadius:
-                          BorderRadius.circular(AppSpacing.radiusMd),
-                    ),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: notifier.retake,
+                  PressableScale(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: AppColors.gradientForest,
                         borderRadius:
-                            BorderRadius.circular(AppSpacing.radiusMd),
-                        child: const SizedBox(
-                          height: AppSpacing.buttonHeight,
-                          child: Center(
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.camera_alt_rounded,
-                                    color: Colors.white, size: 18),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Retake Photo',
-                                  style: TextStyle(
-                                    fontFamily: 'Nunito',
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.white,
+                            BorderRadius.circular(AppSpacing.radiusButton),
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: Semantics(
+                          button: true,
+                          label: 'Retake photo',
+                          excludeSemantics: true,
+                          child: InkWell(
+                          onTap: notifier.retake,
+                          borderRadius:
+                              BorderRadius.circular(AppSpacing.radiusButton),
+                          child: const SizedBox(
+                            height: AppSpacing.buttonHeight,
+                            child: Center(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.camera_alt_rounded,
+                                      color: Colors.white, size: AppSpacing.iconSm),
+                                  SizedBox(width: AppSpacing.sm),
+                                  Text(
+                                    'Retake Photo',
+                                    style: TextStyle(
+                                      fontFamily: 'Nunito',
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
+                        ),
                         ),
                       ),
                     ),
                   ),
 
+                  if (showOverrideNudge) ...[
+                    const SizedBox(height: AppSpacing.md),
+                    Text(
+                      "Still not matching? You can submit it manually below.",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: 'Nunito',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withValues(alpha: 0.55),
+                      ),
+                    ),
+                  ],
+
                   if (state.bytes != null) ...[
                     const SizedBox(height: AppSpacing.sm),
+                    // Retry verification on the same photo (no retake needed)
+                    PressableScale(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.25),
+                              width: 1.5),
+                          borderRadius:
+                              BorderRadius.circular(AppSpacing.radiusButton),
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () => notifier.retryVerification(),
+                            borderRadius:
+                                BorderRadius.circular(AppSpacing.radiusButton),
+                            child: const SizedBox(
+                              height: AppSpacing.buttonHeight,
+                              child: Center(
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.refresh_rounded,
+                                        color: Colors.white,
+                                        size: AppSpacing.iconSm),
+                                    SizedBox(width: AppSpacing.sm),
+                                    Text(
+                                      'Retry Verification',
+                                      style: TextStyle(
+                                        fontFamily: 'Nunito',
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
                     // Manual override
-                    DecoratedBox(
+                    PressableScale(
+                      child: DecoratedBox(
                       decoration: BoxDecoration(
                         border: Border.all(
                             color: Colors.white.withValues(alpha: 0.25),
                             width: 1.5),
                         borderRadius:
-                            BorderRadius.circular(AppSpacing.radiusMd),
+                            BorderRadius.circular(AppSpacing.radiusButton),
                       ),
                       child: Material(
                         color: Colors.transparent,
                         child: InkWell(
                           onTap: () => notifier.override(),
                           borderRadius:
-                              BorderRadius.circular(AppSpacing.radiusMd),
+                              BorderRadius.circular(AppSpacing.radiusButton),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
                                 vertical: AppSpacing.md),
@@ -2043,7 +2565,8 @@ class _FailureView extends ConsumerWidget {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  'Override AI decision — trust yourself',
+                                  "We couldn't confirm this with AI — you can still submit it manually",
+                                  textAlign: TextAlign.center,
                                   style: TextStyle(
                                     fontFamily: 'Nunito',
                                     fontSize: 11,
@@ -2057,7 +2580,7 @@ class _FailureView extends ConsumerWidget {
                           ),
                         ),
                       ),
-                    ),
+                    )),
                   ],
                   const SizedBox(height: AppSpacing.sm),
                   TextButton(
@@ -2137,7 +2660,7 @@ class _UnlockCard extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
         border: Border.all(
           color: rarityColor.withValues(alpha: 0.65),
           width: 1.5,

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_colors.dart';
+
 // ── Rarity ────────────────────────────────────────────────────────────────────
 
 enum AchievementRarity { common, rare, epic, legendary, mythic }
@@ -14,11 +16,31 @@ extension AchievementRarityX on AchievementRarity {
       };
 
   Color get color => switch (this) {
-        AchievementRarity.common    => const Color(0xFF9BA8A3),
-        AchievementRarity.rare      => const Color(0xFF4EA8DE),
-        AchievementRarity.epic      => const Color(0xFF9B59B6),
-        AchievementRarity.legendary => const Color(0xFFFFB703),
-        AchievementRarity.mythic    => const Color(0xFFFC4E6F),
+        AchievementRarity.common    => AppColors.rarityCommon,
+        AchievementRarity.rare      => AppColors.rarityRare,
+        AchievementRarity.epic      => AppColors.rarityEpic,
+        AchievementRarity.legendary => AppColors.rarityLegendary,
+        AchievementRarity.mythic    => AppColors.rarityMythic,
+      };
+
+  /// Unlocked-card glow opacity — escalates with rarity so a Common unlock
+  /// stays understated while a Mythic one reads as genuinely special. Never
+  /// use the same glow strength for every rarity (Part B4).
+  double get glowAlpha => switch (this) {
+        AchievementRarity.common    => 0.10,
+        AchievementRarity.rare      => 0.16,
+        AchievementRarity.epic      => 0.24,
+        AchievementRarity.legendary => 0.32,
+        AchievementRarity.mythic    => 0.42,
+      };
+
+  /// Unlocked-card glow blur radius, paired with [glowAlpha].
+  double get glowBlurRadius => switch (this) {
+        AchievementRarity.common    => 6,
+        AchievementRarity.rare      => 8,
+        AchievementRarity.epic      => 12,
+        AchievementRarity.legendary => 16,
+        AchievementRarity.mythic    => 22,
       };
 }
 
@@ -308,4 +330,11 @@ class AchievementDefinition {
 
     return result;
   }
+
+  /// Sum of [xpReward] across [ids] — the total XP a set of newly-earned
+  /// achievements should credit to the user.
+  static int totalXpReward(Iterable<String> ids) => ids.fold(
+        0,
+        (sum, id) => sum + catalog.firstWhere((a) => a.id == id).xpReward,
+      );
 }

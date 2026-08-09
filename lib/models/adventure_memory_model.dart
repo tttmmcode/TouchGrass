@@ -76,7 +76,11 @@ class AdventureMemoryModel {
 
   final int xpEarned;
 
-  /// "ai_verified" or "manual_override"
+  /// One of "ai_verified" (Gemini confirmed the photo), "manual_override"
+  /// (the user submitted after a failed/rejected AI verification), or
+  /// "auto_approved" (no Gemini API key configured, so verification was
+  /// skipped entirely — distinct from manual_override since the user didn't
+  /// choose to bypass anything).
   final String verificationMethod;
 
   // ── Timestamps ──────────────────────────────────────────────────────────────
@@ -87,7 +91,20 @@ class AdventureMemoryModel {
 
   // ── Computed ────────────────────────────────────────────────────────────────
 
-  bool get hasLocation => latitude != null && longitude != null;
+  /// True only when both coordinates are present AND within valid Earth
+  /// ranges (lat ±90, lng ±180), excluding the (0, 0) "null island" value
+  /// that usually indicates an unset/erroneous GPS read rather than a real
+  /// location — so corrupt or malformed coordinate data can never reach the
+  /// map/marker/clustering pipeline.
+  bool get hasLocation {
+    final lat = latitude;
+    final lng = longitude;
+    if (lat == null || lng == null) return false;
+    if (lat.isNaN || lng.isNaN) return false;
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return false;
+    if (lat == 0 && lng == 0) return false;
+    return true;
+  }
   bool get hasCaption => caption != null && caption!.isNotEmpty;
   bool get hasWeather => weatherCondition != null;
 
@@ -108,6 +125,19 @@ class AdventureMemoryModel {
   }
 
   String get challengeEmoji => challengeCategory.emoji;
+
+  /// True only when Gemini actually evaluated this photo — false for both
+  /// manual overrides and no-API-key auto-approvals, so callers can't
+  /// accidentally lump "not AI-verified" states together with the one that
+  /// really was.
+  bool get isAiVerified => verificationMethod == 'ai_verified';
+
+  /// Human-readable badge text covering all three [verificationMethod] values.
+  String get verificationLabel => switch (verificationMethod) {
+        'ai_verified' => '🤖 AI Verified',
+        'manual_override' => '✋ Manual Submit',
+        _ => '✓ Auto-Approved',
+      };
 
   // ── Serialization ───────────────────────────────────────────────────────────
 

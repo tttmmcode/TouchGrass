@@ -4,6 +4,7 @@ import '../core/data/challenge_seed_library.dart';
 import '../models/challenge_model.dart';
 import '../models/weather_model.dart';
 import '../repositories/challenge_repository.dart';
+import 'analytics_service.dart';
 import 'challenge_generation_service.dart';
 import 'location_service.dart';
 import 'weather_service.dart';
@@ -42,11 +43,13 @@ class AssignmentService {
         rerollCount: 0,
         excludedTheme: null,
       );
-      final result = await _repo.saveChallenge(challenge);
-      result.onErr((e) =>
-          dev.log('saveChallenge failed: $e', name: 'AssignmentService'));
-    } catch (e) {
+      (await _repo.saveChallenge(challenge)).valueOrThrow;
+    } catch (e, st) {
+      // Never blocks the user — _PendingCard offers a manual retry after a
+      // few seconds if generation doesn't complete — but still worth
+      // reporting so a persistent failure (e.g. Gemini outage) is visible.
       dev.log('ensureTodaysChallenge error: $e', name: 'AssignmentService');
+      CrashReporter.recordError(e, st, reason: 'ensureTodaysChallenge failed');
     }
   }
 
@@ -99,11 +102,14 @@ class AssignmentService {
         challengeSeed: challenge.challengeSeed,
       );
 
-      final result = await _repo.saveChallenge(updated);
-      result.onErr((e) =>
-          dev.log('reroll saveChallenge failed: $e', name: 'AssignmentService'));
-    } catch (e) {
+      (await _repo.saveChallenge(updated)).valueOrThrow;
+    } catch (e, st) {
       dev.log('rerollChallenge error: $e', name: 'AssignmentService');
+      CrashReporter.recordError(e, st, reason: 'rerollChallenge failed');
+      // RerollNotifier.reroll() has its own try/catch that surfaces this to
+      // the UI as a retry-able error — swallowing it here would make that
+      // dead code and report a failed reroll as a silent success.
+      rethrow;
     }
   }
 

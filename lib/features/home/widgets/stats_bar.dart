@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../models/user_model.dart';
+import '../../../providers/settings_providers.dart';
 import '../../../providers/user_providers.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_spacing.dart';
@@ -24,13 +25,14 @@ class StatsBar extends ConsumerWidget {
 
 // ── Content ───────────────────────────────────────────────────────────────────
 
-class _StatsContent extends StatelessWidget {
+class _StatsContent extends ConsumerWidget {
   const _StatsContent({required this.user});
   final UserModel user;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final reducedMotion = ref.watch(reducedMotionProvider);
     return DecoratedBox(
       decoration: BoxDecoration(
         color: isDark ? AppColors.surfaceVariantDark : AppColors.surfaceLight,
@@ -49,9 +51,10 @@ class _StatsContent extends StatelessWidget {
           children: [
             _LevelBadge(level: user.level),
             const SizedBox(width: AppSpacing.md),
-            Expanded(child: _XpBar(user: user)),
+            Expanded(
+                child: _XpBar(user: user, reducedMotion: reducedMotion)),
             const SizedBox(width: AppSpacing.md),
-            _StreakPill(streak: user.streak),
+            _StreakPill(streak: user.streak, reducedMotion: reducedMotion),
           ],
         ),
       ),
@@ -67,22 +70,25 @@ class _LevelBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: AppColors.gradientForest,
-        shape: BoxShape.circle,
-      ),
-      child: SizedBox(
-        width: 40,
-        height: 40,
-        child: Center(
-          child: Text(
-            '$level',
-            style: const TextStyle(
-              fontFamily: 'Nunito',
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
+    return Semantics(
+      label: 'Level $level',
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: AppColors.gradientForest,
+          shape: BoxShape.circle,
+        ),
+        child: SizedBox(
+          width: 40,
+          height: 40,
+          child: Center(
+            child: Text(
+              '$level',
+              style: const TextStyle(
+                fontFamily: 'Nunito',
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
             ),
           ),
         ),
@@ -94,8 +100,9 @@ class _LevelBadge extends StatelessWidget {
 // ── XP bar — animates from 0 → actual fill on each build ─────────────────────
 
 class _XpBar extends StatelessWidget {
-  const _XpBar({required this.user});
+  const _XpBar({required this.user, required this.reducedMotion});
   final UserModel user;
+  final bool reducedMotion;
 
   @override
   Widget build(BuildContext context) {
@@ -103,7 +110,10 @@ class _XpBar extends StatelessWidget {
     final trackColor = isDark ? AppColors.outlineDark : AppColors.dividerLight;
     final target = user.levelProgress.clamp(0.0, 1.0);
 
-    return Column(
+    return Semantics(
+      label: '${user.xpInCurrentLevel} of ${AppConstants.xpPerLevel} '
+          'XP to next level',
+      child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -121,7 +131,9 @@ class _XpBar extends StatelessWidget {
         const SizedBox(height: 4),
         TweenAnimationBuilder<double>(
           tween: Tween<double>(begin: 0, end: target),
-          duration: const Duration(milliseconds: 1000),
+          duration: reducedMotion
+              ? Duration.zero
+              : const Duration(milliseconds: 1000),
           curve: Curves.easeOutCubic,
           builder: (_, progress, _) => LayoutBuilder(
             builder: (_, constraints) {
@@ -151,6 +163,7 @@ class _XpBar extends StatelessWidget {
           ),
         ),
       ],
+      ),
     );
   }
 }
@@ -158,8 +171,9 @@ class _XpBar extends StatelessWidget {
 // ── Streak pill — gentle breathing pulse ─────────────────────────────────────
 
 class _StreakPill extends StatefulWidget {
-  const _StreakPill({required this.streak});
+  const _StreakPill({required this.streak, required this.reducedMotion});
   final int streak;
+  final bool reducedMotion;
 
   @override
   State<_StreakPill> createState() => _StreakPillState();
@@ -176,10 +190,12 @@ class _StreakPillState extends State<_StreakPill>
     _ctrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 850),
-    )..repeat(reverse: true);
+    );
     _scale = Tween<double>(begin: 1.0, end: 1.07).animate(
       CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
     );
+    // Continuous ambient loop — never runs when Reduce Motion is on.
+    if (!widget.reducedMotion) _ctrl.repeat(reverse: true);
   }
 
   @override
@@ -190,7 +206,9 @@ class _StreakPillState extends State<_StreakPill>
 
   @override
   Widget build(BuildContext context) {
-    return ScaleTransition(
+    return Semantics(
+      label: '${widget.streak} day streak',
+      child: ScaleTransition(
       scale: _scale,
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -226,6 +244,7 @@ class _StreakPillState extends State<_StreakPill>
             ],
           ),
         ),
+      ),
       ),
     );
   }

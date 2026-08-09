@@ -2,8 +2,11 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../providers/settings_providers.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_elevation.dart';
 import '../theme/app_spacing.dart';
 import 'companion.dart';
 import 'companion_painter.dart';
@@ -14,7 +17,7 @@ import 'companion_painter.dart';
 ///
 /// Drop this anywhere you want a companion to appear. The widget self-manages
 /// all animation controllers — no external setup required.
-class CompanionView extends StatefulWidget {
+class CompanionView extends ConsumerStatefulWidget {
   const CompanionView({
     super.key,
     required this.type,
@@ -37,10 +40,10 @@ class CompanionView extends StatefulWidget {
   final VoidCallback? onMessageDone;
 
   @override
-  State<CompanionView> createState() => _CompanionViewState();
+  ConsumerState<CompanionView> createState() => _CompanionViewState();
 }
 
-class _CompanionViewState extends State<CompanionView>
+class _CompanionViewState extends ConsumerState<CompanionView>
     with TickerProviderStateMixin {
   // Idle breathing bob — always running
   late final AnimationController _bobCtrl;
@@ -75,7 +78,8 @@ class _CompanionViewState extends State<CompanionView>
     _bobCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2000),
-    )..repeat();
+    );
+    if (!ref.read(reducedMotionProvider)) _bobCtrl.repeat();
 
     _blinkCtrl = AnimationController(
       vsync: this,
@@ -111,6 +115,15 @@ class _CompanionViewState extends State<CompanionView>
     );
   }
 
+  /// Starts the mood loop unless Reduce Motion is on, in which case
+  /// [_moodCtrl] stays at its reset (rest-pose) value instead of looping
+  /// forever — mirrors the [_bobCtrl] gating above.
+  void _startMoodLoop({required Duration duration, bool reverse = false}) {
+    _moodCtrl.duration = duration;
+    if (ref.read(reducedMotionProvider)) return;
+    _moodCtrl.repeat(reverse: reverse);
+  }
+
   void _buildMoodAnimations() {
     _armAnim = Tween<double>(begin: 0, end: 0).animate(_moodCtrl);
     _jumpAnim = Tween<double>(begin: 0, end: 0).animate(_moodCtrl);
@@ -138,9 +151,7 @@ class _CompanionViewState extends State<CompanionView>
         _jumpAnim = Tween<double>(begin: 0, end: 0).animate(_moodCtrl);
         _smileAnim = Tween<double>(begin: 0.55, end: 0.75)
             .animate(CurvedAnimation(parent: _moodCtrl, curve: Curves.easeOut));
-        _moodCtrl
-          ..duration = const Duration(milliseconds: 1400)
-          ..repeat();
+        _startMoodLoop(duration: const Duration(milliseconds: 1400));
 
       case CompanionMood.bounce:
         _armAnim = Tween<double>(begin: 0, end: 0.3).animate(
@@ -157,9 +168,7 @@ class _CompanionViewState extends State<CompanionView>
         ]).animate(_moodCtrl);
         _smileAnim = Tween<double>(begin: 0.6, end: 0.9)
             .animate(CurvedAnimation(parent: _moodCtrl, curve: Curves.easeOut));
-        _moodCtrl
-          ..duration = const Duration(milliseconds: 700)
-          ..repeat();
+        _startMoodLoop(duration: const Duration(milliseconds: 700));
 
       case CompanionMood.cheer:
         // Arms shoot up, body jumps, big grin
@@ -190,9 +199,7 @@ class _CompanionViewState extends State<CompanionView>
         ]).animate(_moodCtrl);
         _smileAnim = Tween<double>(begin: 0.7, end: 1.0)
             .animate(CurvedAnimation(parent: _moodCtrl, curve: Curves.easeOut));
-        _moodCtrl
-          ..duration = const Duration(milliseconds: 1000)
-          ..repeat();
+        _startMoodLoop(duration: const Duration(milliseconds: 1000));
 
       case CompanionMood.encourage:
         // Gentle lean and warm expression
@@ -201,9 +208,8 @@ class _CompanionViewState extends State<CompanionView>
         _jumpAnim = Tween<double>(begin: 0, end: 0).animate(_moodCtrl);
         _smileAnim = Tween<double>(begin: 0.55, end: 0.72)
             .animate(CurvedAnimation(parent: _moodCtrl, curve: Curves.easeInOut));
-        _moodCtrl
-          ..duration = const Duration(milliseconds: 2400)
-          ..repeat(reverse: true);
+        _startMoodLoop(
+            duration: const Duration(milliseconds: 2400), reverse: true);
     }
   }
 
@@ -225,6 +231,20 @@ class _CompanionViewState extends State<CompanionView>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final reduceMotion = ref.watch(reducedMotionProvider);
+    if (reduceMotion) {
+      if (_bobCtrl.isAnimating) _bobCtrl.stop();
+      if (_moodCtrl.isAnimating) _moodCtrl.stop();
+    } else {
+      if (!_bobCtrl.isAnimating) _bobCtrl.repeat();
+      // Re-apply the current mood so its loop restarts with the right
+      // duration/curve/reverse — Reduce Motion was toggled off mid-loop.
+      // Idle has no loop to restart, so skip it to avoid a pointless
+      // stop()/reset() on every build while idle.
+      if (!_moodCtrl.isAnimating && widget.mood != CompanionMood.idle) {
+        _applyMood(widget.mood);
+      }
+    }
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -341,13 +361,7 @@ class _SpeechBubbleState extends State<_SpeechBubble>
                       color: widget.accentColor.withValues(alpha: 0.35),
                       width: 1.5,
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
+                    boxShadow: AppElevation.low,
                   ),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(

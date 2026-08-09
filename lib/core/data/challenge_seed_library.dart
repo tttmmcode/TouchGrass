@@ -37,12 +37,19 @@ class ChallengeSeed {
   String toString() => '${category.name}|$theme|${difficulty.name}';
 }
 
-/// Provides 1000+ parameterizable challenge seeds across 8 categories.
+/// Provides parameterizable challenge seeds across 8 categories — see
+/// [ChallengeSeedLibrary.count] for the current total.
+///
+/// Each seed is not a pre-written challenge; Gemini combines it with time,
+/// weather, and day context to generate fresh title/description text, so
+/// the same seed never produces byte-identical challenges. Even so, the
+/// underlying objective repeats once a user's streak exceeds [count] days —
+/// grow this library over time rather than treating the count as fixed.
 ///
 /// Seeds are selected deterministically by day number + user hash so:
 /// - The same user gets consistent variety over time
 /// - Different users on the same day get different challenges
-/// - Days are uniquely seeded across at least 1000 rotations
+/// - Days are uniquely seeded across [count] rotations before repeating
 abstract final class ChallengeSeedLibrary {
   static final _random = Random();
 
@@ -84,6 +91,10 @@ abstract final class ChallengeSeedLibrary {
     ChallengeSeed(category: ChallengeCategory.nature, theme: 'camouflage in nature', difficulty: ChallengeDifficulty.hard, action: 'spot and photograph', subject: 'an animal, insect, or plant using camouflage outdoors', successHint: 'something camouflaged in its natural outdoor environment'),
     ChallengeSeed(category: ChallengeCategory.nature, theme: 'fruit and berries', difficulty: ChallengeDifficulty.easy, action: 'find and photograph', subject: 'wild fruit or berries growing naturally outdoors', successHint: 'fruit or berries on a plant in a natural outdoor setting'),
     ChallengeSeed(category: ChallengeCategory.nature, theme: 'animal tracks or signs', difficulty: ChallengeDifficulty.hard, action: 'find and photograph', subject: 'animal tracks, a burrow, or other wildlife sign outdoors', successHint: 'animal tracks, a burrow entrance, or clear wildlife sign outdoors'),
+    ChallengeSeed(category: ChallengeCategory.nature, theme: 'reptiles and amphibians', difficulty: ChallengeDifficulty.hard, action: 'spot and photograph', subject: 'a lizard, frog, snake, or other reptile/amphibian in the wild', successHint: 'a reptile or amphibian clearly visible outdoors in its habitat'),
+    ChallengeSeed(category: ChallengeCategory.nature, theme: 'thorns and plant defenses', difficulty: ChallengeDifficulty.medium, action: 'find and photograph', subject: 'thorns, spines, or another natural plant defense mechanism', successHint: 'thorns or spines clearly visible on a plant outdoors'),
+    ChallengeSeed(category: ChallengeCategory.nature, theme: 'aquatic and wetland plants', difficulty: ChallengeDifficulty.medium, action: 'find and photograph', subject: 'a plant growing in or right at the edge of water', successHint: 'a plant growing in water or at a waterline, clearly visible outdoors'),
+    ChallengeSeed(category: ChallengeCategory.nature, theme: 'unusual leaf shapes', difficulty: ChallengeDifficulty.easy, action: 'find and photograph', subject: 'a leaf with an unusually shaped or distinctive outline', successHint: 'a single leaf with a clearly distinctive shape, photographed outdoors'),
   ];
 
   static const List<ChallengeSeed> _observationSeeds = [
@@ -102,6 +113,10 @@ abstract final class ChallengeSeedLibrary {
     ChallengeSeed(category: ChallengeCategory.observation, theme: 'morning mist', difficulty: ChallengeDifficulty.hard, action: 'find and photograph', subject: 'mist, fog, or atmospheric haze outdoors', successHint: 'mist or fog clearly visible in an outdoor scene'),
     ChallengeSeed(category: ChallengeCategory.observation, theme: 'colour gradients in nature', difficulty: ChallengeDifficulty.medium, action: 'find and photograph', subject: 'a natural gradient of colour outdoors', successHint: 'a smooth colour gradient visible in a natural outdoor setting'),
     ChallengeSeed(category: ChallengeCategory.observation, theme: 'man-made vs natural', difficulty: ChallengeDifficulty.easy, action: 'find and photograph', subject: 'where the man-made world meets the natural world outdoors', successHint: 'a clear juxtaposition of natural and human-made elements outdoors'),
+    ChallengeSeed(category: ChallengeCategory.observation, theme: 'rainbows and light refraction', difficulty: ChallengeDifficulty.hard, action: 'find and photograph', subject: 'a rainbow, prism effect, or other light refraction outdoors', successHint: 'a rainbow or clear light-refraction effect visible outdoors'),
+    ChallengeSeed(category: ChallengeCategory.observation, theme: 'wind in motion', difficulty: ChallengeDifficulty.medium, action: 'find and photograph', subject: 'something outdoors clearly being moved by the wind', successHint: 'grass, branches, water, or another element visibly in motion from wind'),
+    ChallengeSeed(category: ChallengeCategory.observation, theme: 'layers of depth', difficulty: ChallengeDifficulty.medium, action: 'compose and photograph', subject: 'a scene with a clear foreground, midground, and background outdoors', successHint: 'an outdoor photo with visually distinct near, middle, and far layers'),
+    ChallengeSeed(category: ChallengeCategory.observation, theme: 'texture under raking light', difficulty: ChallengeDifficulty.medium, action: 'find and photograph', subject: 'a textured surface lit from the side to emphasize its texture', successHint: 'a surface outdoors where low, angled light reveals its texture clearly'),
   ];
 
   static const List<ChallengeSeed> _exerciseSeeds = [
@@ -117,6 +132,10 @@ abstract final class ChallengeSeedLibrary {
     ChallengeSeed(category: ChallengeCategory.exercise, theme: 'exploring by movement', difficulty: ChallengeDifficulty.medium, action: 'explore', subject: 'a new area solely on foot for 15 minutes and photograph the most interesting thing you find', successHint: 'an interesting outdoor discovery made while walking or moving'),
     ChallengeSeed(category: ChallengeCategory.exercise, theme: 'sitting on a bench outdoors', difficulty: ChallengeDifficulty.easy, action: 'find and sit on', subject: 'a bench or seat outdoors with a view you enjoy, and photograph the scene', successHint: 'an outdoor view from a seated position, such as a bench'),
     ChallengeSeed(category: ChallengeCategory.exercise, theme: 'walking and collecting', difficulty: ChallengeDifficulty.easy, action: 'walk and collect', subject: 'five interesting natural objects found on the ground and arrange them for a photo', successHint: 'five natural objects arranged together, found outdoors'),
+    ChallengeSeed(category: ChallengeCategory.exercise, theme: 'cycling to somewhere new', difficulty: ChallengeDifficulty.medium, action: 'cycle', subject: 'to a spot you have not been to before and photograph it', successHint: 'a bicycle and an outdoor location reached by cycling'),
+    ChallengeSeed(category: ChallengeCategory.exercise, theme: 'skipping or hopping outdoors', difficulty: ChallengeDifficulty.easy, action: 'skip, hop, or jump', subject: 'along an outdoor path for at least one minute, then photograph where you did it', successHint: 'an outdoor path or open space suited to skipping or hopping'),
+    ChallengeSeed(category: ChallengeCategory.exercise, theme: 'a lap around a landmark', difficulty: ChallengeDifficulty.medium, action: 'walk or jog a full lap around', subject: 'a local landmark, park, or block, then photograph it from a new side', successHint: 'a landmark or park photographed from a side you do not usually see'),
+    ChallengeSeed(category: ChallengeCategory.exercise, theme: 'walking backward mindfully', difficulty: ChallengeDifficulty.medium, action: 'walk backward slowly and carefully', subject: 'for 20 steps in a safe outdoor space, then photograph what you noticed behind you', successHint: 'a safe outdoor space suited to slow, mindful movement'),
   ];
 
   static const List<ChallengeSeed> _explorationSeeds = [
@@ -133,6 +152,10 @@ abstract final class ChallengeSeedLibrary {
     ChallengeSeed(category: ChallengeCategory.exploration, theme: 'community gardens', difficulty: ChallengeDifficulty.medium, action: 'find and explore', subject: 'a community garden, allotment, or shared green growing space', successHint: 'a community garden or shared outdoor growing space'),
     ChallengeSeed(category: ChallengeCategory.exploration, theme: 'transition zones', difficulty: ChallengeDifficulty.medium, action: 'explore and find', subject: 'a place where one kind of environment gives way to another', successHint: 'a visible transition between two different environments outdoors'),
     ChallengeSeed(category: ChallengeCategory.exploration, theme: 'somewhere never visited before', difficulty: ChallengeDifficulty.medium, action: 'go somewhere', subject: 'you have genuinely never visited before and photograph what you find', successHint: 'a location you have not been to before, showing its character'),
+    ChallengeSeed(category: ChallengeCategory.exploration, theme: 'a local market or stall', difficulty: ChallengeDifficulty.easy, action: 'find and photograph', subject: 'a local market, market stall, or street vendor', successHint: 'a market, stall, or vendor set up outdoors'),
+    ChallengeSeed(category: ChallengeCategory.exploration, theme: 'distinctive mailboxes or postboxes', difficulty: ChallengeDifficulty.easy, action: 'explore and find', subject: 'the most distinctive or unusual mailbox or postbox nearby', successHint: 'a mailbox or postbox with a distinctive design, photographed outdoors'),
+    ChallengeSeed(category: ChallengeCategory.exploration, theme: 'a public transit stop', difficulty: ChallengeDifficulty.easy, action: 'find and photograph', subject: 'a bus stop, train platform, or transit stop with character', successHint: 'a public transit stop or its surroundings, photographed outdoors'),
+    ChallengeSeed(category: ChallengeCategory.exploration, theme: 'a shortcut never taken', difficulty: ChallengeDifficulty.medium, action: 'find and walk', subject: 'a shortcut, path, or cut-through you have never used before', successHint: 'a path or shortcut photographed while walking it for the first time'),
   ];
 
   static const List<ChallengeSeed> _photographySeeds = [
@@ -148,6 +171,10 @@ abstract final class ChallengeSeedLibrary {
     ChallengeSeed(category: ChallengeCategory.photography, theme: 'colour gradient', difficulty: ChallengeDifficulty.medium, action: 'find and photograph', subject: 'a natural or outdoor scene that shows a beautiful gradient of colour', successHint: 'a visible colour gradient in an outdoor scene, from light to dark or one colour to another'),
     ChallengeSeed(category: ChallengeCategory.photography, theme: 'texture contrasts', difficulty: ChallengeDifficulty.medium, action: 'find and photograph', subject: 'two strongly contrasting textures side by side outdoors', successHint: 'two clearly different textures visible together in a single outdoor photo'),
     ChallengeSeed(category: ChallengeCategory.photography, theme: 'unusual angle', difficulty: ChallengeDifficulty.easy, action: 'photograph', subject: 'a familiar outdoor scene from an unusual or unexpected angle', successHint: 'a photo taken from a clearly unconventional angle such as ground level or from behind'),
+    ChallengeSeed(category: ChallengeCategory.photography, theme: 'rule of thirds practice', difficulty: ChallengeDifficulty.medium, action: 'compose and photograph', subject: 'an outdoor subject placed off-centre using the rule of thirds', successHint: 'a deliberately off-centre composition of an outdoor subject'),
+    ChallengeSeed(category: ChallengeCategory.photography, theme: 'motion blur', difficulty: ChallengeDifficulty.hard, action: 'photograph', subject: 'something moving outdoors — water, leaves, or people — to capture a sense of motion', successHint: 'a photo showing clear motion blur of a moving outdoor subject'),
+    ChallengeSeed(category: ChallengeCategory.photography, theme: 'built for black and white', difficulty: ChallengeDifficulty.medium, action: 'find and photograph', subject: 'a scene with strong contrast and shape that would work well in black and white', successHint: 'a high-contrast outdoor scene with strong shapes or tones'),
+    ChallengeSeed(category: ChallengeCategory.photography, theme: 'reflections in glass or metal', difficulty: ChallengeDifficulty.medium, action: 'find and photograph', subject: 'a reflection in a window, car, or metal surface outdoors', successHint: 'a clear reflection visible in glass or a metal surface outdoors'),
   ];
 
   static const List<ChallengeSeed> _mindfulnessSeeds = [
@@ -163,6 +190,10 @@ abstract final class ChallengeSeedLibrary {
     ChallengeSeed(category: ChallengeCategory.mindfulness, theme: 'beauty in ordinary', difficulty: ChallengeDifficulty.medium, action: 'look at everyday outdoor objects with fresh eyes and photograph', subject: 'something ordinary that is actually beautiful on closer inspection', successHint: 'an ordinary outdoor object photographed to reveal its unexpected beauty'),
     ChallengeSeed(category: ChallengeCategory.mindfulness, theme: 'full presence outdoors', difficulty: ChallengeDifficulty.easy, action: 'go outside with no agenda and spend 5 minutes simply noticing, then photograph', subject: 'the single thing that caught your attention most in that time', successHint: 'an outdoor detail that caught the eye during a moment of mindful observation'),
     ChallengeSeed(category: ChallengeCategory.mindfulness, theme: 'touching different textures', difficulty: ChallengeDifficulty.easy, action: 'touch 10 different outdoor surfaces mindfully, then photograph', subject: 'the texture that surprised or delighted you most', successHint: 'an outdoor surface texture photographed in close detail'),
+    ChallengeSeed(category: ChallengeCategory.mindfulness, theme: 'a quiet corner discovered', difficulty: ChallengeDifficulty.easy, action: 'seek out and photograph', subject: 'the quietest, most peaceful corner you can find nearby', successHint: 'a quiet, peaceful outdoor corner or nook'),
+    ChallengeSeed(category: ChallengeCategory.mindfulness, theme: 'listening to water', difficulty: ChallengeDifficulty.medium, action: 'find flowing or moving water, listen for one minute, then photograph', subject: 'the water you listened to', successHint: 'flowing or moving water such as a stream, fountain, or waves'),
+    ChallengeSeed(category: ChallengeCategory.mindfulness, theme: 'back against a tree', difficulty: ChallengeDifficulty.easy, action: 'sit with your back against a tree for a few minutes, then photograph', subject: 'the tree and the view from where you sat', successHint: 'a tree suitable for sitting against, photographed outdoors'),
+    ChallengeSeed(category: ChallengeCategory.mindfulness, theme: 'a five-senses pause', difficulty: ChallengeDifficulty.medium, action: 'pause outdoors and notice one thing for each of your senses, then photograph', subject: 'whichever one stood out the most', successHint: 'an outdoor detail that stood out during a mindful sensory pause'),
   ];
 
   static const List<ChallengeSeed> _environmentalSeeds = [
@@ -177,6 +208,10 @@ abstract final class ChallengeSeedLibrary {
     ChallengeSeed(category: ChallengeCategory.environmental, theme: 'urban farming', difficulty: ChallengeDifficulty.medium, action: 'find and photograph', subject: 'any example of food growing in an urban or suburban setting', successHint: 'food plants or an urban garden growing in a city or suburban outdoor space'),
     ChallengeSeed(category: ChallengeCategory.environmental, theme: 'ecological succession', difficulty: ChallengeDifficulty.hard, action: 'find and photograph', subject: 'an example of nature reclaiming a human-made space', successHint: 'plants or nature visibly growing through or over a man-made structure outdoors'),
     ChallengeSeed(category: ChallengeCategory.environmental, theme: 'microhabitats', difficulty: ChallengeDifficulty.medium, action: 'find and photograph', subject: 'a small, self-contained microhabitat such as a rock pool, tree hollow, or mossy log', successHint: 'a compact outdoor habitat with visible signs of life'),
+    ChallengeSeed(category: ChallengeCategory.environmental, theme: 'erosion and water flow', difficulty: ChallengeDifficulty.medium, action: 'find and photograph', subject: 'visible signs of erosion or water shaping the landscape', successHint: 'ground, rock, or a bank visibly shaped by water or erosion'),
+    ChallengeSeed(category: ChallengeCategory.environmental, theme: 'hedgerows and wildlife corridors', difficulty: ChallengeDifficulty.medium, action: 'find and photograph', subject: 'a hedgerow, tree line, or corridor that connects green spaces', successHint: 'a hedgerow or line of vegetation connecting two green areas'),
+    ChallengeSeed(category: ChallengeCategory.environmental, theme: 'soil and composting health', difficulty: ChallengeDifficulty.easy, action: 'find and photograph', subject: 'healthy soil, leaf litter, or a compost area supporting plant life', successHint: 'visibly healthy soil or organic matter supporting growth outdoors'),
+    ChallengeSeed(category: ChallengeCategory.environmental, theme: 'waterway health', difficulty: ChallengeDifficulty.medium, action: 'find and photograph', subject: 'a local stream, pond, or waterway and its surrounding plant life', successHint: 'a waterway with visible surrounding vegetation or wildlife'),
   ];
 
   static const List<ChallengeSeed> _microAdventureSeeds = [
@@ -191,6 +226,9 @@ abstract final class ChallengeSeedLibrary {
     ChallengeSeed(category: ChallengeCategory.microAdventure, theme: 'the ordinary transformed', difficulty: ChallengeDifficulty.medium, action: 'find and photograph', subject: 'something ordinary in your outdoor environment that looks extraordinary from the right angle', successHint: 'a commonplace outdoor object or scene made to look unusual or striking'),
     ChallengeSeed(category: ChallengeCategory.microAdventure, theme: 'instinct as map', difficulty: ChallengeDifficulty.medium, action: 'go outside and follow your instincts with no plan, then photograph', subject: 'where you end up and what drew you there', successHint: 'an outdoor location reached by spontaneous exploration rather than planning'),
     ChallengeSeed(category: ChallengeCategory.microAdventure, theme: 'a viewpoint you had to earn', difficulty: ChallengeDifficulty.hard, action: 'walk, climb, or find your way to a viewpoint that requires some effort, then photograph', subject: 'the view from that elevated or out-of-the-way perspective', successHint: 'a view from an elevated or non-obvious outdoor vantage point'),
+    ChallengeSeed(category: ChallengeCategory.microAdventure, theme: 'explore by colour', difficulty: ChallengeDifficulty.medium, action: 'pick a colour and follow it outdoors', subject: 'wherever that colour leads you, then photograph what you find', successHint: 'an outdoor discovery found by following a single chosen colour'),
+    ChallengeSeed(category: ChallengeCategory.microAdventure, theme: 'a dawn or dusk micro-adventure', difficulty: ChallengeDifficulty.hard, action: 'go outside right at dawn or dusk and photograph', subject: 'how your surroundings look in that in-between light', successHint: 'an outdoor scene photographed in dawn or dusk light'),
+    ChallengeSeed(category: ChallengeCategory.microAdventure, theme: 'retrace a memory', difficulty: ChallengeDifficulty.medium, action: 'walk to a spot that holds a memory for you and photograph', subject: 'how that place looks today', successHint: 'a meaningful outdoor location photographed as it looks now'),
   ];
 
   // ── Seed selection ─────────────────────────────────────────────────────────

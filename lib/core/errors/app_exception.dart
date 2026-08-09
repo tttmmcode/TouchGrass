@@ -17,10 +17,21 @@ sealed class AppException implements Exception {
 // ── Authentication ─────────────────────────────────────────────────────────
 
 final class AuthException extends AppException {
-  const AuthException({required super.message, super.cause});
+  const AuthException({
+    required super.message,
+    super.cause,
+    this.isCancellation = false,
+  });
 
-  factory AuthException.cancelled() =>
-      const AuthException(message: 'Sign-in was cancelled.');
+  /// True when the user themself dismissed a native sign-in sheet — this is
+  /// a normal action, not a failure, and callers should treat it as a
+  /// silent no-op rather than showing an error.
+  final bool isCancellation;
+
+  factory AuthException.cancelled() => const AuthException(
+        message: 'Sign-in was cancelled.',
+        isCancellation: true,
+      );
 
   factory AuthException.providerError(Object cause) =>
       AuthException(message: 'Authentication provider error.', cause: cause);
@@ -87,11 +98,19 @@ final class VerificationException extends AppException {
         message: 'The image doesn\'t appear to match this challenge.',
       );
 
-  factory VerificationException.apiError(Object cause) =>
-      VerificationException(message: 'Verification service error.', cause: cause);
+  // Both service-level failures (unreachable/malformed/rate-limited) share
+  // one calm, non-technical message — the user doesn't need to know
+  // *which* failure mode this was, only that AI verification itself
+  // couldn't complete (as opposed to .lowConfidence, which is a genuine
+  // content verdict and gets its own specific message).
+  factory VerificationException.apiError(Object cause) => VerificationException(
+        message: "We couldn't verify your photo right now.",
+        cause: cause,
+      );
 
-  factory VerificationException.timeout() =>
-      const VerificationException(message: 'Verification timed out. Please try again.');
+  factory VerificationException.timeout() => const VerificationException(
+        message: "We couldn't verify your photo right now.",
+      );
 }
 
 // ── Storage ────────────────────────────────────────────────────────────────

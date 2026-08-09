@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../core/constants/app_constants.dart';
 import '../core/errors/app_exception.dart';
 
 /// Low-level Firestore wrapper.
@@ -12,15 +15,29 @@ class FirestoreService {
 
   final FirebaseFirestore _db;
 
+  // One-shot reads/writes get a hard ceiling so a dropped connection surfaces
+  // as a friendly timeout instead of hanging the caller indefinitely. Not
+  // applied to watchDocument/watchCollection — those are long-lived
+  // subscriptions that are meant to stay open.
+  static const _timeout =
+      Duration(seconds: AppConstants.networkTimeoutSeconds);
+
   // ── Write ─────────────────────────────────────────────────────────────────
 
   Future<void> setDocument({
     required String collection,
     required String id,
     required Map<String, dynamic> data,
+    bool merge = false,
   }) async {
     try {
-      await _db.collection(collection).doc(id).set(data);
+      await _db
+          .collection(collection)
+          .doc(id)
+          .set(data, SetOptions(merge: merge))
+          .timeout(_timeout);
+    } on TimeoutException {
+      throw NetworkException.timeout();
     } on FirebaseException catch (e) {
       throw _map(e);
     }
@@ -32,7 +49,9 @@ class FirestoreService {
     required Map<String, dynamic> data,
   }) async {
     try {
-      await _db.collection(collection).doc(id).update(data);
+      await _db.collection(collection).doc(id).update(data).timeout(_timeout);
+    } on TimeoutException {
+      throw NetworkException.timeout();
     } on FirebaseException catch (e) {
       throw _map(e);
     }
@@ -43,7 +62,9 @@ class FirestoreService {
     required String id,
   }) async {
     try {
-      await _db.collection(collection).doc(id).delete();
+      await _db.collection(collection).doc(id).delete().timeout(_timeout);
+    } on TimeoutException {
+      throw NetworkException.timeout();
     } on FirebaseException catch (e) {
       throw _map(e);
     }
@@ -54,7 +75,9 @@ class FirestoreService {
     required Map<String, dynamic> data,
   }) async {
     try {
-      return await _db.collection(collection).add(data);
+      return await _db.collection(collection).add(data).timeout(_timeout);
+    } on TimeoutException {
+      throw NetworkException.timeout();
     } on FirebaseException catch (e) {
       throw _map(e);
     }
@@ -67,8 +90,10 @@ class FirestoreService {
     required String id,
   }) async {
     try {
-      final doc = await _db.collection(collection).doc(id).get();
+      final doc = await _db.collection(collection).doc(id).get().timeout(_timeout);
       return doc.exists ? doc : null;
+    } on TimeoutException {
+      throw NetworkException.timeout();
     } on FirebaseException catch (e) {
       throw _map(e);
     }
@@ -101,7 +126,9 @@ class FirestoreService {
         query = query.limit(limit);
       }
 
-      return query.get();
+      return await query.get().timeout(_timeout);
+    } on TimeoutException {
+      throw NetworkException.timeout();
     } on FirebaseException catch (e) {
       throw _map(e);
     }

@@ -21,6 +21,11 @@ service firebase.storage {
         && request.resource.size < 10 * 1024 * 1024  // 10 MB max
         && request.resource.contentType.matches('image/.*');
     }
+    // `list` is a distinct method from `read` in Storage rules — needed so
+    // account deletion can enumerate and remove a user's completion photos.
+    match /completion_photos/{userId} {
+      allow list: if request.auth != null && request.auth.uid == userId;
+    }
 
     // Deny everything else.
     match /{allPaths=**} {

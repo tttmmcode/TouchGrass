@@ -1,4 +1,3 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,8 +7,11 @@ import '../../../companions/companion.dart';
 import '../../../companions/companion_widget.dart';
 import '../../../core/constants/route_names.dart';
 import '../../../providers/auth_providers.dart';
+import '../../../providers/settings_providers.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_motion.dart';
 import '../../../theme/app_spacing.dart';
+import '../../../widgets/push3d_button.dart';
 
 /// Three-page onboarding shown to new users immediately after sign-in.
 ///
@@ -65,7 +67,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   bool get _isLastPage => _currentPage == _pages.length - 1;
 
   String get _firstName {
-    final name = FirebaseAuth.instance.currentUser?.displayName ?? '';
+    final name = ref.read(authStateProvider).valueOrNull?.displayName ?? '';
     return name.split(' ').first;
   }
 
@@ -86,7 +88,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       return;
     }
     await _pageController.nextPage(
-      duration: const Duration(milliseconds: 400),
+      duration: AppMotion.long,
       curve: Curves.easeInOutCubic,
     );
   }
@@ -137,7 +139,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                       children: List.generate(
                         _pages.length,
                         (i) => AnimatedContainer(
-                          duration: const Duration(milliseconds: 300),
+                          duration: AppMotion.standard,
                           margin: const EdgeInsets.symmetric(
                             horizontal: AppSpacing.xs,
                           ),
@@ -211,7 +213,7 @@ class _OnboardingPage {
   final LinearGradient gradient;
 }
 
-class _PageContent extends StatefulWidget {
+class _PageContent extends ConsumerStatefulWidget {
   const _PageContent({
     required this.page,
     this.firstName,
@@ -223,10 +225,10 @@ class _PageContent extends StatefulWidget {
   final bool showCompanion;
 
   @override
-  State<_PageContent> createState() => _PageContentState();
+  ConsumerState<_PageContent> createState() => _PageContentState();
 }
 
-class _PageContentState extends State<_PageContent>
+class _PageContentState extends ConsumerState<_PageContent>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<Offset> _float;
@@ -237,7 +239,9 @@ class _PageContentState extends State<_PageContent>
     _ctrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2000),
-    )..repeat(reverse: true);
+    );
+    // Continuous ambient loop — never runs when Reduce Motion is on.
+    if (!ref.read(reducedMotionProvider)) _ctrl.repeat(reverse: true);
     _float = Tween<Offset>(
       begin: const Offset(0, -0.04),
       end: const Offset(0, 0.04),
@@ -287,7 +291,7 @@ class _PageContentState extends State<_PageContent>
                           padding: const EdgeInsets.all(AppSpacing.xxl),
                           child: Text(
                             widget.page.emoji,
-                            style: const TextStyle(fontSize: 72),
+                            style: const TextStyle(fontSize: AppSpacing.emojiXl),
                           ),
                         ),
                       ),
@@ -360,41 +364,27 @@ class _OnboardingButton extends StatefulWidget {
 }
 
 class _OnboardingButtonState extends State<_OnboardingButton> {
-  bool _pressed = false;
-
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) {
-        setState(() => _pressed = false);
-        widget.onPressed();
-      },
-      onTapCancel: () => setState(() => _pressed = false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 80),
-        padding: EdgeInsets.only(bottom: _pressed ? 0 : 5),
+    return Push3DButton(
+      onPressed: widget.onPressed,
+      shadowColor: Colors.white.withValues(alpha: 0.3),
+      face: DecoratedBox(
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
         ),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-          ),
-          child: SizedBox(
-            height: AppSpacing.buttonHeight,
-            child: Center(
-              child: Text(
-                widget.label,
-                style: const TextStyle(
-                  fontFamily: 'Nunito',
-                  fontSize: 17,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.forestGreen,
-                  letterSpacing: 0.3,
-                ),
+        child: SizedBox(
+          height: AppSpacing.buttonHeight,
+          child: Center(
+            child: Text(
+              widget.label,
+              style: const TextStyle(
+                fontFamily: 'Nunito',
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+                color: AppColors.forestGreen,
+                letterSpacing: 0.3,
               ),
             ),
           ),

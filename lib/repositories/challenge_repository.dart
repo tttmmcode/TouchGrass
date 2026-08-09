@@ -6,6 +6,7 @@ import '../core/constants/app_constants.dart';
 import '../core/result.dart';
 import '../models/challenge_model.dart';
 import '../models/completion_model.dart';
+import '../services/analytics_service.dart';
 import '../services/firestore_service.dart';
 
 /// Reads and writes challenges stored in the per-user subcollection:
@@ -92,9 +93,14 @@ class ChallengeRepository {
         });
       });
 
-  // ── History & deduplication ────────────────────────────────────────────────
+  // ── Deduplication ─────────────────────────────────────────────────────────
 
   /// Returns the titles of recent challenges for Gemini dedup.
+  ///
+  /// A failed read must never block challenge generation, so this always
+  /// resolves to a list (empty on failure) rather than throwing — but the
+  /// failure is still reported non-fatally so a persistent Firestore issue
+  /// silently degrading dedup quality doesn't go unnoticed.
   Future<List<String>> fetchRecentChallengeTitles(
     String uid, {
     int limit = AppConstants.challengeDedupeWindowDays,
@@ -108,37 +114,11 @@ class ChallengeRepository {
           .map((doc) => doc.data()['title'] as String? ?? '')
           .where((t) => t.isNotEmpty)
           .toList();
-    } catch (e) {
+    } catch (e, st) {
       dev.log('fetchRecentChallengeTitles error: $e',
           name: 'ChallengeRepository');
-      return const [];
-    }
-  }
-
-  /// Paginated challenge history, newest first.
-  Future<List<ChallengeModel>> fetchChallengeHistory(
-    String uid, {
-    int limit = AppConstants.challengeHistoryPageSize,
-    DocumentSnapshot? startAfter,
-  }) async {
-    try {
-      var query = _challengesCol(uid)
-          .orderBy('generatedAt', descending: true)
-          .limit(limit);
-      if (startAfter != null) query = query.startAfterDocument(startAfter);
-      final snap = await query.get();
-      return snap.docs
-          .map((doc) {
-            try {
-              return ChallengeModel.fromFirestore(doc);
-            } catch (_) {
-              return null;
-            }
-          })
-          .whereType<ChallengeModel>()
-          .toList();
-    } catch (e) {
-      dev.log('fetchChallengeHistory error: $e', name: 'ChallengeRepository');
+      CrashReporter.recordError(e, st,
+          reason: 'fetchRecentChallengeTitles failed — dedup degraded');
       return const [];
     }
   }

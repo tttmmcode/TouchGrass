@@ -5,13 +5,17 @@ import 'package:go_router/go_router.dart';
 import '../../../companions/companion.dart';
 import '../../../companions/companion_widget.dart';
 import '../../../core/constants/route_names.dart';
+import '../../../core/services/error_service.dart';
 import '../../../models/achievement_definition.dart';
 import '../../../models/achievement_model.dart';
 import '../../../providers/achievement_providers.dart';
 import '../../../providers/companion_providers.dart';
+import '../../../providers/settings_providers.dart';
 import '../../../providers/user_providers.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_motion.dart';
 import '../../../theme/app_spacing.dart';
+import '../../../widgets/error_retry_view.dart';
 
 class AchievementsScreen extends ConsumerStatefulWidget {
   const AchievementsScreen({super.key});
@@ -32,7 +36,9 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen>
     _shineCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 3),
-    )..repeat();
+    );
+    // Purely decorative continuous loop — never starts under Reduce Motion.
+    if (!ref.read(reducedMotionProvider)) _shineCtrl.repeat();
   }
 
   @override
@@ -52,10 +58,20 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen>
 
   @override
   Widget build(BuildContext context) {
+    final userAsync = ref.watch(currentUserProvider);
     final models = ref.watch(achievementModelsProvider);
     final companion = ref.watch(activeCompanionProvider);
+    final reducedMotion = ref.watch(reducedMotionProvider);
 
     if (models.isEmpty) {
+      if (userAsync.hasError) {
+        return Scaffold(
+          body: ErrorRetryView(
+            message: ErrorService.friendlyMessage(userAsync.error!),
+            onRetry: () => ref.invalidate(currentUserProvider),
+          ),
+        );
+      }
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
@@ -83,7 +99,11 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen>
 
           // ── Progress header ──────────────────────────────────────────────
           SliverToBoxAdapter(
-            child: _ProgressHeader(earned: earned.length, total: total),
+            child: _ProgressHeader(
+              earned: earned.length,
+              total: total,
+              reducedMotion: reducedMotion,
+            ),
           ),
 
           // ── Earned section ───────────────────────────────────────────────
@@ -116,7 +136,8 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen>
                   child: _AchievementCard(
                     model: earned[i],
                     index: i,
-                    shineAnimation: _shineCtrl,
+                    shineAnimation: reducedMotion ? null : _shineCtrl,
+                    reducedMotion: reducedMotion,
                     onTap: () => _showDetail(earned[i]),
                   ),
                 ),
@@ -154,6 +175,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen>
                   model: locked[i],
                   index: i,
                   shineAnimation: null,
+                  reducedMotion: reducedMotion,
                   onTap: () => _showDetail(locked[i]),
                 ),
               ),
@@ -208,7 +230,7 @@ class _CompanionBanner extends StatelessWidget {
               CompanionView(
                 type: companion,
                 mood: CompanionMood.idle,
-                size: 64,
+                size: AppSpacing.avatarLg,
               ),
               const SizedBox(width: AppSpacing.md),
               Expanded(
@@ -272,9 +294,14 @@ class _CompanionBanner extends StatelessWidget {
 // ── Progress header ───────────────────────────────────────────────────────────
 
 class _ProgressHeader extends StatelessWidget {
-  const _ProgressHeader({required this.earned, required this.total});
+  const _ProgressHeader({
+    required this.earned,
+    required this.total,
+    required this.reducedMotion,
+  });
   final int earned;
   final int total;
+  final bool reducedMotion;
 
   @override
   Widget build(BuildContext context) {
@@ -345,7 +372,7 @@ class _ProgressHeader extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           TweenAnimationBuilder<double>(
             tween: Tween<double>(begin: 0.0, end: progress.clamp(0.0, 1.0)),
-            duration: const Duration(milliseconds: 1200),
+            duration: reducedMotion ? Duration.zero : AppMotion.reveal,
             curve: Curves.easeOutCubic,
             builder: (context, value, _) => LayoutBuilder(
               builder: (_, constraints) {
@@ -427,7 +454,7 @@ class _SectionHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: color),
+          Icon(icon, size: AppSpacing.iconTiny, color: color),
           const SizedBox(width: 6),
           Text(
             title,
@@ -470,12 +497,14 @@ class _AchievementCard extends StatefulWidget {
     required this.model,
     required this.index,
     required this.shineAnimation,
+    required this.reducedMotion,
     required this.onTap,
   });
 
   final AchievementModel model;
   final int index;
   final Animation<double>? shineAnimation;
+  final bool reducedMotion;
   final VoidCallback onTap;
 
   @override
@@ -502,6 +531,11 @@ class _AchievementCardState extends State<_AchievementCard>
     ).animate(
         CurvedAnimation(parent: _entryCtrl, curve: Curves.easeOutCubic));
 
+    if (widget.reducedMotion) {
+      // Skip the staggered slide-in entirely — jump straight to final state.
+      _entryCtrl.value = 1.0;
+      return;
+    }
     final delay = Duration(
         milliseconds: (widget.index * 50).clamp(0, 500));
     Future<void>.delayed(delay, () {
@@ -519,14 +553,29 @@ class _AchievementCardState extends State<_AchievementCard>
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    Widget card = GestureDetector(
-      onTap: widget.onTap,
-      child: _CardShell(
-        model: widget.model,
-        isDark: isDark,
-        child: _CardContent(
+    Widget card = Semantics(
+      button: true,
+      label: widget.model.isUnlocked
+          ? '${widget.model.rarity.label} achievement, ${widget.model.title}, '
+              'unlocked. ${widget.model.description}'
+          : '${widget.model.rarity.label} achievement, ${widget.model.title}, '
+              'locked. ${widget.model.progressLabel}, '
+              '${widget.model.completionPercentage.round()} percent complete.',
+      // Card content is emoji/title/description/progress Text widgets that
+      // would each contribute their own semantics node otherwise — the
+      // label above already composes everything a screen reader needs, so
+      // exclude the children to avoid a garbled double announcement.
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: _CardShell(
           model: widget.model,
           isDark: isDark,
+          child: _CardContent(
+            model: widget.model,
+            isDark: isDark,
+            reducedMotion: widget.reducedMotion,
+          ),
         ),
       ),
     );
@@ -606,13 +655,13 @@ class _CardShell extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
         border: Border.all(color: borderColor, width: 1.5),
         boxShadow: isEarned
             ? [
                 BoxShadow(
-                  color: rarityColor.withValues(alpha: 0.18),
-                  blurRadius: 10,
+                  color: rarityColor.withValues(alpha: model.rarity.glowAlpha),
+                  blurRadius: model.rarity.glowBlurRadius,
                   offset: const Offset(0, 3),
                 ),
               ]
@@ -629,10 +678,15 @@ class _CardShell extends StatelessWidget {
 // ── Card content ──────────────────────────────────────────────────────────────
 
 class _CardContent extends ConsumerWidget {
-  const _CardContent({required this.model, required this.isDark});
+  const _CardContent({
+    required this.model,
+    required this.isDark,
+    required this.reducedMotion,
+  });
 
   final AchievementModel model;
   final bool isDark;
+  final bool reducedMotion;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -662,7 +716,7 @@ class _CardContent extends ConsumerWidget {
             else
               Icon(
                 Icons.lock_outline_rounded,
-                size: 16,
+                size: AppSpacing.iconTiny,
                 color: isDark
                     ? AppColors.onSurfaceVariantDark
                     : AppColors.onSurfaceVariantLight,
@@ -702,7 +756,7 @@ class _CardContent extends ConsumerWidget {
               begin: 0.0,
               end: model.progressFraction,
             ),
-            duration: const Duration(milliseconds: 900),
+            duration: reducedMotion ? Duration.zero : AppMotion.reveal,
             curve: Curves.easeOutCubic,
             builder: (context, value, _) => LayoutBuilder(
               builder: (_, constraints) {
@@ -806,6 +860,7 @@ class _AchievementDetailSheet extends ConsumerWidget {
     final trackColor = isDark ? AppColors.outlineDark : AppColors.dividerLight;
 
     final user = ref.watch(currentUserProvider).valueOrNull;
+    final reducedMotion = ref.watch(reducedMotionProvider);
 
     return DraggableScrollableSheet(
       initialChildSize: 0.52,
@@ -816,7 +871,7 @@ class _AchievementDetailSheet extends ConsumerWidget {
         decoration: BoxDecoration(
           color: bg,
           borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(AppSpacing.radiusXl),
+            top: Radius.circular(AppSpacing.radiusBottomSheet),
           ),
         ),
         child: Column(
@@ -972,7 +1027,8 @@ class _AchievementDetailSheet extends ConsumerWidget {
                         TweenAnimationBuilder<double>(
                           tween:
                               Tween<double>(begin: 0, end: model.progressFraction),
-                          duration: const Duration(milliseconds: 900),
+                          duration:
+                              reducedMotion ? Duration.zero : AppMotion.reveal,
                           curve: Curves.easeOutCubic,
                           builder: (_, value, _) => Column(
                             crossAxisAlignment: CrossAxisAlignment.start,

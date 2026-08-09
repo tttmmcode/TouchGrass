@@ -3,16 +3,21 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../providers/challenge_providers.dart';
+import '../../../providers/settings_providers.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_spacing.dart';
+import '../../../widgets/pressable_scale.dart';
 
-// Wider zigzag — pads occupy most of screen width.
-const List<double> _wave = [-0.52, -0.10, 0.38, 0.52, 0.10, -0.38];
-
+// Smooth winding trail — two overlapping low-frequency sine waves rather
+// than a fixed-cycle zigzag, so consecutive nodes shift gradually (no sharp
+// jumps) and the pattern doesn't visibly repeat every few nodes.
 double _xOffset(int index, double available) {
-  final fraction = _wave[index % _wave.length];
+  final t = index.toDouble();
+  final wave = math.sin(t * 0.55) * 0.34 + math.sin(t * 0.19 + 1.3) * 0.18;
+  final fraction = wave.clamp(-0.55, 0.55);
   return fraction * (available - _kNodeSize) / 2;
 }
 
@@ -63,7 +68,7 @@ Path _buildLilyPadPath(double cx, double cy, double r, double seed) {
 
 // ── Segment ───────────────────────────────────────────────────────────────────
 
-class ChallengePathSegment extends StatefulWidget {
+class ChallengePathSegment extends ConsumerStatefulWidget {
   const ChallengePathSegment({
     super.key,
     required this.node,
@@ -78,10 +83,11 @@ class ChallengePathSegment extends StatefulWidget {
   final VoidCallback onTap;
 
   @override
-  State<ChallengePathSegment> createState() => _ChallengePathSegmentState();
+  ConsumerState<ChallengePathSegment> createState() =>
+      _ChallengePathSegmentState();
 }
 
-class _ChallengePathSegmentState extends State<ChallengePathSegment>
+class _ChallengePathSegmentState extends ConsumerState<ChallengePathSegment>
     with TickerProviderStateMixin {
   late final AnimationController _glowCtrl;
   late final AnimationController _floatCtrl;
@@ -95,40 +101,69 @@ class _ChallengePathSegmentState extends State<ChallengePathSegment>
   // Deterministic seed per node — drives organic shape variation.
   double get _seed => widget.index * 1.618;
 
+  String get _semanticLabel {
+    final day = widget.node.dayNumber;
+    return switch (widget.node) {
+      ActivePathNode() => "Day $day, today's challenge. Double tap to open.",
+      CompletedPathNode() =>
+        'Day $day, challenge completed. Double tap to view.',
+      MissedPathNode() => 'Day $day, challenge missed.',
+      LockedPathNode() => 'Day $day, locked.',
+    };
+  }
+
   @override
   void initState() {
     super.initState();
 
+    // Phase-offset by index so every completed node's stone-trail glow dot
+    // isn't pulsing in lockstep with every other one on screen at once.
     _glowCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2600),
-    )..repeat();
+    )..value = (widget.index % 5) / 5.0;
 
     _particleCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2800),
-    )
-      ..value = (widget.index % 7) / 7.0
-      ..repeat();
+    )..value = (widget.index % 7) / 7.0;
 
     _floatCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2300),
-    )..repeat(reverse: true);
+    );
 
     _rippleCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1400),
     );
 
-    if (_isActive) _scheduleRipple();
+    _applyMotionPreference(ref.read(reducedMotionProvider));
+  }
+
+  /// Starts/stops the continuous ambient loops (glow, particles, float,
+  /// periodic ripple) based on the Reduce Motion setting. Safe to call
+  /// repeatedly — each start/stop is a no-op if already in that state.
+  void _applyMotionPreference(bool reduceMotion) {
+    if (reduceMotion) {
+      _glowCtrl.stop();
+      _particleCtrl.stop();
+      _floatCtrl.stop();
+      _rippleTimer?.cancel();
+      _rippleTimer = null;
+    } else {
+      if (!_glowCtrl.isAnimating) _glowCtrl.repeat();
+      if (!_particleCtrl.isAnimating) _particleCtrl.repeat();
+      if (!_floatCtrl.isAnimating) _floatCtrl.repeat(reverse: true);
+      if (_isActive && _rippleTimer == null) _scheduleRipple();
+    }
   }
 
   void _scheduleRipple() {
     _rippleTimer = Timer(const Duration(milliseconds: 3200), () {
       if (mounted) {
         _rippleCtrl.forward(from: 0).then((_) {
-          if (mounted) _scheduleRipple();
+          if (mounted && !ref.read(reducedMotionProvider)) _scheduleRipple();
         });
       }
     });
@@ -146,6 +181,7 @@ class _ChallengePathSegmentState extends State<ChallengePathSegment>
 
   @override
   Widget build(BuildContext context) {
+    _applyMotionPreference(ref.watch(reducedMotionProvider));
     return LayoutBuilder(
       builder: (context, constraints) {
         final avail = constraints.maxWidth;
@@ -156,7 +192,12 @@ class _ChallengePathSegmentState extends State<ChallengePathSegment>
         final centerX = avail / 2 + xOff;
         final nextCenterX = avail / 2 + nextXOff;
 
-        return SizedBox(
+        // Isolates this segment's continuous animations (glow, particles,
+        // ripple, pulse) to their own compositing layer so an actively
+        // animating node never forces neighboring trail segments — which
+        // are otherwise static — to repaint alongside it.
+        return RepaintBoundary(
+          child: SizedBox(
           height: _kSegmentH,
           child: Stack(
             clipBehavior: Clip.none,
@@ -242,35 +283,63 @@ class _ChallengePathSegmentState extends State<ChallengePathSegment>
                       child: child!,
                     );
                   },
-                  child: GestureDetector(
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      widget.onTap();
-                    },
-                    child: _ActiveLilyPad(
-                      node: widget.node as ActivePathNode,
-                      size: _kActiveNodeSize,
-                      seed: _seed,
+                  child: Semantics(
+                    button: true,
+                    label: _semanticLabel,
+                    // The pad's emoji/badges are Text/Icon children that
+                    // would otherwise leak their own raw content ("🎯",
+                    // "+25") into the announcement alongside this label —
+                    // exclude them so only the one composed label reads.
+                    excludeSemantics: true,
+                    child: PressableScale(
+                      scale: 0.96,
+                      child: GestureDetector(
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          widget.onTap();
+                        },
+                        child: _ActiveLilyPad(
+                          node: widget.node as ActivePathNode,
+                          size: _kActiveNodeSize,
+                          seed: _seed,
+                        ),
+                      ),
                     ),
                   ),
                 ),
 
-              // Past lily pad (completed / missed)
+              // Past lily pad (completed / missed / locked) — always
+              // tappable: completed opens details, missed/locked show a
+              // friendly explanatory dialog (handled by widget.onTap).
               if (!_isActive)
                 Positioned(
                   top: _kNodeTopPad,
                   left: centerX - _kNodeSize / 2,
-                  child: Material(
-                    color: Colors.transparent,
-                    shape: const CircleBorder(),
-                    child: InkWell(
-                      // Missed (locked) pads have no interaction.
-                      onTap: _isCompleted ? widget.onTap : null,
-                      customBorder: const CircleBorder(),
-                      child: _PastLilyPad(
-                        node: widget.node,
-                        size: _kNodeSize,
-                        seed: _seed,
+                  child: Semantics(
+                    button: true,
+                    label: _semanticLabel,
+                    // Same reasoning as the active pad above — the emoji,
+                    // "+XP" badge, and check-mark icon inside are decorative
+                    // to a screen reader once the label already says
+                    // "completed"/"missed"/"locked".
+                    excludeSemantics: true,
+                    child: PressableScale(
+                      scale: 0.96,
+                      child: Material(
+                        color: Colors.transparent,
+                        shape: const CircleBorder(),
+                        child: InkWell(
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            widget.onTap();
+                          },
+                          customBorder: const CircleBorder(),
+                          child: _PastLilyPad(
+                            node: widget.node,
+                            size: _kNodeSize,
+                            seed: _seed,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -284,6 +353,7 @@ class _ChallengePathSegmentState extends State<ChallengePathSegment>
                 child: _NodeLabel(node: widget.node),
               ),
             ],
+          ),
           ),
         );
       },
@@ -360,7 +430,7 @@ class _ActiveLilyPad extends StatelessWidget {
 
 // ── Past lily pad (completed / missed) ───────────────────────────────────────
 
-class _PastLilyPad extends StatefulWidget {
+class _PastLilyPad extends ConsumerStatefulWidget {
   const _PastLilyPad({
     required this.node,
     required this.size,
@@ -371,10 +441,10 @@ class _PastLilyPad extends StatefulWidget {
   final double seed;
 
   @override
-  State<_PastLilyPad> createState() => _PastLilyPadState();
+  ConsumerState<_PastLilyPad> createState() => _PastLilyPadState();
 }
 
-class _PastLilyPadState extends State<_PastLilyPad>
+class _PastLilyPadState extends ConsumerState<_PastLilyPad>
     with TickerProviderStateMixin {
   late final AnimationController _bounceCtrl;
   late final AnimationController _bloomCtrl;
@@ -394,11 +464,18 @@ class _PastLilyPadState extends State<_PastLilyPad>
       duration: const Duration(milliseconds: 900),
     );
     _scale = CurvedAnimation(parent: _bounceCtrl, curve: Curves.elasticOut);
-    _bounceCtrl.forward();
-    if (_isCompleted) {
-      Future<void>.delayed(const Duration(milliseconds: 120), () {
-        if (mounted) _bloomCtrl.forward();
-      });
+
+    if (ref.read(reducedMotionProvider)) {
+      // Jump straight to the resting state instead of tweening in.
+      _bounceCtrl.value = 1.0;
+      if (_isCompleted) _bloomCtrl.value = 1.0;
+    } else {
+      _bounceCtrl.forward();
+      if (_isCompleted) {
+        Future<void>.delayed(const Duration(milliseconds: 120), () {
+          if (mounted) _bloomCtrl.forward();
+        });
+      }
     }
   }
 
@@ -460,11 +537,7 @@ class _PastLilyPadState extends State<_PastLilyPad>
                       child: const _CheckBadge(),
                     ),
                   ] else
-                    Icon(
-                      Icons.lock_rounded,
-                      size: size * 0.30,
-                      color: Colors.white.withValues(alpha: 0.70),
-                    ),
+                    Text('🔒', style: TextStyle(fontSize: size * 0.30)),
                 ],
               ),
             ),
@@ -510,11 +583,12 @@ class _LilyPadPainter extends CustomPainter {
         ..color = _lilyActiveDark.withValues(alpha: 0.45)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
     );
-    // Ambient glow
+    // Ambient glow — kept subtle (12-18% spec range) so it reads as a soft
+    // halo rather than competing with the pad's own saturated fill color.
     canvas.drawPath(
       _buildLilyPadPath(cx, cy, r * 0.97, seed),
       Paint()
-        ..color = _lilyActive.withValues(alpha: 0.35)
+        ..color = _lilyActive.withValues(alpha: 0.16)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16),
     );
     // Outer dark rim
@@ -547,11 +621,12 @@ class _LilyPadPainter extends CustomPainter {
         ..color = Colors.black.withValues(alpha: 0.28)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
     );
-    // Gold glow
+    // Gold glow — subdued; the crisp stroke outline below does the primary
+    // "completed" signaling, so this stays a faint lift rather than a glow.
     canvas.drawPath(
       _buildLilyPadPath(cx, cy, r * 0.95, seed),
       Paint()
-        ..color = _lilyGold.withValues(alpha: 0.28)
+        ..color = _lilyGold.withValues(alpha: 0.14)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
     );
     final outer = _buildLilyPadPath(cx, cy, r * 0.90, seed);
@@ -749,15 +824,15 @@ class _BloomPainter extends CustomPainter {
 
 // ── Multi-pulse — gentle glow rings around active pad ────────────────────────
 
-class _MultiPulse extends StatefulWidget {
+class _MultiPulse extends ConsumerStatefulWidget {
   const _MultiPulse({required this.size});
   final double size;
 
   @override
-  State<_MultiPulse> createState() => _MultiPulseState();
+  ConsumerState<_MultiPulse> createState() => _MultiPulseState();
 }
 
-class _MultiPulseState extends State<_MultiPulse>
+class _MultiPulseState extends ConsumerState<_MultiPulse>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
 
@@ -765,9 +840,12 @@ class _MultiPulseState extends State<_MultiPulse>
   void initState() {
     super.initState();
     _ctrl = AnimationController(
+      // Soft breathing pace — one full pulse every ~3s, within the 2.8-3.2s
+      // spec range (not the snappier ~2s of a generic loading pulse).
       vsync: this,
-      duration: const Duration(milliseconds: 2000),
-    )..repeat();
+      duration: const Duration(milliseconds: 3000),
+    );
+    if (!ref.read(reducedMotionProvider)) _ctrl.repeat();
   }
 
   @override
@@ -778,6 +856,12 @@ class _MultiPulseState extends State<_MultiPulse>
 
   @override
   Widget build(BuildContext context) {
+    final reduceMotion = ref.watch(reducedMotionProvider);
+    if (reduceMotion) {
+      if (_ctrl.isAnimating) _ctrl.stop();
+    } else if (!_ctrl.isAnimating) {
+      _ctrl.repeat();
+    }
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (_, _) => SizedBox(
@@ -797,7 +881,8 @@ class _MultiPulseState extends State<_MultiPulse>
   Widget _ring(double t, double phase) {
     final phasedT = Curves.easeOut.transform(((t + phase) % 1.0));
     final scale = 1.0 + phasedT * 0.62;
-    final opacity = (1.0 - phasedT) * 0.52;
+    // Glow opacity spec: 12-18% peak, decaying to 0 as the ring expands.
+    final opacity = (1.0 - phasedT) * 0.18;
     return Transform.scale(
       scale: scale,
       child: DecoratedBox(
@@ -916,35 +1001,35 @@ class _StoneTrailPainter extends CustomPainter {
         ..color = Colors.black.withValues(alpha: 0.22)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
     );
-    // Stone body
-    canvas.drawOval(
-      Rect.fromCenter(center: center, width: r * 2.1, height: r * 1.70),
+    // Stone body — circular, per design spec.
+    canvas.drawCircle(
+      center,
+      r,
       Paint()
         ..color = isCompleted
             ? _stoneBase
             : _stoneShadow.withValues(alpha: 0.50),
     );
     // Top highlight
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(center.dx - r * 0.08, center.dy - r * 0.18),
-        width: r * 1.40,
-        height: r * 0.72,
-      ),
+    canvas.drawCircle(
+      Offset(center.dx - r * 0.16, center.dy - r * 0.20),
+      r * 0.55,
       Paint()
         ..color = isCompleted
             ? _stoneHighlight
             : _stoneHighlight.withValues(alpha: 0.28),
     );
-    // Bottom shadow edge
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(center.dx, center.dy + r * 0.30),
-        width: r * 1.70,
-        height: r * 0.52,
-      ),
+    // Bottom shadow crescent — thin inner arc, stays within the stone's edge.
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: r * 0.78),
+      0.35,
+      math.pi - 0.70,
+      false,
       Paint()
-        ..color = _stoneShadow.withValues(alpha: isCompleted ? 0.35 : 0.16),
+        ..color = _stoneShadow.withValues(alpha: isCompleted ? 0.35 : 0.16)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = r * 0.30
+        ..strokeCap = StrokeCap.round,
     );
   }
 

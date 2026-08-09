@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme/app_spacing.dart';
+import '../../../widgets/push3d_button.dart';
 
 /// A pressable social sign-in button with a Duolingo-style 3-D push animation.
 ///
@@ -33,44 +34,25 @@ class SocialSignInButton extends StatefulWidget {
 }
 
 class _SocialSignInButtonState extends State<SocialSignInButton> {
-  bool _pressed = false;
-
-  static const double _shadowHeight = 5;
-
   @override
   Widget build(BuildContext context) {
     final disabled = widget.isLoading || widget.onPressed == null;
 
-    return GestureDetector(
-      onTapDown: disabled ? null : (_) => setState(() => _pressed = true),
-      onTapUp: disabled
-          ? null
-          : (_) {
-              setState(() => _pressed = false);
-              widget.onPressed?.call();
-            },
-      onTapCancel: () => setState(() => _pressed = false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 80),
-        curve: Curves.easeOut,
-        // The bottom padding collapses to 0 when pressed, simulating depth.
-        padding: EdgeInsets.only(bottom: _pressed || disabled ? 0 : _shadowHeight),
-        decoration: BoxDecoration(
-          color: disabled
-              ? widget.shadowColor.withValues(alpha: 0.5)
-              : widget.shadowColor,
-          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        ),
-        child: _ButtonFace(
-          label: widget.label,
-          icon: widget.icon,
-          backgroundColor: disabled
-              ? widget.backgroundColor.withValues(alpha: 0.7)
-              : widget.backgroundColor,
-          foregroundColor: widget.foregroundColor,
-          isLoading: widget.isLoading,
-          border: widget.border,
-        ),
+    return Push3DButton(
+      onPressed: widget.onPressed,
+      disabled: disabled,
+      shadowColor: disabled
+          ? widget.shadowColor.withValues(alpha: 0.5)
+          : widget.shadowColor,
+      face: _ButtonFace(
+        label: widget.label,
+        icon: widget.icon,
+        backgroundColor: disabled
+            ? widget.backgroundColor.withValues(alpha: 0.7)
+            : widget.backgroundColor,
+        foregroundColor: widget.foregroundColor,
+        isLoading: widget.isLoading,
+        border: widget.border,
       ),
     );
   }
@@ -98,7 +80,7 @@ class _ButtonFace extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: backgroundColor,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
         border: border,
       ),
       child: SizedBox(

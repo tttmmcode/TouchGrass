@@ -1,7 +1,7 @@
 {
   "indexes": [
     {
-      "collectionGroup": "users",
+      "collectionGroup": "leaderboard_public",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "currentLeague", "order": "ASCENDING" },

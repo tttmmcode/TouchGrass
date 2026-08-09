@@ -11,8 +11,12 @@ import '../../../models/challenge_model.dart';
 import '../../../models/completion_model.dart';
 import '../../../providers/assignment_providers.dart';
 import '../../../providers/challenge_providers.dart';
+import '../../../providers/settings_providers.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_elevation.dart';
+import '../../../theme/app_motion.dart';
 import '../../../theme/app_spacing.dart';
+import '../../../widgets/pressable_scale.dart';
 
 class TodaysChallengeCard extends StatelessWidget {
   const TodaysChallengeCard({super.key, required this.todayNode});
@@ -27,7 +31,7 @@ class TodaysChallengeCard extends StatelessWidget {
       final challenge = (todayNode as ActivePathNode).challenge;
       return challenge != null
           ? AnimatedSwitcher(
-              duration: const Duration(milliseconds: 380),
+              duration: AppMotion.long,
               switchInCurve: Curves.easeOutCubic,
               switchOutCurve: Curves.easeIn,
               transitionBuilder: (child, anim) => FadeTransition(
@@ -64,17 +68,11 @@ class _ChallengeCard extends ConsumerWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: AppColors.gradientForest,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.forestGreen.withValues(alpha: 0.38),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
+        boxShadow: AppElevation.glow(AppColors.forestGreen, opacity: 0.38),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
+        padding: const EdgeInsets.all(AppSpacing.betweenCards),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -174,62 +172,26 @@ class _ChallengeCard extends ConsumerWidget {
               ),
             ],
             const SizedBox(height: AppSpacing.md),
-            // Meta row: category + estimated time
-            Row(
+            // Meta row: category + difficulty + estimated time.
+            // Wrap (not Row) so a long category/challenge name on a narrow
+            // phone drops the time pill to a second line instead of
+            // overflowing.
+            Wrap(
+              spacing: AppSpacing.sm,
+              runSpacing: AppSpacing.xs,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      child: Text(
-                        '${challenge.challengeCategory.emoji} '
-                        '${challenge.challengeCategory.displayName}',
-                        style: const TextStyle(
-                          fontFamily: 'Nunito',
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
+                _MetaPill(
+                  label: '${challenge.challengeCategory.emoji} '
+                      '${challenge.challengeCategory.displayName}',
                 ),
-                const SizedBox(width: AppSpacing.sm),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 4),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.timer_outlined,
-                          size: 12,
-                          color: Colors.white.withValues(alpha: 0.85),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${challenge.estimatedMinutes} min',
-                          style: const TextStyle(
-                            fontFamily: 'Nunito',
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                _MetaPill(
+                  label: '${challenge.difficulty.emoji} '
+                      '${challenge.difficulty.displayName}',
+                ),
+                _MetaPill(
+                  icon: Icons.timer_outlined,
+                  label: '${challenge.estimatedMinutes} min',
                 ),
               ],
             ),
@@ -237,6 +199,43 @@ class _ChallengeCard extends ConsumerWidget {
             _DiceButton(challenge: challenge),
             const SizedBox(height: AppSpacing.md),
             const _StartButton(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MetaPill extends StatelessWidget {
+  const _MetaPill({required this.label, this.icon});
+  final String label;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 12, color: Colors.white.withValues(alpha: 0.85)),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: const TextStyle(
+                fontFamily: 'Nunito',
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
           ],
         ),
       ),
@@ -326,8 +325,8 @@ class _DiceButtonState extends ConsumerState<_DiceButton>
               backgroundColor: AppColors.error,
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              margin: const EdgeInsets.all(16),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusMd)),
+              margin: const EdgeInsets.all(AppSpacing.md),
             ),
           );
         },
@@ -341,7 +340,7 @@ class _DiceButtonState extends ConsumerState<_DiceButton>
       onTap: isLoading ? null : _onTap,
       child: AnimatedOpacity(
         opacity: isLoading ? 0.65 : 1.0,
-        duration: const Duration(milliseconds: 180),
+        duration: AppMotion.fast,
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.12),
@@ -441,17 +440,22 @@ class _DiceButtonState extends ConsumerState<_DiceButton>
 
 // ── Start button — arrow bounces right ───────────────────────────────────────
 
-class _StartButton extends StatefulWidget {
+class _StartButton extends ConsumerStatefulWidget {
   const _StartButton();
 
   @override
-  State<_StartButton> createState() => _StartButtonState();
+  ConsumerState<_StartButton> createState() => _StartButtonState();
 }
 
-class _StartButtonState extends State<_StartButton>
+class _StartButtonState extends ConsumerState<_StartButton>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<Offset> _arrow;
+
+  // Guards against a rapid double-tap pushing two camera routes onto the
+  // stack. Resets automatically once the pushed route is popped, so the
+  // button works normally again on return from the camera flow.
+  bool _navigating = false;
 
   @override
   void initState() {
@@ -459,7 +463,9 @@ class _StartButtonState extends State<_StartButton>
     _ctrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 680),
-    )..repeat(reverse: true);
+    );
+    // Continuous ambient loop — never runs when Reduce Motion is on.
+    if (!ref.read(reducedMotionProvider)) _ctrl.repeat(reverse: true);
     _arrow = Tween<Offset>(
       begin: Offset.zero,
       end: const Offset(0.32, 0),
@@ -474,46 +480,56 @@ class _StartButtonState extends State<_StartButton>
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 52,
-      child: Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        elevation: 4,
-        shadowColor: Colors.black26,
-        child: InkWell(
-          onTap: () {
-            HapticFeedback.lightImpact();
-            context.pushNamed('camera');
-          },
-          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-          splashColor: AppColors.grassGreen.withValues(alpha: 0.2),
-          child: Center(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Start Challenge',
-                  style: TextStyle(
-                    fontFamily: 'Nunito',
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.forestGreen,
+    return Semantics(
+      button: true,
+      label: "Start today's challenge",
+      excludeSemantics: true,
+      child: PressableScale(
+      child: SizedBox(
+        height: AppSpacing.buttonHeight,
+        child: Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+          elevation: 4,
+          shadowColor: Colors.black26,
+          child: InkWell(
+            onTap: () async {
+              if (_navigating) return;
+              _navigating = true;
+              unawaited(HapticFeedback.lightImpact());
+              await context.pushNamed('camera');
+              if (mounted) setState(() => _navigating = false);
+            },
+            borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+            splashColor: AppColors.grassGreen.withValues(alpha: 0.2),
+            child: Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Start Challenge',
+                    style: TextStyle(
+                      fontFamily: 'Nunito',
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.forestGreen,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 6),
-                SlideTransition(
-                  position: _arrow,
-                  child: const Icon(
-                    Icons.arrow_forward_rounded,
-                    size: 18,
-                    color: AppColors.forestGreen,
+                  const SizedBox(width: AppSpacing.sm),
+                  SlideTransition(
+                    position: _arrow,
+                    child: const Icon(
+                      Icons.arrow_forward_rounded,
+                      size: AppSpacing.iconSm,
+                      color: AppColors.forestGreen,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
+      ),
       ),
     );
   }
@@ -556,7 +572,7 @@ class _DoneCardState extends State<_DoneCard>
     return DecoratedBox(
       decoration: BoxDecoration(
         color: AppColors.nodeCompleted,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
         boxShadow: [
           BoxShadow(
             color: AppColors.grassGreen.withValues(alpha: 0.3),
@@ -579,7 +595,7 @@ class _DoneCardState extends State<_DoneCard>
                 child: const Padding(
                   padding: EdgeInsets.all(AppSpacing.sm),
                   child: Icon(Icons.check_circle_rounded,
-                      color: Colors.white, size: 28),
+                      color: Colors.white, size: AppSpacing.iconLg),
                 ),
               ),
             ),
@@ -622,8 +638,34 @@ class _DoneCardState extends State<_DoneCard>
 
 // ── Pending ───────────────────────────────────────────────────────────────────
 
-class _PendingCard extends StatelessWidget {
+class _PendingCard extends ConsumerStatefulWidget {
   const _PendingCard();
+
+  @override
+  ConsumerState<_PendingCard> createState() => _PendingCardState();
+}
+
+class _PendingCardState extends ConsumerState<_PendingCard> {
+  bool _showRetry = false;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Generation normally resolves in a few seconds (the card is replaced
+    // automatically once it does). If it's still showing after this long,
+    // generation likely failed silently — offer a way to retry rather than
+    // leaving the user staring at "check back in a moment" forever.
+    _timer = Timer(const Duration(seconds: 8), () {
+      if (mounted) setState(() => _showRetry = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -638,14 +680,14 @@ class _PendingCard extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
         border: Border.all(color: border, width: 1.5),
       ),
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.lg),
         child: Row(
           children: [
-            Icon(Icons.hourglass_top_rounded, size: 28, color: textColor),
+            Icon(Icons.hourglass_top_rounded, size: AppSpacing.iconLg, color: textColor),
             const SizedBox(width: AppSpacing.md),
             Expanded(
               child: Column(
@@ -672,6 +714,36 @@ class _PendingCard extends StatelessWidget {
                       color: textColor.withValues(alpha: 0.7),
                       height: 1.3,
                     ),
+                  ),
+                  AnimatedSize(
+                    duration: AppMotion.standard,
+                    alignment: Alignment.topLeft,
+                    child: _showRetry
+                        ? Padding(
+                            padding: const EdgeInsets.only(top: AppSpacing.sm),
+                            child: TextButton.icon(
+                              onPressed: () =>
+                                  ref.invalidate(assignmentInitProvider),
+                              style: TextButton.styleFrom(
+                                foregroundColor: textColor,
+                                padding: EdgeInsets.zero,
+                                minimumSize: Size.zero,
+                                tapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              icon: const Icon(Icons.refresh_rounded,
+                                  size: AppSpacing.iconTiny),
+                              label: const Text(
+                                'Taking a while — Try Again',
+                                style: TextStyle(
+                                  fontFamily: 'Nunito',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          )
+                        : const SizedBox.shrink(),
                   ),
                 ],
               ),

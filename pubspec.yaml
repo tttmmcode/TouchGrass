@@ -41,6 +41,7 @@ dependencies:
   # ── Camera & media ────────────────────────────────────────────────────────────
   image_picker: ^1.0.7
   camera: ^0.10.5
+  image: ^4.9.1
 
   # ── Maps ──────────────────────────────────────────────────────────────────────
   google_maps_flutter: ^2.5.0
@@ -59,6 +60,7 @@ dependencies:
   path_provider: ^2.1.2
   permission_handler: ^11.3.0
   http: ^1.2.0
+  connectivity_plus: ^6.0.5
 
 dev_dependencies:
   flutter_test:

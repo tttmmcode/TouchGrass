@@ -1,164 +1,42 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../models/league_definition.dart';
+import '../../../providers/leaderboard_providers.dart';
+import '../../../providers/settings_providers.dart';
 import '../../../providers/user_providers.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_spacing.dart';
 
 // ── League data ───────────────────────────────────────────────────────────────
+//
+// Sourced entirely from LeagueDef (lib/models/league_definition.dart) — the
+// single canonical league catalog also used by the leaderboard/promotion
+// logic, so this screen can never drift from it again.
 
-class _League {
-  const _League({
-    required this.name,
-    required this.emoji,
-    required this.color,
-    required this.minXp,
-    required this.maxXp,
-    required this.description,
-  });
+int _leagueIndexForXp(int xp) => LeagueDef.forXp(xp).index;
 
-  final String name;
-  final String emoji;
-  final Color color;
-  final int minXp;
-  final int maxXp; // -1 = no upper cap (Aurora)
-  final String description;
-}
-
-const _leagues = [
-  _League(
-    name: 'Seedling',
-    emoji: '🌱',
-    color: Color(0xFF8BC34A),
-    minXp: 0,
-    maxXp: 299,
-    description: 'Just starting your outdoor journey',
-  ),
-  _League(
-    name: 'Sprout',
-    emoji: '🌿',
-    color: Color(0xFF43A047),
-    minXp: 300,
-    maxXp: 699,
-    description: 'Growing roots in the great outdoors',
-  ),
-  _League(
-    name: 'Wildflower',
-    emoji: '🌸',
-    color: Color(0xFFE91E8C),
-    minXp: 700,
-    maxXp: 1499,
-    description: 'Blooming with outdoor adventures',
-  ),
-  _League(
-    name: 'Forest',
-    emoji: '🌲',
-    color: Color(0xFF2E7D32),
-    minXp: 1500,
-    maxXp: 2999,
-    description: 'Deep in the heart of nature',
-  ),
-  _League(
-    name: 'Mountain',
-    emoji: '🏔️',
-    color: Color(0xFF5C6BC0),
-    minXp: 3000,
-    maxXp: 5999,
-    description: 'Rising above and beyond',
-  ),
-  _League(
-    name: 'Summit',
-    emoji: '✨',
-    color: Color(0xFFFFB800),
-    minXp: 6000,
-    maxXp: 9999,
-    description: 'At the peak of outdoor excellence',
-  ),
-  _League(
-    name: 'Sky Trail',
-    emoji: '🌤️',
-    color: Color(0xFF29B6F6),
-    minXp: 10000,
-    maxXp: 19999,
-    description: 'Blazing trails through the sky',
-  ),
-  _League(
-    name: 'Aurora',
-    emoji: '🌌',
-    color: Color(0xFF7C4DFF),
-    minXp: 20000,
-    maxXp: -1,
-    description: 'A legend of the great outdoors',
-  ),
-];
-
-int _leagueIndexForXp(int xp) {
-  for (int i = _leagues.length - 1; i >= 0; i--) {
-    if (xp >= _leagues[i].minXp) return i;
-  }
-  return 0;
-}
-
-/// XP fraction within the current league (0.0–1.0). Always 1.0 for Summit.
+/// XP fraction within the current league (0.0–1.0). Always 1.0 for Aurora.
 double _progressInLeague(int xp, int idx) {
-  final league = _leagues[idx];
+  final league = LeagueDef.all[idx];
   if (league.maxXp == -1) return 1.0;
   final range = league.maxXp - league.minXp + 1;
   return ((xp - league.minXp) / range).clamp(0.0, 1.0);
 }
 
-/// Human-readable time until next Monday midnight UTC.
-String _weeklyResetLabel() {
-  final now = DateTime.now().toUtc();
-  final daysUntilMonday = (DateTime.monday - now.weekday + 7) % 7;
-  final nextMonday = DateTime.utc(
-    now.year,
-    now.month,
-    now.day + (daysUntilMonday == 0 ? 7 : daysUntilMonday),
-  );
-  final diff = nextMonday.difference(now);
-  final days = diff.inDays;
-  final hours = diff.inHours % 24;
-  if (days > 0) return '${days}d ${hours}h';
-  return '${diff.inHours}h ${diff.inMinutes % 60}m';
-}
-
 // ── Screen ────────────────────────────────────────────────────────────────────
 
-class LeaguesScreen extends ConsumerStatefulWidget {
+class LeaguesScreen extends ConsumerWidget {
   const LeaguesScreen({super.key});
 
   @override
-  ConsumerState<LeaguesScreen> createState() => _LeaguesScreenState();
-}
-
-class _LeaguesScreenState extends ConsumerState<LeaguesScreen> {
-  late Timer _timer;
-  String _resetLabel = _weeklyResetLabel();
-
-  @override
-  void initState() {
-    super.initState();
-    _timer = Timer.periodic(const Duration(minutes: 1), (_) {
-      if (mounted) setState(() => _resetLabel = _weeklyResetLabel());
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final user = ref.watch(currentUserProvider).valueOrNull;
+    final reducedMotion = ref.watch(reducedMotionProvider);
     final xp = user?.xp ?? 0;
     final leagueIdx = _leagueIndexForXp(xp);
-    final league = _leagues[leagueIdx];
+    final league = LeagueDef.all[leagueIdx];
     final progress = _progressInLeague(xp, leagueIdx);
 
     final strong = isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
@@ -182,7 +60,7 @@ class _LeaguesScreenState extends ConsumerState<LeaguesScreen> {
               progress: progress,
               leagueIdx: leagueIdx,
               isDark: isDark,
-              resetLabel: _resetLabel,
+              reducedMotion: reducedMotion,
             ),
           ),
 
@@ -217,12 +95,12 @@ class _LeaguesScreenState extends ConsumerState<LeaguesScreen> {
               AppSpacing.xxxl,
             ),
             sliver: SliverList.builder(
-              itemCount: _leagues.length,
+              itemCount: LeagueDef.all.length,
               itemBuilder: (context, i) {
-                // Render in reverse: Summit at top, Seedling at bottom.
-                final idx = _leagues.length - 1 - i;
+                // Render in reverse: Aurora at top, Seedling at bottom.
+                final idx = LeagueDef.all.length - 1 - i;
                 return _LadderRow(
-                  league: _leagues[idx],
+                  league: LeagueDef.all[idx],
                   leagueIdx: idx,
                   currentIdx: leagueIdx,
                   userXp: xp,
@@ -248,20 +126,20 @@ class _LeagueHero extends StatelessWidget {
     required this.progress,
     required this.leagueIdx,
     required this.isDark,
-    required this.resetLabel,
+    required this.reducedMotion,
   });
 
-  final _League league;
+  final LeagueDef league;
   final int xp;
   final double progress;
   final int leagueIdx;
   final bool isDark;
-  final String resetLabel;
+  final bool reducedMotion;
 
   @override
   Widget build(BuildContext context) {
     final isTop = league.maxXp == -1;
-    final nextLeague = isTop ? null : _leagues[leagueIdx + 1];
+    final nextLeague = isTop ? null : LeagueDef.all[leagueIdx + 1];
     final xpToNext = isTop ? 0 : (league.maxXp + 1) - xp;
 
     return Padding(
@@ -361,7 +239,9 @@ class _LeagueHero extends StatelessWidget {
                 const SizedBox(height: AppSpacing.xs),
                 TweenAnimationBuilder<double>(
                   tween: Tween<double>(begin: 0, end: progress),
-                  duration: const Duration(milliseconds: 1000),
+                  duration: reducedMotion
+                      ? Duration.zero
+                      : const Duration(milliseconds: 1000),
                   curve: Curves.easeOutCubic,
                   builder: (context, value, _) => LayoutBuilder(
                     builder: (_, constraints) {
@@ -440,45 +320,59 @@ class _LeagueHero extends StatelessWidget {
 
               const SizedBox(height: AppSpacing.md),
 
-              // Weekly reset chip
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? AppColors.surfaceVariantDark
-                      : AppColors.surfaceVariantLight,
-                  borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 5),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.timer_outlined,
-                        size: 13,
-                        color: isDark
-                            ? AppColors.onSurfaceVariantDark
-                            : AppColors.onSurfaceVariantLight,
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        'Leagues reset in $resetLabel',
-                        style: TextStyle(
-                          fontFamily: 'Nunito',
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: isDark
-                              ? AppColors.onSurfaceVariantDark
-                              : AppColors.onSurfaceVariantLight,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+              // Weekly reset chip — isolated Consumer so the 30s-ticking
+              // countdown only rebuilds this chip, not the whole hero card
+              // (and, transitively, the whole league ladder screen).
+              _ResetChip(isDark: isDark),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Ticking "Leagues reset in Xh Ym" chip. A separate [ConsumerWidget] —
+/// shares the same 30-second source as the leaderboard screen instead of a
+/// second independent Timer — so watching it only rebuilds this chip rather
+/// than the whole league ladder.
+class _ResetChip extends ConsumerWidget {
+  const _ResetChip({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final resetLabel =
+        ref.watch(weeklyResetCountdownProvider).valueOrNull ?? '—';
+    final muted = isDark
+        ? AppColors.onSurfaceVariantDark
+        : AppColors.onSurfaceVariantLight;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: isDark
+            ? AppColors.surfaceVariantDark
+            : AppColors.surfaceVariantLight,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.timer_outlined, size: 13, color: muted),
+            const SizedBox(width: 5),
+            Text(
+              'Leagues reset in $resetLabel',
+              style: TextStyle(
+                fontFamily: 'Nunito',
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: muted,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -498,7 +392,7 @@ class _LadderRow extends StatelessWidget {
     required this.muted,
   });
 
-  final _League league;
+  final LeagueDef league;
   final int leagueIdx;
   final int currentIdx;
   final int userXp;
@@ -580,9 +474,7 @@ class _LadderRow extends StatelessWidget {
                       ],
                     ),
                     Text(
-                      league.maxXp == -1
-                          ? '${league.minXp}+ XP'
-                          : '${league.minXp}–${league.maxXp} XP',
+                      league.xpRangeLabel,
                       style: TextStyle(
                         fontFamily: 'Nunito',
                         fontSize: 12,

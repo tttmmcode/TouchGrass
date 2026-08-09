@@ -31,6 +31,7 @@ class UserModel {
     required this.achievements,
     this.achievementTimestamps = const {},
     required this.settings,
+    this.frozenDates = const [],
   });
 
   final String uid;
@@ -73,6 +74,13 @@ class UserModel {
   final Map<String, DateTime> achievementTimestamps;
 
   final UserSettings settings;
+
+  /// Calendar dates ("yyyy-MM-dd", local to the user at the time) on which a
+  /// Rainy Day freeze absorbed a missed day, so the streak calendar can
+  /// render a truthful "frozen" state instead of guessing from streak
+  /// counters alone. Small and append-only — see
+  /// [UserRepository.awardCompletionRewards].
+  final List<String> frozenDates;
 
   // ── Computed properties ────────────────────────────────────────────────────
 
@@ -117,6 +125,7 @@ class UserModel {
       achievements: const [],
       achievementTimestamps: const {},
       settings: UserSettings.defaults(),
+      frozenDates: const [],
     );
   }
 
@@ -156,6 +165,7 @@ class UserModel {
       settings: UserSettings.fromMap(
         data['settings'] as Map<String, dynamic>? ?? {},
       ),
+      frozenDates: List<String>.from(data['frozenDates'] as List? ?? []),
     );
   }
 
@@ -181,6 +191,7 @@ class UserModel {
         'lastActiveDate': Timestamp.fromDate(lastActiveDate),
         'achievements': achievements,
         'settings': settings.toMap(),
+        'frozenDates': frozenDates,
         // achievementTimestamps is omitted — entries are written individually
         // using 'achievementTimestamps.{id}' field notation.
       };
@@ -206,6 +217,7 @@ class UserModel {
     List<String>? achievements,
     Map<String, DateTime>? achievementTimestamps,
     UserSettings? settings,
+    List<String>? frozenDates,
   }) =>
       UserModel(
         uid: uid,
@@ -228,6 +240,7 @@ class UserModel {
         achievementTimestamps:
             achievementTimestamps ?? this.achievementTimestamps,
         settings: settings ?? this.settings,
+        frozenDates: frozenDates ?? this.frozenDates,
       );
 
   // ── Equality ───────────────────────────────────────────────────────────────

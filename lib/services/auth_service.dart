@@ -183,6 +183,34 @@ class AuthService {
     }
   }
 
+  /// Reauthenticates an Apple user.
+  /// Must be called before [deleteAccount] for Apple users.
+  Future<void> reauthenticateWithApple() async {
+    try {
+      final appleCredential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+      );
+
+      final oauthCredential = OAuthProvider('apple.com').credential(
+        idToken: appleCredential.identityToken,
+        accessToken: appleCredential.authorizationCode,
+      );
+      await _auth.currentUser?.reauthenticateWithCredential(oauthCredential);
+    } on FirebaseAuthException catch (e) {
+      throw _mapFirebaseException(e);
+    } on SignInWithAppleAuthorizationException catch (e) {
+      if (e.code == AuthorizationErrorCode.canceled) {
+        throw AuthException.cancelled();
+      }
+      throw AuthException.providerError(e);
+    } catch (e) {
+      throw AuthException.providerError(e);
+    }
+  }
+
   /// Deletes the current Firebase Auth account.
   /// Caller must reauthenticate first.
   Future<void> deleteAuthAccount() async {

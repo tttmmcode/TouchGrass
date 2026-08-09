@@ -102,7 +102,7 @@ abstract final class AppTheme {
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
           side: BorderSide(
             color: isDark ? AppColors.dividerDark : AppColors.dividerLight,
             width: 1.5,
@@ -119,7 +119,7 @@ abstract final class AppTheme {
               isDark ? AppColors.surfaceVariantDark : AppColors.dividerLight,
           minimumSize: const Size.fromHeight(AppSpacing.buttonHeight),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
           ),
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
@@ -133,7 +133,7 @@ abstract final class AppTheme {
           foregroundColor: AppColors.forestGreen,
           minimumSize: const Size.fromHeight(AppSpacing.buttonHeight),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
           ),
           side: const BorderSide(color: AppColors.forestGreen, width: 2),
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
@@ -149,6 +149,13 @@ abstract final class AppTheme {
         ),
       ),
 
+      // ── Text selection (cursor + highlight, every TextField app-wide) ──────
+      textSelectionTheme: TextSelectionThemeData(
+        cursorColor: AppColors.forestGreen,
+        selectionColor: AppColors.forestGreen.withValues(alpha: 0.20),
+        selectionHandleColor: AppColors.forestGreen,
+      ),
+
       // ── Input Decoration ───────────────────────────────────────────────────
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
@@ -158,24 +165,24 @@ abstract final class AppTheme {
           vertical: AppSpacing.md,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusTextField),
           borderSide: BorderSide(
             color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
           ),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusTextField),
           borderSide: BorderSide(
             color: isDark ? AppColors.dividerDark : AppColors.dividerLight,
             width: 1.5,
           ),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusTextField),
           borderSide: const BorderSide(color: AppColors.forestGreen, width: 2),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusTextField),
           borderSide: const BorderSide(color: AppColors.error, width: 1.5),
         ),
         labelStyle: _nunito(
@@ -241,7 +248,7 @@ abstract final class AppTheme {
         backgroundColor: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppSpacing.radiusXxl),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusDialog),
         ),
         titleTextStyle: _nunito(
           20, FontWeight.w800,
@@ -255,7 +262,7 @@ abstract final class AppTheme {
         surfaceTintColor: Colors.transparent,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(
-            top: Radius.circular(AppSpacing.radiusXxl),
+            top: Radius.circular(AppSpacing.radiusBottomSheet),
           ),
         ),
         dragHandleColor: isDark ? AppColors.outlineDark : AppColors.outlineLight,

@@ -29,7 +29,7 @@ abstract final class ErrorService {
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(
-          _snackBar(context, message, AppColors.forestGreenDark));
+          _snackBar(context, message, AppColors.success));
   }
 
   /// Shows a neutral info SnackBar. No-ops if [context] is no longer mounted.
@@ -38,7 +38,7 @@ abstract final class ErrorService {
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(
-          _snackBar(context, message, AppColors.skyBlue));
+          _snackBar(context, message, AppColors.info));
   }
 
   static SnackBar _snackBar(

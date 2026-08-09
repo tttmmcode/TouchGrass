@@ -17,16 +17,16 @@ service cloud.firestore {
                      'level', 'streak', 'longestStreak', 'totalCompletions',
                      'totalPhotosUploaded', 'rainyDayCount', 'currentLeague',
                      'email', 'username', 'lastActiveDate', 'achievements',
-                     'achievementTimestamps', 'settings'];
+                     'achievementTimestamps', 'settings', 'frozenDates'];
       return request.resource.data.keys().hasOnly(allowed.concat(['uid', 'createdAt']));
     }
 
     // ── Users ─────────────────────────────────────────────────────────────────
-    // Any signed-in user can read user documents (required for leaderboard queries).
-    // profilePublic filtering is enforced client-side in LeaderboardService.
-    // Writes are restricted to the document owner.
+    // Full user documents contain private fields (email, etc.) and are only
+    // readable by their owner. Leaderboard/league queries read the
+    // `leaderboard_public` mirror below instead of this collection.
     match /users/{userId} {
-      allow read: if isSignedIn();
+      allow read: if isOwner(userId);
 
       // Allow initial document creation (new sign-up).
       allow create: if isOwner(userId)
@@ -42,6 +42,33 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ── Public leaderboard mirror ────────────────────────────────────────────
+    // Contains only the safe-to-share subset of a user's document. Any
+    // signed-in user may read it (required for leaderboard/league queries);
+    // only the owner may write, and only the allow-listed fields. Absence of
+    // a document here means that user has opted out of public leaderboards.
+    match /leaderboard_public/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId)
+        && request.resource.data.keys().hasOnly(['displayName', 'username',
+           'photoUrl', 'xp', 'weeklyXp', 'streak', 'currentLeague']);
+      allow delete: if isOwner(userId);
+    }
+
+    // ── Username registry ─────────────────────────────────────────────────────
+    // usernames/{username} — doc ID is the lowercase username, data is just
+    // {uid: <owner>}. Enforces uniqueness: a client can only claim a doc for
+    // its own uid, and only release (delete) a claim it owns. Read is open
+    // to any signed-in user since availability must be checkable before a
+    // claim exists.
+    match /usernames/{username} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid']);
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+
     // ── Per-user challenges (subcollection) ──────────────────────────────────
     // users/{userId}/challenges/{date} — read/write by owner only.
     match /users/{userId}/challenges/{challengeId} {
@@ -49,7 +76,7 @@ service cloud.firestore {
     }
 
     // ── Per-user memories (subcollection) ────────────────────────────────────
-    // users/{userId}/memories/{memoryId} — owner read/write; no deletion.
+    // users/{userId}/memories/{memoryId} — owner read/write/delete only.
     match /users/{userId}/memories/{memoryId} {
       allow read: if isOwner(userId);
       allow create: if isOwner(userId)
@@ -59,7 +86,8 @@ service cloud.firestore {
       allow update: if isOwner(userId)
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['caption', 'captionUpdatedAt']);
-      allow delete: if false;
+      // Needed for account deletion to remove memory records.
+      allow delete: if isOwner(userId);
     }
 
     // ── Challenges ────────────────────────────────────────────────────────────
@@ -76,8 +104,16 @@ service cloud.firestore {
       allow read: if isSignedIn()
         && resource.data.userId == request.auth.uid;
 
+      // The document ID must be the canonical `${uid}_${challengeId}` key
+      // (see CompletionRepository.createCompletion) — since Firestore only
+      // classifies a write as `create` when nothing exists yet at that ID,
+      // and `update`/`delete` are blocked below, this makes duplicate
+      // completions for the same day impossible to write even via a direct
+      // SDK/REST call that bypasses the app's own client-side transaction
+      // guard, not just from the app's own UI.
       allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid
+        && completionId == request.auth.uid + '_' + request.resource.data.challengeId
         && request.resource.data.keys().hasAll(['userId', 'challengeId',
            'photoUrl', 'verificationResult', 'completedAt', 'xpAwarded']);
 

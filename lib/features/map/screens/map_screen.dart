@@ -1,20 +1,86 @@
+import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_performance/firebase_performance.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
-import 'package:shimmer/shimmer.dart';
 
+import '../../../core/services/error_service.dart';
 import '../../../models/adventure_memory_model.dart';
 import '../../../models/challenge_model.dart';
 import '../../../providers/map_providers.dart';
 import '../../../providers/memory_providers.dart';
+import '../../../providers/settings_providers.dart';
+import '../../../services/location_service.dart';
 import '../../../services/perf_service.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_elevation.dart';
+import '../../../theme/app_motion.dart';
 import '../../../theme/app_spacing.dart';
+import '../../../widgets/app_button.dart';
+import '../../../widgets/error_retry_view.dart';
+import '../../../widgets/loading_widgets.dart';
+import '../../../widgets/pressable_scale.dart';
+import '../utils/photo_marker_generator.dart';
+
+// ── Clustering ───────────────────────────────────────────────────────────────
+
+/// Grid-cell size (in degrees) to group markers at the given zoom — coarser
+/// cells when zoomed out (world view), finer when zoomed in (street view),
+/// so nearby memories merge into one cluster only when they'd visually
+/// overlap. Manual grid clustering (not a maps-clustering package) keeps
+/// this dependency-free; see [PhotoMarkerGenerator] for the marker bitmaps.
+@visibleForTesting
+double cellSizeForZoom(double zoom) {
+  final size = 60.0 / math.pow(2, zoom);
+  // Lower bound (~3m at the equator) keeps clustering from fragmenting on
+  // GPS jitter even at max zoom; upper bound (~40°) keeps a fully zoomed-out
+  // world view from collapsing everything into one giant cluster.
+  return size.clamp(0.00003, 40.0);
+}
+
+/// Groups [memories] (all assumed to have a location) into proximity
+/// clusters for the given map [zoom]. Extracted as a pure function — no
+/// `BuildContext`, no map controller — so clustering correctness (grouping
+/// threshold, group membership) is directly unit-testable.
+@visibleForTesting
+List<List<AdventureMemoryModel>> clusterMemoriesByProximity(
+  List<AdventureMemoryModel> memories, {
+  required double zoom,
+}) {
+  final cellSize = cellSizeForZoom(zoom);
+  final cells = <String, List<AdventureMemoryModel>>{};
+  for (final m in memories) {
+    final key = '${(m.latitude! / cellSize).floor()}_'
+        '${(m.longitude! / cellSize).floor()}';
+    cells.putIfAbsent(key, () => []).add(m);
+  }
+  return cells.values.toList();
+}
+
+// ── Map focus ────────────────────────────────────────────────────────────────
+
+/// Resolves which memory (if any) a pending "View on Map" focus request
+/// refers to. Extracted as a pure function so the lookup rule — must exist
+/// in the currently-loaded list AND have a valid location, else gracefully
+/// fall back to normal map behavior — is directly unit-testable without a
+/// `GoogleMapController` or widget tree.
+@visibleForTesting
+AdventureMemoryModel? resolveFocusMemory(
+  List<AdventureMemoryModel> memories,
+  String? focusMemoryId,
+) {
+  if (focusMemoryId == null) return null;
+  for (final m in memories) {
+    if (m.memoryId == focusMemoryId && m.hasLocation) return m;
+  }
+  return null;
+}
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
@@ -26,18 +92,68 @@ class MapScreen extends ConsumerStatefulWidget {
 }
 
 class _MapScreenState extends ConsumerState<MapScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final TabController _tabController;
   GoogleMapController? _mapController;
   ChallengeCategory? _selectedCategory;
   Trace? _loadTrace;
 
+  /// Memory ID to center on and emphasize, sourced from
+  /// [pendingMapFocusProvider]. Re-applied via `ref.listen` (not just a
+  /// one-time initState read) so it works both the first time this screen is
+  /// ever built AND on every later "View on Map" while the screen instance
+  /// stays alive in its IndexedStack branch.
+  String? _focusMemoryId;
+
+  /// The focus memory ID we've already animated the camera to / opened the
+  /// detail sheet for — prevents re-triggering that side effect on every
+  /// rebuild once it's been applied.
+  String? _appliedFocusId;
+
+  String? _selectedMemoryId;
+  bool _modalOpen = false;
+
+  double _zoom = 2.0;
+  bool _autoLoadTriggered = false;
+  bool _autoLoadInFlight = false;
+
+  /// True once the user has manually panned/zoomed the map — after that, the
+  /// ambient "follow my location" listener below must stop recentering the
+  /// camera on its own (it would otherwise fight the user's own movement
+  /// every time `currentLocationProvider` re-resolves, e.g. after an app
+  /// resume). Distinguished from programmatic moves via [_isProgrammaticMove].
+  bool _userInteractedWithMap = false;
+  bool _isProgrammaticMove = false;
+
+  final Map<String, BitmapDescriptor> _markerCache = {};
+  final Map<int, BitmapDescriptor> _clusterCache = {};
+  final Set<String> _generatingMarkers = {};
+
+  /// Decoded images keyed by photo URL, shared between a memory's selected
+  /// and unselected marker variants so toggling selection only re-runs the
+  /// cheap canvas rasterization step, never a repeat network fetch.
+  final Map<String, ui.Image> _decodedImages = {};
+
+  /// Marker/cluster cache keys that failed to generate (network error, decode
+  /// error). Checked before re-requesting so a permanently-broken photo URL
+  /// doesn't get re-fetched on every rebuild — the hue-based fallback marker
+  /// stays in place instead.
+  final Set<String> _failedMarkers = {};
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(_onTabChanged);
     _loadTrace = PerfService.startTrace(PerfService.traceMapLoad);
+
+    _focusMemoryId = ref.read(pendingMapFocusProvider);
+    if (_focusMemoryId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) ref.read(pendingMapFocusProvider.notifier).state = null;
+      });
+    }
   }
 
   void _onTabChanged() {
@@ -46,7 +162,19 @@ class _MapScreenState extends ConsumerState<MapScreen>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The user may be returning from the OS Settings screen after granting
+    // location access from the "enable location" banner below — re-check so
+    // the map doesn't stay stuck on a denied-access state until a restart.
+    if (state == AppLifecycleState.resumed) {
+      ref.invalidate(locationAccessStatusProvider);
+      ref.invalidate(currentLocationProvider);
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tabController.dispose();
     _mapController?.dispose();
     super.dispose();
@@ -59,47 +187,212 @@ class _MapScreenState extends ConsumerState<MapScreen>
         .toList();
   }
 
+  /// Keeps loading pages until the full history is available for markers —
+  /// the map (unlike the scroll-paginated journal) needs the whole picture
+  /// to cluster correctly. Still goes through the same bounded, cursor-based
+  /// pages (never one unbounded query) and stops as soon as `hasMore` is
+  /// false. The 20-page ceiling (~1000 memories) is far beyond any realistic
+  /// history for a once-a-day habit app and exists only as a safety bound.
+  Future<void> _autoLoadAllForMap() async {
+    if (_autoLoadInFlight) return;
+    _autoLoadInFlight = true;
+    final notifier = ref.read(memoriesControllerProvider.notifier);
+    for (var i = 0; i < 20; i++) {
+      final state = ref.read(memoriesControllerProvider);
+      if (!state.hasMore || state.loadingMore) break;
+      await notifier.loadMore();
+      if (!mounted) return;
+    }
+    _autoLoadInFlight = false;
+  }
+
+  // ── Clustering ────────────────────────────────────────────────────────────
+
   Set<Marker> _buildMarkers(List<AdventureMemoryModel> memories) {
-    // Count how many markers share each position so we can spread them out.
-    final stackCount = <String, int>{};
-    return memories
-        .where((m) => m.hasLocation)
-        .map((m) {
-          final key =
-              '${m.latitude!.toStringAsFixed(5)},${m.longitude!.toStringAsFixed(5)}';
-          final n = stackCount[key] ?? 0;
-          stackCount[key] = n + 1;
-          // Spiral-offset overlapping pins by ~5 m so each is individually tappable.
-          final angle = n * 2.4; // golden-angle spread
-          final dist = n == 0 ? 0.0 : 0.00005 * math.sqrt(n.toDouble());
-          final lat = m.latitude! + dist * math.cos(angle);
-          final lng = m.longitude! + dist * math.sin(angle);
-          return Marker(
-            markerId: MarkerId(m.memoryId),
-            position: LatLng(lat, lng),
-            icon: BitmapDescriptor.defaultMarkerWithHue(
-              _hueForCategory(m.challengeCategory),
-            ),
-            onTap: () => _showMemoryModal(m),
-          );
-        })
-        .toSet();
+    final withLocation = memories.where((m) => m.hasLocation).toList();
+    final groups = clusterMemoriesByProximity(withLocation, zoom: _zoom);
+    final markers = <Marker>{};
+    for (final group in groups) {
+      markers.add(
+        group.length == 1 ? _singleMarker(group.first) : _clusterMarker(group),
+      );
+    }
+    return markers;
+  }
+
+  Marker _singleMarker(AdventureMemoryModel m) {
+    final selected = m.memoryId == _selectedMemoryId;
+    final cacheKey = '${m.memoryId}:$selected';
+    final icon = _markerCache[cacheKey];
+    if (icon == null && !_failedMarkers.contains(m.memoryId)) {
+      _requestPhotoMarker(m, selected, cacheKey);
+    }
+    return Marker(
+      markerId: MarkerId(m.memoryId),
+      position: LatLng(m.latitude!, m.longitude!),
+      icon: icon ??
+          BitmapDescriptor.defaultMarkerWithHue(
+            _hueForCategory(m.challengeCategory),
+          ),
+      anchor: const Offset(0.5, 0.5),
+      zIndexInt: selected ? 1 : 0,
+      // Gives the marker an accessible title (surfaced by the platform's
+      // screen reader) in addition to the tap target below.
+      infoWindow: InfoWindow(
+        title: 'Adventure photo from ${m.displayLocation}, '
+            '${DateFormat('MMMM d').format(m.completionDate)}',
+      ),
+      onTap: () => _showMemoryModal(m),
+    );
+  }
+
+  Marker _clusterMarker(List<AdventureMemoryModel> group) {
+    final lat =
+        group.map((m) => m.latitude!).reduce((a, b) => a + b) / group.length;
+    final lng =
+        group.map((m) => m.longitude!).reduce((a, b) => a + b) / group.length;
+    final count = group.length;
+    final icon = _clusterCache[count];
+    if (icon == null) _requestClusterMarker(count);
+    return Marker(
+      markerId: MarkerId('cluster_${group.map((m) => m.memoryId).join('_')}'),
+      position: LatLng(lat, lng),
+      icon: icon ??
+          BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+      anchor: const Offset(0.5, 0.5),
+      infoWindow: InfoWindow(title: '$count adventures here'),
+      onTap: () => _zoomToCluster(group),
+    );
+  }
+
+  /// Zooms to fit every memory in [group] within view (with padding) rather
+  /// than guessing a fixed zoom increment — reliably separates the cluster
+  /// into individual markers in one tap regardless of how tightly grouped
+  /// the underlying memories are.
+  void _zoomToCluster(List<AdventureMemoryModel> group) {
+    if (group.length == 1) {
+      final m = group.first;
+      _moveCamera(
+        CameraUpdate.newLatLngZoom(LatLng(m.latitude!, m.longitude!), 17),
+      );
+      return;
+    }
+    var minLat = group.first.latitude!;
+    var maxLat = minLat;
+    var minLng = group.first.longitude!;
+    var maxLng = minLng;
+    for (final m in group.skip(1)) {
+      minLat = math.min(minLat, m.latitude!);
+      maxLat = math.max(maxLat, m.latitude!);
+      minLng = math.min(minLng, m.longitude!);
+      maxLng = math.max(maxLng, m.longitude!);
+    }
+    // A cluster whose members are all at (near-)identical coordinates would
+    // otherwise produce a degenerate/zero-area bounds that newLatLngBounds
+    // can reject — pad it out to a small but real box.
+    const minSpan = 0.0006;
+    if ((maxLat - minLat) < minSpan) {
+      minLat -= minSpan / 2;
+      maxLat += minSpan / 2;
+    }
+    if ((maxLng - minLng) < minSpan) {
+      minLng -= minSpan / 2;
+      maxLng += minSpan / 2;
+    }
+    final bounds = LatLngBounds(
+      southwest: LatLng(minLat, minLng),
+      northeast: LatLng(maxLat, maxLng),
+    );
+    _moveCamera(CameraUpdate.newLatLngBounds(bounds, 64));
+  }
+
+  Future<void> _requestPhotoMarker(
+    AdventureMemoryModel m,
+    bool selected,
+    String cacheKey,
+  ) async {
+    if (!m.photoUrl.startsWith('http')) return;
+    if (!_generatingMarkers.add(cacheKey)) return;
+    try {
+      var image = _decodedImages[m.photoUrl];
+      if (image == null) {
+        image = await PhotoMarkerGenerator.loadImage(m.photoUrl);
+        if (!mounted) return;
+        _decodedImages[m.photoUrl] = image;
+      }
+      final icon = await PhotoMarkerGenerator.rasterizePhotoMarker(
+        image: image,
+        selected: selected,
+        accentColor: AppColors.forestGreen,
+      );
+      if (!mounted) return;
+      _markerCache[cacheKey] = icon;
+      setState(() {});
+    } catch (_) {
+      // Network/decode failure — the hue-based fallback marker (already
+      // rendered) stays in place. Marked failed so a permanently-broken
+      // photo URL isn't re-fetched on every subsequent rebuild.
+      _failedMarkers.add(m.memoryId);
+    } finally {
+      _generatingMarkers.remove(cacheKey);
+    }
+  }
+
+  Future<void> _requestClusterMarker(int count) async {
+    final key = 'cluster_$count';
+    if (!_generatingMarkers.add(key)) return;
+    try {
+      final icon = await PhotoMarkerGenerator.buildClusterMarker(
+        count: count,
+        color: AppColors.forestGreen,
+      );
+      if (!mounted) return;
+      _clusterCache[count] = icon;
+      setState(() {});
+    } catch (_) {
+      // Keep the fallback default marker.
+    } finally {
+      _generatingMarkers.remove(key);
+    }
+  }
+
+  /// Single entry point for every programmatic camera movement — respects
+  /// Reduce Motion (jumps instantly via `moveCamera` instead of animating)
+  /// and flags the move as programmatic so [onCameraMoveStarted] doesn't
+  /// mistake it for a user gesture (which would otherwise permanently
+  /// suppress the "follow my location" listener below).
+  void _moveCamera(CameraUpdate update) {
+    final controller = _mapController;
+    if (controller == null) return;
+    _isProgrammaticMove = true;
+    final reduceMotion = ref.read(reducedMotionProvider);
+    final future =
+        reduceMotion ? controller.moveCamera(update) : controller.animateCamera(update);
+    future.whenComplete(() => _isProgrammaticMove = false);
   }
 
   void _showMemoryModal(AdventureMemoryModel memory) {
-    _mapController?.animateCamera(
+    _moveCamera(
       CameraUpdate.newLatLng(LatLng(memory.latitude!, memory.longitude!)),
     );
     _openModal(memory);
   }
 
   void _openModal(AdventureMemoryModel memory) {
+    // Guards against a rapid double-tap on a marker/journal card pushing two
+    // overlapping detail sheets before the first one's route has settled.
+    if (_modalOpen) return;
+    _modalOpen = true;
+    setState(() => _selectedMemoryId = memory.memoryId);
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _MemoryDetailModal(memory: memory),
-    );
+    ).then((_) {
+      _modalOpen = false;
+      if (mounted) setState(() => _selectedMemoryId = null);
+    });
   }
 
   double _hueForCategory(ChallengeCategory cat) => switch (cat) {
@@ -116,20 +409,103 @@ class _MapScreenState extends ConsumerState<MapScreen>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final memoriesAsync = ref.watch(memoriesProvider);
-    final allMemories = memoriesAsync.valueOrNull ?? [];
+    final memoriesState = ref.watch(memoriesControllerProvider);
+    final allMemories = memoriesState.memories;
     final filtered = _filter(allMemories);
     final markers = _buildMarkers(filtered);
     final locationAsync = ref.watch(currentLocationProvider);
     final myLocation = locationAsync.valueOrNull;
+    final locationStatus = ref.watch(locationAccessStatusProvider).valueOrNull;
 
-    ref.listen(currentLocationProvider, (_, next) {
-      if (next.hasValue && next.valueOrNull != null) {
-        _mapController?.animateCamera(
-          CameraUpdate.newLatLngZoom(next.value!, 13),
-        );
+    ref.listen<MemoriesState>(memoriesControllerProvider, (previous, next) {
+      if (previous?.initialLoading == true &&
+          !next.initialLoading &&
+          !_autoLoadTriggered) {
+        _autoLoadTriggered = true;
+        _autoLoadAllForMap();
       }
     });
+
+    ref.listen<String?>(pendingMapFocusProvider, (previous, next) {
+      if (next != null) {
+        setState(() => _focusMemoryId = next);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) ref.read(pendingMapFocusProvider.notifier).state = null;
+        });
+      }
+    });
+
+    // Resolve the memory to focus on (from "View on Map"), if any. Falls
+    // back to normal myLocation-centered behavior when there's no pending
+    // focus, the memory isn't found yet, or it has no location — never
+    // breaks ordinary map navigation.
+    final focusMemory = resolveFocusMemory(allMemories, _focusMemoryId);
+    final focusTarget = focusMemory != null
+        ? LatLng(focusMemory.latitude!, focusMemory.longitude!)
+        : null;
+
+    if (focusMemory != null &&
+        _mapController != null &&
+        _appliedFocusId != focusMemory.memoryId) {
+      final memory = focusMemory;
+      _appliedFocusId = memory.memoryId;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (_tabController.index != 0) _tabController.animateTo(0);
+        _moveCamera(
+          CameraUpdate.newLatLngZoom(
+            LatLng(memory.latitude!, memory.longitude!),
+            15,
+          ),
+        );
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) _showMemoryModal(memory);
+        });
+      });
+    }
+
+    ref.listen(currentLocationProvider, (_, next) {
+      // Don't let "my location" resolving late steal the camera away from a
+      // memory the user explicitly navigated here to see, and once the user
+      // has manually panned/zoomed, stop fighting their own movement (e.g.
+      // this listener firing again after an app-resume location refresh).
+      if (focusTarget != null) return;
+      if (_userInteractedWithMap) return;
+      if (next.hasValue && next.valueOrNull != null) {
+        _moveCamera(CameraUpdate.newLatLngZoom(next.value!, 13));
+      }
+    });
+
+    // Initial camera position: focus target > user location > most recent
+    // memory > safe world default. Never over-zoomed when we don't actually
+    // know where the user is.
+    final LatLng initialTarget;
+    final double initialZoom;
+    if (focusTarget != null) {
+      initialTarget = focusTarget;
+      initialZoom = 15.0;
+    } else if (myLocation != null) {
+      initialTarget = myLocation;
+      initialZoom = 13.0;
+    } else {
+      AdventureMemoryModel? mostRecentWithLocation;
+      for (final m in allMemories) {
+        if (m.hasLocation) {
+          mostRecentWithLocation = m;
+          break;
+        }
+      }
+      if (mostRecentWithLocation != null) {
+        initialTarget = LatLng(
+          mostRecentWithLocation.latitude!,
+          mostRecentWithLocation.longitude!,
+        );
+        initialZoom = 11.0;
+      } else {
+        initialTarget = const LatLng(20.0, 0.0);
+        initialZoom = 2.0;
+      }
+    }
 
     return Scaffold(
       body: Stack(
@@ -140,32 +516,52 @@ class _MapScreenState extends ConsumerState<MapScreen>
             children: [
               // Map tab
               GoogleMap(
-                initialCameraPosition: CameraPosition(
-                  target: myLocation ?? const LatLng(20.0, 0.0),
-                  zoom: myLocation != null ? 13.0 : 2.0,
-                ),
+                initialCameraPosition:
+                    CameraPosition(target: initialTarget, zoom: initialZoom),
                 markers: markers,
-                myLocationEnabled: true,
+                myLocationEnabled:
+                    locationStatus == LocationAccessStatus.granted,
                 myLocationButtonEnabled: false,
                 zoomControlsEnabled: false,
                 mapType: MapType.normal,
+                onCameraMove: (pos) => _zoom = pos.zoom,
+                onCameraMoveStarted: () {
+                  // A programmatic move (our own _moveCamera calls) also
+                  // triggers this, so only treat it as real user interaction
+                  // when nothing we initiated is currently in flight —
+                  // otherwise the ambient "follow my location" listener
+                  // above would be permanently (and incorrectly) suppressed
+                  // the first time we ourselves recenter the map.
+                  if (!_isProgrammaticMove) _userInteractedWithMap = true;
+                },
+                onCameraIdle: () {
+                  // Recompute clusters for the new zoom once the camera
+                  // settles — not on every drag frame.
+                  if (mounted) setState(() {});
+                },
                 onMapCreated: (c) {
                   _mapController = c;
                   _loadTrace?.stop();
                   _loadTrace = null;
-                  if (myLocation != null) {
-                    c.animateCamera(
-                      CameraUpdate.newLatLngZoom(myLocation, 13),
-                    );
+                  if (focusTarget == null && myLocation != null) {
+                    _moveCamera(CameraUpdate.newLatLngZoom(myLocation, 13));
                   }
+                  // Re-evaluate the focus-flow effect above now that the
+                  // controller exists.
+                  setState(() {});
                 },
               ),
               // Journal tab
               _JournalTab(
-                memories: filtered,
-                isLoading: memoriesAsync.isLoading,
+                state: memoriesState,
+                filtered: filtered,
                 onTap: _openModal,
                 isDark: isDark,
+                reducedMotion: ref.watch(reducedMotionProvider),
+                onLoadMore: () =>
+                    ref.read(memoriesControllerProvider.notifier).loadMore(),
+                onRetry: () =>
+                    ref.read(memoriesControllerProvider.notifier).retry(),
               ),
             ],
           ),
@@ -193,14 +589,61 @@ class _MapScreenState extends ConsumerState<MapScreen>
                           count: allMemories.length,
                           isDark: isDark,
                         ),
-                        const Spacer(),
-                        if (_tabController.index == 0 && myLocation != null)
-                          _MyLocationButton(
-                            isDark: isDark,
-                            onTap: () => _mapController?.animateCamera(
-                              CameraUpdate.newLatLngZoom(myLocation, 14),
+                        // A small, non-blocking indicator that memories are
+                        // still loading — the map itself stays fully
+                        // interactive/pannable in the meantime, it just
+                        // doesn't have markers to show yet.
+                        if (_tabController.index == 0 &&
+                            memoriesState.initialLoading) ...[
+                          const SizedBox(width: AppSpacing.sm),
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.forestGreen,
                             ),
                           ),
+                        ],
+                        const Spacer(),
+                        if (_tabController.index == 0)
+                          if (myLocation != null)
+                            _MyLocationButton(
+                              isDark: isDark,
+                              onTap: () => _moveCamera(
+                                CameraUpdate.newLatLngZoom(myLocation, 14),
+                              ),
+                            )
+                          else if (locationStatus != null &&
+                              locationStatus != LocationAccessStatus.granted)
+                            _EnableLocationButton(
+                              isDark: isDark,
+                              semanticLabel: switch (locationStatus) {
+                                LocationAccessStatus.serviceDisabled =>
+                                  'Location services are off. Tap to open settings.',
+                                LocationAccessStatus.deniedForever =>
+                                  'Location access denied. Tap to enable in Settings.',
+                                _ =>
+                                  'Location access needed to show your position on the map. Tap to allow.',
+                              },
+                              onTap: () {
+                                final service = ref.read(locationServiceProvider);
+                                switch (locationStatus) {
+                                  case LocationAccessStatus.serviceDisabled:
+                                    service.openLocationServiceSettings();
+                                  case LocationAccessStatus.deniedForever:
+                                    service.openAppSettings();
+                                  default:
+                                    // Not yet permanently denied — the OS
+                                    // may still show its own prompt, so
+                                    // simply retry the request instead of
+                                    // sending the user to Settings.
+                                    ref.invalidate(currentLocationProvider);
+                                    ref.invalidate(
+                                        locationAccessStatusProvider);
+                                }
+                              },
+                            ),
                       ],
                     ),
                     const SizedBox(height: AppSpacing.sm),
@@ -245,13 +688,7 @@ class _TabSwitcherPill extends StatelessWidget {
       decoration: BoxDecoration(
         color: surface.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        boxShadow: AppElevation.medium,
       ),
       child: Padding(
         padding: const EdgeInsets.all(3),
@@ -302,7 +739,8 @@ class _PillTab extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+        duration: AppMotion.standard,
+        curve: AppMotion.transitionCurve,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
           color: selected ? AppColors.forestGreen : Colors.transparent,
@@ -367,13 +805,7 @@ class _MyLocationButton extends StatelessWidget {
       decoration: BoxDecoration(
         color: surface.withValues(alpha: 0.95),
         shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        boxShadow: AppElevation.medium,
       ),
       child: Material(
         color: Colors.transparent,
@@ -381,12 +813,86 @@ class _MyLocationButton extends StatelessWidget {
         child: InkWell(
           customBorder: const CircleBorder(),
           onTap: onTap,
-          child: const Padding(
-            padding: EdgeInsets.all(10),
-            child: Icon(
-              Icons.my_location_rounded,
-              color: AppColors.forestGreen,
-              size: 22,
+          child: Semantics(
+            button: true,
+            label: 'Center map on my location',
+            child: const Padding(
+              padding: EdgeInsets.all(10),
+              child: Icon(
+                Icons.my_location_rounded,
+                color: AppColors.forestGreen,
+                size: 22,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Enable location button ────────────────────────────────────────────────────
+
+/// Shown in place of [_MyLocationButton] when location access has been
+/// permanently denied or the device's location service is off — the OS
+/// won't prompt again in either case, so this is the only way back in.
+class _EnableLocationButton extends StatelessWidget {
+  const _EnableLocationButton({
+    required this.isDark,
+    required this.semanticLabel,
+    required this.onTap,
+  });
+
+  final bool isDark;
+  final String semanticLabel;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final surface = isDark ? AppColors.surfaceDark : AppColors.surfaceLight;
+    final onSurface =
+        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: surface.withValues(alpha: 0.95),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+        boxShadow: AppElevation.medium,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+          onTap: onTap,
+          child: Semantics(
+            button: true,
+            label: semanticLabel,
+            excludeSemantics: true,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.location_off_rounded,
+                    color: AppColors.warmYellow,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Enable Location',
+                    style: TextStyle(
+                      fontFamily: 'Nunito',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: onSurface,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -416,8 +922,12 @@ class _CategoryFilterBar extends StatelessWidget {
         : AppColors.onSurfaceVariantLight;
     const categories = ChallengeCategory.values;
 
+    // The visible chip stays compact (matches the rest of the filter row's
+    // density), but each item's actual hit-test area is padded out to the
+    // 48x48 minimum interactive target — an invisible tap area around a
+    // small chip, not an enlarged chip.
     return SizedBox(
-      height: 34,
+      height: AppSpacing.xxxl,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: categories.length,
@@ -425,32 +935,43 @@ class _CategoryFilterBar extends StatelessWidget {
         itemBuilder: (_, i) {
           final cat = categories[i];
           final isSelected = selected == cat;
-          return GestureDetector(
-            onTap: () => onSelect(cat),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? AppColors.forestGreen
-                    : surface.withValues(alpha: 0.9),
-                borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 4,
-                    offset: const Offset(0, 1),
+          return Semantics(
+            button: true,
+            selected: isSelected,
+            label: '${cat.displayName} category filter',
+            excludeSemantics: true,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => onSelect(cat),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  minWidth: AppSpacing.xxxl,
+                  minHeight: AppSpacing.xxxl,
+                ),
+                child: Center(
+                  child: AnimatedContainer(
+                    duration: AppMotion.fast,
+                    curve: AppMotion.standardCurve,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? AppColors.forestGreen
+                          : surface.withValues(alpha: 0.9),
+                      borderRadius:
+                          BorderRadius.circular(AppSpacing.radiusFull),
+                      boxShadow: AppElevation.low,
+                    ),
+                    child: Text(
+                      '${cat.emoji} ${cat.displayName}',
+                      style: TextStyle(
+                        fontFamily: 'Nunito',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: isSelected ? Colors.white : muted,
+                      ),
+                    ),
                   ),
-                ],
-              ),
-              child: Text(
-                '${cat.emoji} ${cat.displayName}',
-                style: TextStyle(
-                  fontFamily: 'Nunito',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: isSelected ? Colors.white : muted,
                 ),
               ),
             ),
@@ -463,65 +984,59 @@ class _CategoryFilterBar extends StatelessWidget {
 
 // ── Journal tab ───────────────────────────────────────────────────────────────
 
-class _JournalTab extends StatelessWidget {
+class _JournalTab extends StatefulWidget {
   const _JournalTab({
-    required this.memories,
-    required this.isLoading,
+    required this.state,
+    required this.filtered,
     required this.onTap,
     required this.isDark,
+    required this.reducedMotion,
+    required this.onLoadMore,
+    required this.onRetry,
   });
 
-  final List<AdventureMemoryModel> memories;
-  final bool isLoading;
+  /// Full pagination state (loading/error/hasMore) from the controller.
+  final MemoriesState state;
+
+  /// Category-filtered subset of [MemoriesState.memories] to actually display.
+  final List<AdventureMemoryModel> filtered;
   final ValueChanged<AdventureMemoryModel> onTap;
   final bool isDark;
+  final bool reducedMotion;
+  final VoidCallback onLoadMore;
+  final VoidCallback onRetry;
+
+  @override
+  State<_JournalTab> createState() => _JournalTabState();
+}
+
+class _JournalTabState extends State<_JournalTab> {
+  final _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!widget.state.hasMore || widget.state.loadingMore) return;
+    const threshold = 400.0;
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - threshold) {
+      widget.onLoadMore();
+    }
+  }
 
   // Enough clearance for SafeArea + tab pill + filter bar.
   static const double _headerClearance = 160.0;
-
-  @override
-  Widget build(BuildContext context) {
-    final surface = isDark ? AppColors.surfaceDark : AppColors.surfaceLight;
-    final muted = isDark
-        ? AppColors.onSurfaceVariantDark
-        : AppColors.onSurfaceVariantLight;
-
-    if (isLoading) {
-      return ColoredBox(
-        color: surface,
-        child: const Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    if (memories.isEmpty) {
-      return ColoredBox(
-        color: surface,
-        child: Padding(
-          padding: const EdgeInsets.only(top: _headerClearance),
-          child: Center(child: _EmptyJournal(muted: muted)),
-        ),
-      );
-    }
-
-    final grouped = _groupByMonth(memories);
-
-    return ColoredBox(
-      color: surface,
-      child: ListView.builder(
-        padding: const EdgeInsets.only(
-          top: _headerClearance,
-          bottom: AppSpacing.xxl,
-        ),
-        itemCount: grouped.length,
-        itemBuilder: (context, i) => _MonthSection(
-          month: grouped[i].$1,
-          memories: grouped[i].$2,
-          onTap: onTap,
-          isDark: isDark,
-        ),
-      ),
-    );
-  }
 
   List<(String, List<AdventureMemoryModel>)> _groupByMonth(
     List<AdventureMemoryModel> items,
@@ -533,6 +1048,225 @@ class _JournalTab extends StatelessWidget {
     }
     return map.entries.map((e) => (e.key, e.value)).toList();
   }
+
+  @override
+  Widget build(BuildContext context) {
+    final surface =
+        widget.isDark ? AppColors.surfaceDark : AppColors.surfaceLight;
+    final muted = widget.isDark
+        ? AppColors.onSurfaceVariantDark
+        : AppColors.onSurfaceVariantLight;
+    final state = widget.state;
+
+    // Initial load failed with nothing on screen yet.
+    if (state.error != null && state.memories.isEmpty && !state.initialLoading) {
+      return ColoredBox(
+        color: surface,
+        child: Padding(
+          padding: const EdgeInsets.only(top: _headerClearance),
+          child: ErrorRetryView(
+            message: ErrorService.friendlyMessage(state.error!),
+            onRetry: widget.onRetry,
+          ),
+        ),
+      );
+    }
+
+    if (state.initialLoading) {
+      return ColoredBox(
+        color: surface,
+        child: const SingleChildScrollView(
+          padding: EdgeInsets.only(
+            top: _headerClearance,
+            left: AppSpacing.screenHorizontal,
+            right: AppSpacing.screenHorizontal,
+          ),
+          child: _JournalSkeleton(),
+        ),
+      );
+    }
+
+    if (widget.filtered.isEmpty) {
+      return ColoredBox(
+        color: surface,
+        child: Padding(
+          padding: const EdgeInsets.only(top: _headerClearance),
+          child: Center(
+            child: state.memories.isEmpty
+                ? const _EmptyJournal()
+                : _NoMatchesEmptyState(muted: muted),
+          ),
+        ),
+      );
+    }
+
+    final grouped = _groupByMonth(widget.filtered);
+
+    return ColoredBox(
+      color: surface,
+      child: ListView.builder(
+        controller: _scrollController,
+        padding: const EdgeInsets.only(
+          top: _headerClearance,
+          bottom: AppSpacing.xxl,
+        ),
+        // +1 for the trailing load-more/end-of-history footer.
+        itemCount: grouped.length + 1,
+        itemBuilder: (context, i) {
+          if (i == grouped.length) {
+            return _JournalFooter(
+              loadingMore: state.loadingMore,
+              hasMore: state.hasMore,
+              hasError: state.error != null,
+              onRetry: widget.onRetry,
+              isDark: widget.isDark,
+            );
+          }
+          return _MonthSection(
+            month: grouped[i].$1,
+            memories: grouped[i].$2,
+            onTap: widget.onTap,
+            isDark: widget.isDark,
+            reducedMotion: widget.reducedMotion,
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ── Journal skeleton (loading state) ────────────────────────────────────────
+
+class _JournalSkeleton extends StatelessWidget {
+  const _JournalSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: List.generate(
+        3,
+        (_) => const Padding(
+          padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ShimmerBox(
+                width: 64,
+                height: 64,
+                borderRadius:
+                    BorderRadius.all(Radius.circular(AppSpacing.radiusMd)),
+              ),
+              SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ShimmerBox(width: 90, height: 12),
+                    SizedBox(height: 8),
+                    ShimmerBox(width: 160, height: 14),
+                    SizedBox(height: 8),
+                    ShimmerBox(width: 120, height: 11),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Journal pagination footer ───────────────────────────────────────────────
+
+class _JournalFooter extends StatelessWidget {
+  const _JournalFooter({
+    required this.loadingMore,
+    required this.hasMore,
+    required this.hasError,
+    required this.onRetry,
+    required this.isDark,
+  });
+
+  final bool loadingMore;
+  final bool hasMore;
+  final bool hasError;
+  final VoidCallback onRetry;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = isDark
+        ? AppColors.onSurfaceVariantDark
+        : AppColors.onSurfaceVariantLight;
+
+    if (loadingMore) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
+        child: Center(
+          child: SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.5,
+              color: AppColors.forestGreen,
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (hasError) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Couldn\'t load more adventures.',
+              style: TextStyle(
+                fontFamily: 'Nunito',
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: muted,
+              ),
+            ),
+            Semantics(
+              button: true,
+              label: 'Retry loading more adventures',
+              excludeSemantics: true,
+              child: TextButton(
+                onPressed: onRetry,
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(AppSpacing.xxxl, AppSpacing.xxxl),
+                ),
+                child: const Text('Retry'),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (!hasMore) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.xl),
+        child: Center(
+          child: Text(
+            'That\'s your whole adventure history.',
+            style: TextStyle(
+              fontFamily: 'Nunito',
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: muted,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
+  }
 }
 
 // ── Month section ─────────────────────────────────────────────────────────────
@@ -543,12 +1277,14 @@ class _MonthSection extends StatelessWidget {
     required this.memories,
     required this.onTap,
     required this.isDark,
+    required this.reducedMotion,
   });
 
   final String month;
   final List<AdventureMemoryModel> memories;
   final ValueChanged<AdventureMemoryModel> onTap;
   final bool isDark;
+  final bool reducedMotion;
 
   @override
   Widget build(BuildContext context) {
@@ -582,6 +1318,7 @@ class _MonthSection extends StatelessWidget {
             memory: m,
             onTap: () => onTap(m),
             isDark: isDark,
+            reducedMotion: reducedMotion,
           ),
         ),
       ],
@@ -596,11 +1333,13 @@ class _JournalTile extends StatelessWidget {
     required this.memory,
     required this.onTap,
     required this.isDark,
+    required this.reducedMotion,
   });
 
   final AdventureMemoryModel memory;
   final VoidCallback onTap;
   final bool isDark;
+  final bool reducedMotion;
 
   @override
   Widget build(BuildContext context) {
@@ -612,7 +1351,19 @@ class _JournalTile extends StatelessWidget {
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
 
-    return InkWell(
+    final locationPart = memory.hasLocation ? ', ${memory.displayLocation}' : '';
+    final semanticLabel = '${memory.challengeTitle}, '
+        '${memory.challengeCategory.displayName}, '
+        'completed ${DateFormat('MMMM d').format(memory.completionDate)}'
+        '$locationPart, +${memory.xpEarned} XP';
+
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      excludeSemantics: true,
+      child: PressableScale(
+      enabled: !reducedMotion,
+      child: InkWell(
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(
@@ -648,15 +1399,8 @@ class _JournalTile extends StatelessWidget {
                       width: 64,
                       height: 64,
                       fit: BoxFit.cover,
-                      placeholder: (ctx, url) => Shimmer.fromColors(
-                        baseColor: Colors.grey.shade300,
-                        highlightColor: Colors.grey.shade100,
-                        child: const SizedBox(
-                          width: 64,
-                          height: 64,
-                          child: ColoredBox(color: Colors.white),
-                        ),
-                      ),
+                      placeholder: (ctx, url) =>
+                          const ShimmerBox(width: 64, height: 64),
                       errorWidget: (ctx, url, err) => DecoratedBox(
                         decoration: BoxDecoration(color: surfaceVar),
                         child: SizedBox(
@@ -773,6 +1517,8 @@ class _JournalTile extends StatelessWidget {
           ],
         ),
       ),
+      ),
+      ),
     );
   }
 }
@@ -780,7 +1526,60 @@ class _JournalTile extends StatelessWidget {
 // ── Empty journal ─────────────────────────────────────────────────────────────
 
 class _EmptyJournal extends StatelessWidget {
-  const _EmptyJournal({required this.muted});
+  const _EmptyJournal();
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final muted = isDark
+        ? AppColors.onSurfaceVariantDark
+        : AppColors.onSurfaceVariantLight;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.xxl, vertical: AppSpacing.xl),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('📖', style: TextStyle(fontSize: 48)),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            'Your adventure journal is waiting.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: 'Nunito',
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: muted,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Complete your first challenge to start building\n'
+            'your map of memories.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: 'Nunito',
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: muted,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          AppButton(
+            label: 'Start Today\'s Challenge',
+            onPressed: () => context.pushNamed('camera'),
+            expand: false,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NoMatchesEmptyState extends StatelessWidget {
+  const _NoMatchesEmptyState({required this.muted});
   final Color muted;
 
   @override
@@ -788,10 +1587,10 @@ class _EmptyJournal extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text('📖', style: TextStyle(fontSize: 48)),
+        const Text('🔍', style: TextStyle(fontSize: 40)),
         const SizedBox(height: AppSpacing.md),
         Text(
-          'Your adventure journal\nstarts with your first challenge!',
+          'No adventures in this category yet.',
           textAlign: TextAlign.center,
           style: TextStyle(
             fontFamily: 'Nunito',
@@ -879,14 +1678,10 @@ class _MemoryDetailModalState extends ConsumerState<_MemoryDetailModal> {
       builder: (context, scrollController) => DecoratedBox(
         decoration: BoxDecoration(
           color: surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.18),
-              blurRadius: 16,
-              offset: const Offset(0, -2),
-            ),
-          ],
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppSpacing.radiusBottomSheet),
+          ),
+          boxShadow: AppElevation.high,
         ),
         child: Column(
           children: [
@@ -923,22 +1718,18 @@ class _MemoryDetailModalState extends ConsumerState<_MemoryDetailModal> {
                         width: double.infinity,
                         height: 220,
                         fit: BoxFit.cover,
-                        placeholder: (ctx, url) => Shimmer.fromColors(
-                          baseColor: Colors.grey.shade300,
-                          highlightColor: Colors.grey.shade100,
-                          child: const SizedBox(
-                            height: 220,
-                            child: ColoredBox(color: Colors.white),
-                          ),
+                        placeholder: (ctx, url) => const ShimmerBox(
+                          width: double.infinity,
+                          height: 220,
                         ),
                         errorWidget: (ctx, url, err) => DecoratedBox(
                           decoration: BoxDecoration(color: surfaceVar),
-                          child: const SizedBox(
+                          child: SizedBox(
                             height: 220,
                             child: Center(
-                              child: Icon(
-                                Icons.broken_image_rounded,
-                                size: 48,
+                              child: Text(
+                                m.challengeEmoji,
+                                style: const TextStyle(fontSize: 48),
                               ),
                             ),
                           ),
@@ -1029,17 +1820,14 @@ class _MemoryDetailModalState extends ConsumerState<_MemoryDetailModal> {
                                 textColor: AppColors.forestGreenLight,
                               ),
                               _Badge(
-                                label: m.verificationMethod == 'ai_verified'
-                                    ? '🤖 AI Verified'
-                                    : '✋ Manual Submit',
-                                bgColor: (m.verificationMethod == 'ai_verified'
+                                label: m.verificationLabel,
+                                bgColor: (m.isAiVerified
                                         ? AppColors.skyBlue
                                         : AppColors.warmYellow)
                                     .withValues(alpha: 0.14),
-                                textColor:
-                                    m.verificationMethod == 'ai_verified'
-                                        ? AppColors.skyBlue
-                                        : AppColors.warmYellow,
+                                textColor: m.isAiVerified
+                                    ? AppColors.skyBlue
+                                    : AppColors.warmYellow,
                               ),
                             ],
                           ),
@@ -1265,15 +2053,20 @@ class _CaptionSection extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              GestureDetector(
-                onTap: onEdit,
-                child: const Text(
-                  'Edit',
-                  style: TextStyle(
-                    fontFamily: 'Nunito',
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.forestGreenLight,
+              Semantics(
+                button: true,
+                label: 'Edit reflection',
+                excludeSemantics: true,
+                child: GestureDetector(
+                  onTap: onEdit,
+                  child: const Text(
+                    'Edit',
+                    style: TextStyle(
+                      fontFamily: 'Nunito',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.forestGreenLight,
+                    ),
                   ),
                 ),
               ),

@@ -19,6 +19,7 @@ import '../../features/streak/screens/streak_calendar_screen.dart';
 import '../../models/completion_model.dart';
 import '../../providers/auth_providers.dart';
 import '../../widgets/app_shell.dart';
+import '../../widgets/error_retry_view.dart';
 import '../constants/route_names.dart';
 
 /// The single [GoRouter] instance for the app.
@@ -192,32 +193,12 @@ class _RouteErrorScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Scaffold(
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.error_outline_rounded,
-                size: 64,
-                color: theme.colorScheme.error,
-              ),
-              const SizedBox(height: 16),
-              Text('Page not found', style: theme.textTheme.headlineMedium),
-              if (error != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  error.toString(),
-                  style: theme.textTheme.bodySmall,
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ],
-          ),
-        ),
+      body: ErrorRetryView(
+        title: 'Page not found',
+        message: "The page you're looking for doesn't exist.",
+        onRetry: () => context.go(RouteNames.home),
+        retryLabel: 'Go Home',
       ),
     );
   }
