@@ -2,17 +2,17 @@ import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/constants/app_constants.dart';
-import '../../../core/constants/route_names.dart';
 import '../../../core/services/error_service.dart';
+import '../../../models/app_theme_mode.dart';
 import '../../../models/challenge_model.dart';
 import '../../../models/league_definition.dart';
 import '../../../models/user_model.dart';
@@ -78,7 +78,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   title: 'Edit Profile',
                   subtitle: 'Name, username',
                   isDark: isDark,
-                  onTap: user != null ? () => _editProfile(context, user) : null,
+                  onTap: user != null
+                      ? () => _editProfile(context, user)
+                      : null,
                 ),
                 _Divider(isDark: isDark),
                 _NavTile(
@@ -215,27 +217,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             const SizedBox(height: AppSpacing.xxl),
 
-            // ── Challenge Preferences ──────────────────────────────────────
-            _SectionLabel('Challenge Preferences', isDark: isDark),
-            const SizedBox(height: AppSpacing.sm),
-            _SettingsCard(
-              isDark: isDark,
-              children: [
-                _NavTile(
-                  icon: Icons.tune_rounded,
-                  iconColor: AppColors.grassGreen,
-                  title: 'Preferred Categories',
-                  subtitle: settings.preferredCategories.isEmpty
-                      ? 'All categories'
-                      : settings.preferredCategories.join(', '),
-                  isDark: isDark,
-                  onTap: () => _showCategoryPrefsDialog(
-                      context, settings.preferredCategories, isDark),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.xxl),
-
             // ── Streak Protection ──────────────────────────────────────────
             _SectionLabel('Streak Protection', isDark: isDark),
             const SizedBox(height: AppSpacing.sm),
@@ -280,9 +261,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   subtitle: 'Minimise animations throughout the app',
                   value: settings.reducedMotion,
                   isDark: isDark,
-                  onChanged: (_) => ref
-                      .read(settingsProvider.notifier)
-                      .toggleReducedMotion(),
+                  onChanged: (_) =>
+                      ref.read(settingsProvider.notifier).toggleReducedMotion(),
                 ),
                 _Divider(isDark: isDark),
                 _ToggleTile(
@@ -292,27 +272,51 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   subtitle: 'Increase contrast for better readability',
                   value: settings.highContrast,
                   isDark: isDark,
-                  onChanged: (_) => ref
-                      .read(settingsProvider.notifier)
-                      .toggleHighContrast(),
+                  onChanged: (_) =>
+                      ref.read(settingsProvider.notifier).toggleHighContrast(),
                 ),
               ],
             ),
             const SizedBox(height: AppSpacing.xxl),
 
-            // ── Progress ───────────────────────────────────────────────────
-            _SectionLabel('Progress', isDark: isDark),
+            // Leagues moved to the Leaderboard screen's "Leagues" tab — no
+            // longer a standalone Profile Settings destination (previously
+            // the only tile in a now-removed "Progress" section).
+
+            // ── Challenge preferences ──────────────────────────────────────
+            _SectionLabel('Challenge Preferences', isDark: isDark),
             const SizedBox(height: AppSpacing.sm),
             _SettingsCard(
               isDark: isDark,
               children: [
-                _NavTile(
-                  icon: Icons.emoji_events_outlined,
-                  iconColor: const Color(0xFFFFB800),
-                  title: 'Leagues',
-                  subtitle: 'View your league and climb the ranks',
-                  isDark: isDark,
-                  onTap: () => context.push(RouteNames.leagues),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.lg,
+                    AppSpacing.md,
+                    AppSpacing.lg,
+                    AppSpacing.sm,
+                  ),
+                  child: Text(
+                    'Pick the categories you want your daily challenges drawn '
+                    'from. Leave none selected for a mix of everything.',
+                    style: TextStyle(
+                      fontFamily: 'Nunito',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: isDark
+                          ? AppColors.onSurfaceVariantDark
+                          : AppColors.onSurfaceVariantLight,
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.lg,
+                    0,
+                    AppSpacing.lg,
+                    AppSpacing.md,
+                  ),
+                  child: _CategoryPreferenceChips(user: user, isDark: isDark),
                 ),
               ],
             ),
@@ -328,17 +332,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   icon: Icons.location_on_outlined,
                   iconColor: AppColors.forestGreen,
                   title: 'Store Location Data',
-                  subtitle:
-                      'Save GPS coordinates with challenge completions',
+                  subtitle: 'Save GPS coordinates with challenge completions',
                   value: user?.settings.locationEnabled ?? true,
                   isDark: isDark,
                   onChanged: user != null
-                      ? (val) => ref
-                          .read(userRepositoryProvider)
-                          .updateUserFields(
-                            user.uid,
-                            {'settings.locationEnabled': val},
-                          )
+                      ? (val) =>
+                            ref.read(userRepositoryProvider).updateUserFields(
+                              user.uid,
+                              {'settings.locationEnabled': val},
+                            )
                       : (_) {},
                 ),
                 _Divider(isDark: isDark),
@@ -351,8 +353,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   isDark: isDark,
                   onChanged: user != null
                       ? (val) => ref
-                          .read(userRepositoryProvider)
-                          .setProfilePublic(user.uid, val)
+                            .read(userRepositoryProvider)
+                            .setProfilePublic(user.uid, val)
                       : (_) {},
                 ),
                 _Divider(isDark: isDark),
@@ -362,14 +364,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   title: 'Manage Permissions',
                   subtitle: 'Camera, location, notifications',
                   isDark: isDark,
-                  onTap: openAppSettings,
+                  onTap: () => _managePermissions(context),
                 ),
                 _Divider(isDark: isDark),
                 _NavTile(
-                  icon: Icons.download_outlined,
+                  icon: Icons.copy_outlined,
                   iconColor: AppColors.forestGreen,
                   title: 'Export My Data',
-                  subtitle: 'Download a copy of your TouchGrass data',
+                  // Accurate about what actually happens today: this copies
+                  // a stats summary to the clipboard, not a downloaded file
+                  // — it does not include photos or full challenge history.
+                  // Don't promise a "download" the app doesn't perform.
+                  subtitle: 'Copy a summary of your stats to your clipboard',
                   isDark: isDark,
                   onTap: user != null
                       ? () => _showDataExportDialog(context, user, isDark)
@@ -489,8 +495,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor:
-            isDark ? AppColors.surfaceVariantDark : AppColors.surfaceLight,
+        backgroundColor: isDark
+            ? AppColors.surfaceVariantDark
+            : AppColors.surfaceLight,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
         ),
@@ -522,10 +529,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               label: 'Cost',
               value: '${AppConstants.streakFreezeCostXp} XP',
             ),
-            _FreezeInfoRow(
-              label: 'Your XP',
-              value: '${user.xp} XP',
-            ),
+            _FreezeInfoRow(label: 'Your XP', value: '${user.xp} XP'),
             if (!hasEnoughXp) ...[
               const SizedBox(height: 12),
               Text(
@@ -545,7 +549,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text(
               'Cancel',
-              style: TextStyle(fontFamily: 'Nunito', fontWeight: FontWeight.w700),
+              style: TextStyle(
+                fontFamily: 'Nunito',
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
           if (hasEnoughXp)
@@ -571,8 +578,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final uid = ref.read(currentUserProvider).valueOrNull?.uid;
     if (uid == null) return;
 
-    final result =
-        await ref.read(userRepositoryProvider).buyStreakFreeze(uid);
+    final result = await ref.read(userRepositoryProvider).buyStreakFreeze(uid);
 
     if (!mounted) return;
     result.when(
@@ -585,7 +591,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           backgroundColor: const Color(0xFF42A5F5),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppSpacing.radiusMd)),
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          ),
           margin: const EdgeInsets.all(AppSpacing.md),
         ),
       ),
@@ -594,12 +601,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           content: Text(
             e.message,
             style: const TextStyle(
-                fontFamily: 'Nunito', fontWeight: FontWeight.w700),
+              fontFamily: 'Nunito',
+              fontWeight: FontWeight.w700,
+            ),
           ),
           backgroundColor: AppColors.error,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppSpacing.radiusMd)),
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          ),
           margin: const EdgeInsets.all(AppSpacing.md),
         ),
       ),
@@ -608,12 +618,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _editProfile(BuildContext context, UserModel user) async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface =
-        isDark ? AppColors.surfaceVariantDark : AppColors.surfaceLight;
+    final surface = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceLight;
     final nameCtrl = TextEditingController(text: user.displayName);
     final usernameCtrl = TextEditingController(text: user.username);
     try {
-      await _showEditProfileDialog(context, isDark, surface, nameCtrl, usernameCtrl, user);
+      await _showEditProfileDialog(
+        context,
+        isDark,
+        surface,
+        nameCtrl,
+        usernameCtrl,
+        user,
+      );
     } finally {
       nameCtrl.dispose();
       usernameCtrl.dispose();
@@ -640,8 +658,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             title: const Text(
               'Edit Profile',
-              style:
-                  TextStyle(fontFamily: 'Nunito', fontWeight: FontWeight.w900),
+              style: TextStyle(
+                fontFamily: 'Nunito',
+                fontWeight: FontWeight.w900,
+              ),
             ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
@@ -667,9 +687,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                   onChanged: (v) {
                     final valid = RegExp(r'^[a-z0-9_]*$').hasMatch(v);
-                    setS(() => usernameError = valid || v.isEmpty
-                        ? null
-                        : 'Only lowercase letters, numbers, underscores');
+                    setS(
+                      () => usernameError = valid || v.isEmpty
+                          ? null
+                          : 'Only lowercase letters, numbers, underscores',
+                    );
                   },
                 ),
               ],
@@ -710,13 +732,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final newUsername = usernameCtrl.text.trim().toLowerCase();
 
     if (newName.isNotEmpty && newName != user.displayName) {
-      await ref
-          .read(userRepositoryProvider)
-          .updateUserFields(user.uid, {'displayName': newName});
+      await ref.read(userRepositoryProvider).updateUserFields(user.uid, {
+        'displayName': newName,
+      });
     }
 
     if (newUsername.isNotEmpty && newUsername != user.username) {
-      final result = await ref.read(userRepositoryProvider).updateUsername(
+      final result = await ref
+          .read(userRepositoryProvider)
+          .updateUsername(
             uid: user.uid,
             currentUsername: user.username,
             newUsername: newUsername,
@@ -741,7 +765,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               leading: const Icon(Icons.photo_library_outlined),
               title: const Text(
                 'Choose from Gallery',
-                style: TextStyle(fontFamily: 'Nunito', fontWeight: FontWeight.w700),
+                style: TextStyle(
+                  fontFamily: 'Nunito',
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               onTap: () => Navigator.pop(ctx, ImageSource.gallery),
             ),
@@ -749,7 +776,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               leading: const Icon(Icons.photo_camera_outlined),
               title: const Text(
                 'Take a Photo',
-                style: TextStyle(fontFamily: 'Nunito', fontWeight: FontWeight.w700),
+                style: TextStyle(
+                  fontFamily: 'Nunito',
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               onTap: () => Navigator.pop(ctx, ImageSource.camera),
             ),
@@ -796,8 +826,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _confirmSignOut(BuildContext context) async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface =
-        isDark ? AppColors.surfaceVariantDark : AppColors.surfaceLight;
+    final surface = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceLight;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -831,7 +862,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
             child: const Text(
               'Sign Out',
-              style: TextStyle(fontFamily: 'Nunito', fontWeight: FontWeight.w800),
+              style: TextStyle(
+                fontFamily: 'Nunito',
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
         ],
@@ -844,12 +878,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _showTextSizeDialog(
-      BuildContext context, double currentScale) async {
+    BuildContext context,
+    double currentScale,
+  ) async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface =
-        isDark ? AppColors.surfaceVariantDark : AppColors.surfaceLight;
-    final textStrong =
-        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final surface = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceLight;
+    final textStrong = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
 
     await showDialog<void>(
       context: context,
@@ -886,13 +924,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                 ),
                 trailing: currentScale == option.$1
-                    ? const Icon(Icons.check_rounded,
-                        color: AppColors.grassGreen, size: 20)
+                    ? const Icon(
+                        Icons.check_rounded,
+                        color: AppColors.grassGreen,
+                        size: 20,
+                      )
                     : null,
                 onTap: () {
-                  ref
-                      .read(settingsProvider.notifier)
-                      .setTextScale(option.$1);
+                  ref.read(settingsProvider.notifier).setTextScale(option.$1);
                   Navigator.of(ctx).pop();
                 },
               ),
@@ -916,10 +955,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _showPrivacyDialog(BuildContext context, bool isDark) async {
-    final surface =
-        isDark ? AppColors.surfaceVariantDark : AppColors.surfaceLight;
-    final textStrong =
-        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final surface = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceLight;
+    final textStrong = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
     final textMuted = isDark
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
@@ -968,10 +1009,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  Future<void> _confirmDeleteAccount(
-      BuildContext context, bool isDark) async {
-    final surface =
-        isDark ? AppColors.surfaceVariantDark : AppColors.surfaceLight;
+  Future<void> _confirmDeleteAccount(BuildContext context, bool isDark) async {
+    final surface = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceLight;
 
     // Step 1: Confirmation dialog.
     final confirmed = await showDialog<bool>(
@@ -1036,9 +1077,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
 
     // Step 4: Cascading delete (reauth → Firestore → Storage → Auth).
-    final result = await ref.read(userRepositoryProvider).deleteAccount(
+    final result = await ref
+        .read(userRepositoryProvider)
+        .deleteAccount(
           uid: uid,
-          password: password, // null → Google/Apple reauth flow inside repository
+          password:
+              password, // null → Google/Apple reauth flow inside repository
           providerId: providerId,
         );
 
@@ -1050,77 +1094,82 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<String?> _showPasswordDialog(BuildContext context, bool isDark) async {
-    final surface =
-        isDark ? AppColors.surfaceVariantDark : AppColors.surfaceLight;
+    final surface = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceLight;
     final controller = TextEditingController();
 
     try {
       return await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
-        ),
-        title: const Text(
-          'Confirm Password',
-          style: TextStyle(fontFamily: 'Nunito', fontWeight: FontWeight.w900),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Enter your password to confirm account deletion.',
-              style: TextStyle(
-                  fontFamily: 'Nunito', fontWeight: FontWeight.w500),
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
+          ),
+          title: const Text(
+            'Confirm Password',
+            style: TextStyle(fontFamily: 'Nunito', fontWeight: FontWeight.w900),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Enter your password to confirm account deletion.',
+                style: TextStyle(
+                  fontFamily: 'Nunito',
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                obscureText: true,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Password'),
+                onSubmitted: (v) => Navigator.of(ctx).pop(v),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(null),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(
+                  fontFamily: 'Nunito',
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.forestGreenLight,
+                ),
+              ),
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              obscureText: true,
-              autofocus: true,
-              decoration: const InputDecoration(labelText: 'Password'),
-              onSubmitted: (v) => Navigator.of(ctx).pop(v),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(controller.text),
+              style: TextButton.styleFrom(foregroundColor: AppColors.error),
+              child: const Text(
+                'Delete Account',
+                style: TextStyle(
+                  fontFamily: 'Nunito',
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(null),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(
-                fontFamily: 'Nunito',
-                fontWeight: FontWeight.w700,
-                color: AppColors.forestGreenLight,
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(controller.text),
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text(
-              'Delete Account',
-              style: TextStyle(
-                fontFamily: 'Nunito',
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+      );
     } finally {
       controller.dispose();
     }
   }
 
   Future<void> _showHelpDialog(BuildContext context, bool isDark) async {
-    final surface =
-        isDark ? AppColors.surfaceVariantDark : AppColors.surfaceLight;
-    final textStrong =
-        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final surface = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceLight;
+    final textStrong = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
 
     await showDialog<void>(
       context: context,
@@ -1206,10 +1255,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     required String hint,
     required String type,
   }) async {
-    final surface =
-        isDark ? AppColors.surfaceVariantDark : AppColors.surfaceLight;
-    final textStrong =
-        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final surface = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceLight;
+    final textStrong = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
     final messenger = ScaffoldMessenger.of(context);
     final ctrl = TextEditingController();
     var submitting = false;
@@ -1241,14 +1292,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             decoration: InputDecoration(
               hintText: hint,
               hintStyle: const TextStyle(
-                  fontFamily: 'Nunito', fontWeight: FontWeight.w500),
+                fontFamily: 'Nunito',
+                fontWeight: FontWeight.w500,
+              ),
               border: const OutlineInputBorder(),
             ),
           ),
           actions: [
             TextButton(
-              onPressed:
-                  submitting ? null : () => Navigator.of(ctx).pop(),
+              onPressed: submitting ? null : () => Navigator.of(ctx).pop(),
               child: const Text(
                 'Cancel',
                 style: TextStyle(
@@ -1264,53 +1316,67 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   : () async {
                       setS(() => submitting = true);
                       try {
-                        await ref.read(firestoreServiceProvider).addDocument(
-                          collection: AppConstants.colFeedback,
-                          data: {
-                            'type': type,
-                            'message': ctrl.text.trim(),
-                            'userId': uid,
-                            'createdAt': FieldValue.serverTimestamp(),
-                            'appVersion': '1.0.0',
-                          },
-                        );
+                        await ref
+                            .read(firestoreServiceProvider)
+                            .addDocument(
+                              collection: AppConstants.colFeedback,
+                              data: {
+                                'type': type,
+                                'message': ctrl.text.trim(),
+                                'userId': uid,
+                                'createdAt': FieldValue.serverTimestamp(),
+                                'appVersion': '1.0.0',
+                              },
+                            );
                         if (ctx.mounted) Navigator.of(ctx).pop();
-                        messenger.showSnackBar(SnackBar(
-                          content: Text(
-                            type == 'bug'
-                                ? '🐛 Bug report submitted — thank you!'
-                                : '💚 Feedback received — thank you!',
-                            style: const TextStyle(
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              type == 'bug'
+                                  ? '🐛 Bug report submitted — thank you!'
+                                  : '💚 Feedback received — thank you!',
+                              style: const TextStyle(
                                 fontFamily: 'Nunito',
-                                fontWeight: FontWeight.w700),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            backgroundColor: AppColors.grassGreen,
+                            behavior: SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                AppSpacing.radiusMd,
+                              ),
+                            ),
+                            margin: const EdgeInsets.all(AppSpacing.md),
                           ),
-                          backgroundColor: AppColors.grassGreen,
-                          behavior: SnackBarBehavior.floating,
-                          shape: RoundedRectangleBorder(
-                              borderRadius:
-                                  BorderRadius.circular(AppSpacing.radiusMd)),
-                          margin: const EdgeInsets.all(AppSpacing.md),
-                        ));
+                        );
                       } catch (e) {
                         setS(() => submitting = false);
-                        messenger.showSnackBar(SnackBar(
-                          content: Text(ErrorService.friendlyMessage(e)),
-                        ));
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(ErrorService.friendlyMessage(e)),
+                          ),
+                        );
                       }
                     },
               style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.grassGreen),
+                backgroundColor: AppColors.grassGreen,
+              ),
               child: submitting
                   ? const SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
                     )
                   : const Text(
                       'Send',
                       style: TextStyle(
-                          fontFamily: 'Nunito', fontWeight: FontWeight.w800),
+                        fontFamily: 'Nunito',
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
             ),
           ],
@@ -1320,97 +1386,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     ctrl.dispose();
   }
 
-  Future<void> _showCategoryPrefsDialog(
-    BuildContext context,
-    List<String> current,
-    bool isDark,
-  ) async {
-    final surface = isDark ? AppColors.surfaceVariantDark : AppColors.surfaceLight;
-    final textStrong = isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
-    final selected = current.toSet();
-
-    final confirmed = await showDialog<Set<String>>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setS) => AlertDialog(
-          backgroundColor: surface,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
-          ),
-          title: Text(
-            'Preferred Categories',
-            style: TextStyle(
-              fontFamily: 'Nunito',
-              fontWeight: FontWeight.w900,
-              color: textStrong,
-            ),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: ChallengeCategory.values.map((cat) {
-              final isChecked = selected.contains(cat.name);
-              return CheckboxListTile(
-                value: isChecked,
-                activeColor: AppColors.grassGreen,
-                title: Text(
-                  '${cat.emoji}  ${cat.displayName}',
-                  style: TextStyle(
-                    fontFamily: 'Nunito',
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: textStrong,
-                  ),
-                ),
-                onChanged: (_) {
-                  setS(() {
-                    if (isChecked) {
-                      selected.remove(cat.name);
-                    } else {
-                      selected.add(cat.name);
-                    }
-                  });
-                },
-              );
-            }).toList(),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(null),
-              child: const Text(
-                'Cancel',
-                style: TextStyle(
-                  fontFamily: 'Nunito',
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.forestGreenLight,
-                ),
-              ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(selected),
-              child: const Text(
-                'Save',
-                style: TextStyle(
-                  fontFamily: 'Nunito',
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.grassGreen,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (confirmed != null) {
-      await ref
-          .read(settingsProvider.notifier)
-          .setPreferredCategories(confirmed.toList());
-    }
-  }
-
   Future<void> _showTermsDialog(BuildContext context, bool isDark) async {
-    final surface = isDark ? AppColors.surfaceVariantDark : AppColors.surfaceLight;
-    final textStrong = isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final surface = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceLight;
+    final textStrong = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
     final textMuted = isDark
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
@@ -1466,13 +1448,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  /// `openAppSettings()` has no web implementation — there's no OS-level
+  /// settings screen to deep-link to in a browser. On web, permissions are
+  /// managed per-site by the browser itself (address-bar padlock icon), so
+  /// point the user there instead of calling into an unimplemented channel.
+  Future<void> _managePermissions(BuildContext context) async {
+    if (kIsWeb) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'On web, camera/location/notification permissions are managed '
+            "by your browser — click the padlock icon in the address bar.",
+          ),
+        ),
+      );
+      return;
+    }
+    await openAppSettings();
+  }
+
   Future<void> _showDataExportDialog(
     BuildContext context,
     UserModel user,
     bool isDark,
   ) async {
-    final surface = isDark ? AppColors.surfaceVariantDark : AppColors.surfaceLight;
-    final textStrong = isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final surface = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceLight;
+    final textStrong = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
     final textMuted = isDark
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
@@ -1592,19 +1597,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   static String _formatDate(DateTime dt) {
     final months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     final local = dt.toLocal();
     return '${months[local.month - 1]} ${local.day}, ${local.year}';
   }
 
   Future<void> _showCommunityGuidelinesDialog(
-      BuildContext context, bool isDark) async {
-    final surface =
-        isDark ? AppColors.surfaceVariantDark : AppColors.surfaceLight;
-    final textStrong =
-        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    BuildContext context,
+    bool isDark,
+  ) async {
+    final surface = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceLight;
+    final textStrong = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
     final textMuted = isDark
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
@@ -1684,8 +1703,9 @@ class _HelpItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textStrong =
-        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final textStrong = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
     final textMuted = isDark
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
@@ -1727,8 +1747,9 @@ class _FreezeInfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textStrong =
-        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final textStrong = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
     final textMuted = isDark
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
@@ -1770,16 +1791,17 @@ class _ProfileSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final surface =
-        isDark ? AppColors.surfaceVariantDark : AppColors.surfaceVariantLight;
-    final strong =
-        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final surface = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceVariantLight;
+    final strong = isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
     final muted = isDark
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
 
-    final initials =
-        user.displayName.isNotEmpty ? user.displayName[0].toUpperCase() : '?';
+    final initials = user.displayName.isNotEmpty
+        ? user.displayName[0].toUpperCase()
+        : '?';
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -1829,8 +1851,11 @@ class _ProfileSummary extends StatelessWidget {
                   const SizedBox(height: 2),
                   Row(
                     children: [
-                      const Icon(Icons.star_rounded,
-                          size: 13, color: AppColors.achievementGold),
+                      const Icon(
+                        Icons.star_rounded,
+                        size: 13,
+                        color: AppColors.achievementGold,
+                      ),
                       const SizedBox(width: 3),
                       Text(
                         'Level ${user.level} · ${user.xp} XP',
@@ -1886,8 +1911,9 @@ class _SettingsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final surface =
-        isDark ? AppColors.surfaceVariantDark : AppColors.surfaceVariantLight;
+    final surface = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceVariantLight;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: surface,
@@ -1940,8 +1966,7 @@ class _NavTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final strong =
-        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final strong = isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
     final muted = isDark
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
@@ -1996,11 +2021,7 @@ class _NavTile extends StatelessWidget {
                 ),
               ),
               trailing ??
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    size: 20,
-                    color: muted,
-                  ),
+                  Icon(Icons.chevron_right_rounded, size: 20, color: muted),
             ],
           ),
         ),
@@ -2010,6 +2031,126 @@ class _NavTile extends StatelessWidget {
 }
 
 // ── Toggle tile ───────────────────────────────────────────────────────────────
+
+// ── Preferred-category selector ─────────────────────────────────────────────
+
+/// Multi-select category chips backing [UserSettings.preferredCategories].
+/// No categories selected means "no preference" — every category is
+/// eligible for the daily challenge pool (see
+/// ChallengeSeedLibrary.selectSeed's preferredCategories handling).
+class _CategoryPreferenceChips extends ConsumerWidget {
+  const _CategoryPreferenceChips({required this.user, required this.isDark});
+
+  final UserModel? user;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selected = user?.settings.preferredCategories.toSet() ?? const {};
+
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
+      children: [
+        for (final category in ChallengeCategory.values)
+          _CategoryChip(
+            category: category,
+            isSelected: selected.contains(category.name),
+            isDark: isDark,
+            onTap: user == null
+                ? null
+                : () {
+                    final next = selected.contains(category.name)
+                        ? (selected..remove(category.name))
+                        : (selected..add(category.name));
+                    ref.read(userRepositoryProvider).updateUserFields(
+                      user!.uid,
+                      {'settings.preferredCategories': next.toList()},
+                    );
+                  },
+          ),
+      ],
+    );
+  }
+}
+
+class _CategoryChip extends StatelessWidget {
+  const _CategoryChip({
+    required this.category,
+    required this.isSelected,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  final ChallengeCategory category;
+  final bool isSelected;
+  final bool isDark;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = category.color;
+    final unselectedBg = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceVariantLight;
+    final unselectedText = isDark
+        ? AppColors.onSurfaceVariantDark
+        : AppColors.onSurfaceVariantLight;
+
+    return Semantics(
+      button: true,
+      selected: isSelected,
+      label:
+          '${category.displayName} category, '
+          '${isSelected ? "selected" : "not selected"}',
+      excludeSemantics: true,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 44),
+        child: Material(
+          color: isSelected ? color.withValues(alpha: 0.16) : unselectedBg,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.sm,
+              ),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                border: Border.all(
+                  color: isSelected ? color : Colors.transparent,
+                  width: 1.5,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(category.emoji, style: const TextStyle(fontSize: 15)),
+                  const SizedBox(width: AppSpacing.xs),
+                  Text(
+                    category.displayName,
+                    style: TextStyle(
+                      fontFamily: 'Nunito',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: isSelected ? color : unselectedText,
+                    ),
+                  ),
+                  if (isSelected) ...[
+                    const SizedBox(width: AppSpacing.xs),
+                    Icon(Icons.check_circle_rounded, size: 15, color: color),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _ToggleTile extends StatelessWidget {
   const _ToggleTile({
@@ -2032,8 +2173,7 @@ class _ToggleTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final strong =
-        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final strong = isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
     final muted = isDark
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
@@ -2119,13 +2259,13 @@ class _CropScreenState extends State<_CropScreen> {
     setState(() => _saving = true);
 
     try {
-      final boundary = _repaintKey.currentContext?.findRenderObject()
-          as RenderRepaintBoundary?;
+      final boundary =
+          _repaintKey.currentContext?.findRenderObject()
+              as RenderRepaintBoundary?;
       if (boundary == null) return;
 
       final image = await boundary.toImage(pixelRatio: 2.0);
-      final byteData =
-          await image.toByteData(format: ui.ImageByteFormat.png);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (!mounted) return;
       Navigator.of(context).pop(byteData?.buffer.asUint8List());
     } finally {
@@ -2330,29 +2470,31 @@ class _ThemeSelector extends StatelessWidget {
     required this.onSelect,
   });
 
-  final ThemeMode current;
+  final AppThemeMode current;
   final bool isDark;
-  final ValueChanged<ThemeMode> onSelect;
+  final ValueChanged<AppThemeMode> onSelect;
 
   static const _options = [
-    (ThemeMode.system, Icons.brightness_auto_rounded, 'System'),
-    (ThemeMode.light, Icons.light_mode_outlined, 'Light'),
-    (ThemeMode.dark, Icons.dark_mode_outlined, 'Dark'),
+    (AppThemeMode.system, Icons.brightness_auto_rounded, 'System'),
+    (AppThemeMode.light, Icons.light_mode_outlined, 'Light'),
+    (AppThemeMode.dark, Icons.dark_mode_outlined, 'Dark'),
+    (AppThemeMode.automatic, Icons.wb_twilight_rounded, 'Automatic'),
   ];
 
   static const _accent = Color(0xFF7B68EE);
 
   @override
   Widget build(BuildContext context) {
-    final strong =
-        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final strong = isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
     final muted = isDark
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
 
     return Padding(
       padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.md,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2365,8 +2507,7 @@ class _ThemeSelector extends StatelessWidget {
                 ),
                 child: const Padding(
                   padding: EdgeInsets.all(7),
-                  child: Icon(Icons.palette_outlined,
-                      size: 18, color: _accent),
+                  child: Icon(Icons.palette_outlined, size: 18, color: _accent),
                 ),
               ),
               const SizedBox(width: AppSpacing.md),
@@ -2402,14 +2543,15 @@ class _ThemeSelector extends StatelessWidget {
                           color: isSelected
                               ? _accent.withValues(alpha: 0.13)
                               : Colors.transparent,
-                          borderRadius:
-                              BorderRadius.circular(AppSpacing.radiusMd),
+                          borderRadius: BorderRadius.circular(
+                            AppSpacing.radiusMd,
+                          ),
                           border: Border.all(
                             color: isSelected
                                 ? _accent
                                 : (isDark
-                                    ? AppColors.outlineDark
-                                    : AppColors.outlineLight),
+                                      ? AppColors.outlineDark
+                                      : AppColors.outlineLight),
                             width: isSelected ? 1.5 : 1,
                           ),
                         ),
@@ -2441,7 +2583,9 @@ class _ThemeSelector extends StatelessWidget {
                                   ? Icons.check_circle_rounded
                                   : Icons.circle_outlined,
                               size: 12,
-                              color: isSelected ? _accent : muted.withValues(alpha: 0.4),
+                              color: isSelected
+                                  ? _accent
+                                  : muted.withValues(alpha: 0.4),
                             ),
                           ],
                         ),
@@ -2475,15 +2619,16 @@ class _InfoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final strong =
-        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final strong = isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
     final muted = isDark
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
 
     return Padding(
       padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.md,
+      ),
       child: Row(
         children: [
           DecoratedBox(

@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/errors/app_exception.dart';
+import '../../../core/services/error_service.dart';
 import '../../../models/challenge_model.dart';
 import '../../../models/completion_model.dart';
 import '../../../providers/assignment_providers.dart';
@@ -67,9 +67,12 @@ class _ChallengeCard extends ConsumerWidget {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        gradient: AppColors.gradientForest,
+        gradient: challenge.challengeCategory.gradient,
         borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
-        boxShadow: AppElevation.glow(AppColors.forestGreen, opacity: 0.38),
+        boxShadow: AppElevation.glow(
+          challenge.challengeCategory.color,
+          opacity: 0.38,
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.betweenCards),
@@ -111,9 +114,17 @@ class _ChallengeCard extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: AppSpacing.md),
-            // Title
+            // Title — capped at 2 lines so an unusually long generated
+            // title can't grow this card unpredictably tall; the full,
+            // untruncated title always remains reachable on the challenge
+            // detail screen (`_onNodeTap`'s pushNamed('challengeDetail')),
+            // and screen readers still announce the complete string
+            // regardless of visual ellipsis (Flutter's default Text
+            // semantics carry the full data, not the rendered glyphs).
             Text(
               challenge.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 fontFamily: 'Nunito',
                 fontSize: 22,
@@ -145,7 +156,10 @@ class _ChallengeCard extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   child: Row(
                     children: [
                       Icon(
@@ -182,11 +196,13 @@ class _ChallengeCard extends ConsumerWidget {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 _MetaPill(
-                  label: '${challenge.challengeCategory.emoji} '
+                  label:
+                      '${challenge.challengeCategory.emoji} '
                       '${challenge.challengeCategory.displayName}',
                 ),
                 _MetaPill(
-                  label: '${challenge.difficulty.emoji} '
+                  label:
+                      '${challenge.difficulty.emoji} '
                       '${challenge.difficulty.displayName}',
                 ),
                 _MetaPill(
@@ -299,9 +315,10 @@ class _DiceButtonState extends ConsumerState<_DiceButton>
       vsync: this,
       duration: const Duration(milliseconds: 720),
     );
-    _spin = Tween<double>(begin: 0, end: 3 * 2 * pi).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
-    );
+    _spin = Tween<double>(
+      begin: 0,
+      end: 3 * 2 * pi,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
   }
 
   @override
@@ -313,24 +330,7 @@ class _DiceButtonState extends ConsumerState<_DiceButton>
   @override
   Widget build(BuildContext context) {
     ref.listen(rerollProvider, (_, next) {
-      next.whenOrNull(
-        error: (e, _) {
-          final msg =
-              e is AppException ? e.message : 'Could not reload challenge.';
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(msg,
-                  style: const TextStyle(
-                      fontFamily: 'Nunito', fontWeight: FontWeight.w700)),
-              backgroundColor: AppColors.error,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppSpacing.radiusMd)),
-              margin: const EdgeInsets.all(AppSpacing.md),
-            ),
-          );
-        },
-      );
+      next.whenOrNull(error: (e, _) => ErrorService.showError(context, e));
     });
 
     final isLoading = ref.watch(rerollProvider).isLoading;
@@ -356,10 +356,8 @@ class _DiceButtonState extends ConsumerState<_DiceButton>
               children: [
                 AnimatedBuilder(
                   animation: _spin,
-                  builder: (_, child) => Transform.rotate(
-                    angle: _spin.value,
-                    child: child,
-                  ),
+                  builder: (_, child) =>
+                      Transform.rotate(angle: _spin.value, child: child),
                   child: isLoading
                       ? const SizedBox(
                           width: 22,
@@ -406,12 +404,15 @@ class _DiceButtonState extends ConsumerState<_DiceButton>
                   DecoratedBox(
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.18),
-                      borderRadius:
-                          BorderRadius.circular(AppSpacing.radiusFull),
+                      borderRadius: BorderRadius.circular(
+                        AppSpacing.radiusFull,
+                      ),
                     ),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 7, vertical: 3),
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
                       child: Text(
                         '×$rerollCount',
                         style: const TextStyle(
@@ -454,7 +455,10 @@ class _StartButtonState extends ConsumerState<_StartButton>
 
   // Guards against a rapid double-tap pushing two camera routes onto the
   // stack. Resets automatically once the pushed route is popped, so the
-  // button works normally again on return from the camera flow.
+  // button works normally again on return from the camera flow. Reset in a
+  // `finally` (not just after the await) so a navigation error/interrupted
+  // route transition can never leave this permanently `true` — that would
+  // make the button silently stop responding to every future tap.
   bool _navigating = false;
 
   @override
@@ -485,51 +489,54 @@ class _StartButtonState extends ConsumerState<_StartButton>
       label: "Start today's challenge",
       excludeSemantics: true,
       child: PressableScale(
-      child: SizedBox(
-        height: AppSpacing.buttonHeight,
-        child: Material(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
-          elevation: 4,
-          shadowColor: Colors.black26,
-          child: InkWell(
-            onTap: () async {
-              if (_navigating) return;
-              _navigating = true;
-              unawaited(HapticFeedback.lightImpact());
-              await context.pushNamed('camera');
-              if (mounted) setState(() => _navigating = false);
-            },
+        child: SizedBox(
+          height: AppSpacing.buttonHeight,
+          child: Material(
+            color: Colors.white,
             borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
-            splashColor: AppColors.grassGreen.withValues(alpha: 0.2),
-            child: Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Start Challenge',
-                    style: TextStyle(
-                      fontFamily: 'Nunito',
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.forestGreen,
+            elevation: 4,
+            shadowColor: Colors.black26,
+            child: InkWell(
+              onTap: () async {
+                if (_navigating) return;
+                _navigating = true;
+                unawaited(HapticFeedback.lightImpact());
+                try {
+                  await context.pushNamed('camera');
+                } finally {
+                  if (mounted) setState(() => _navigating = false);
+                }
+              },
+              borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+              splashColor: AppColors.grassGreen.withValues(alpha: 0.2),
+              child: Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Start Challenge',
+                      style: TextStyle(
+                        fontFamily: 'Nunito',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.forestGreen,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  SlideTransition(
-                    position: _arrow,
-                    child: const Icon(
-                      Icons.arrow_forward_rounded,
-                      size: AppSpacing.iconSm,
-                      color: AppColors.forestGreen,
+                    const SizedBox(width: AppSpacing.sm),
+                    SlideTransition(
+                      position: _arrow,
+                      child: const Icon(
+                        Icons.arrow_forward_rounded,
+                        size: AppSpacing.iconSm,
+                        color: AppColors.forestGreen,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
         ),
-      ),
       ),
     );
   }
@@ -594,8 +601,11 @@ class _DoneCardState extends State<_DoneCard>
                 ),
                 child: const Padding(
                   padding: EdgeInsets.all(AppSpacing.sm),
-                  child: Icon(Icons.check_circle_rounded,
-                      color: Colors.white, size: AppSpacing.iconLg),
+                  child: Icon(
+                    Icons.check_circle_rounded,
+                    color: Colors.white,
+                    size: AppSpacing.iconLg,
+                  ),
                 ),
               ),
             ),
@@ -627,8 +637,10 @@ class _DoneCardState extends State<_DoneCard>
                 ],
               ),
             ),
-            Text(widget.completion.challengeEmoji,
-                style: const TextStyle(fontSize: 28)),
+            Text(
+              widget.completion.challengeEmoji,
+              style: const TextStyle(fontSize: 28),
+            ),
           ],
         ),
       ),
@@ -670,8 +682,9 @@ class _PendingCardState extends ConsumerState<_PendingCard> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg =
-        isDark ? AppColors.surfaceVariantDark : AppColors.surfaceVariantLight;
+    final bg = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceVariantLight;
     final border = isDark ? AppColors.outlineDark : AppColors.outlineLight;
     final textColor = isDark
         ? AppColors.onSurfaceVariantDark
@@ -687,7 +700,11 @@ class _PendingCardState extends ConsumerState<_PendingCard> {
         padding: const EdgeInsets.all(AppSpacing.lg),
         child: Row(
           children: [
-            Icon(Icons.hourglass_top_rounded, size: AppSpacing.iconLg, color: textColor),
+            Icon(
+              Icons.hourglass_top_rounded,
+              size: AppSpacing.iconLg,
+              color: textColor,
+            ),
             const SizedBox(width: AppSpacing.md),
             Expanded(
               child: Column(
@@ -728,11 +745,12 @@ class _PendingCardState extends ConsumerState<_PendingCard> {
                                 foregroundColor: textColor,
                                 padding: EdgeInsets.zero,
                                 minimumSize: Size.zero,
-                                tapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
-                              icon: const Icon(Icons.refresh_rounded,
-                                  size: AppSpacing.iconTiny),
+                              icon: const Icon(
+                                Icons.refresh_rounded,
+                                size: AppSpacing.iconTiny,
+                              ),
                               label: const Text(
                                 'Taking a while — Try Again',
                                 style: TextStyle(

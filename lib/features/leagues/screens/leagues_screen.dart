@@ -26,8 +26,32 @@ double _progressInLeague(int xp, int idx) {
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
-class LeaguesScreen extends ConsumerWidget {
+/// Standalone Leagues screen — kept for anything that still wants Leagues
+/// as its own full page, but no longer routed to directly; the Leaderboard
+/// screen's "Leagues" tab renders [LeaguesTabContent] itself instead (see
+/// leaderboard_screen.dart). Both use the exact same content/state, so
+/// there's no duplicated league logic between them.
+class LeaguesScreen extends StatelessWidget {
   const LeaguesScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Leagues'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: const LeaguesTabContent(),
+    );
+  }
+}
+
+/// The actual Leagues content (current-league hero + full league ladder) —
+/// extracted so it can be embedded directly inside Leaderboard's "Leagues"
+/// tab without a second, redundant AppBar.
+class LeaguesTabContent extends ConsumerWidget {
+  const LeaguesTabContent({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -44,75 +68,68 @@ class LeaguesScreen extends ConsumerWidget {
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Leagues'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: CustomScrollView(
-        slivers: [
-          // ── Current league hero ────────────────────────────────────────
-          SliverToBoxAdapter(
-            child: _LeagueHero(
-              league: league,
-              xp: xp,
-              progress: progress,
-              leagueIdx: leagueIdx,
-              isDark: isDark,
-              reducedMotion: reducedMotion,
-            ),
+    return CustomScrollView(
+      slivers: [
+        // ── Current league hero ────────────────────────────────────────
+        SliverToBoxAdapter(
+          child: _LeagueHero(
+            league: league,
+            xp: xp,
+            progress: progress,
+            leagueIdx: leagueIdx,
+            isDark: isDark,
+            reducedMotion: reducedMotion,
           ),
+        ),
 
-          // ── "League Ladder" header ─────────────────────────────────────
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.screenHorizontal,
-                AppSpacing.lg,
-                AppSpacing.screenHorizontal,
-                AppSpacing.sm,
-              ),
-              child: Text(
-                'LEAGUE LADDER',
-                style: TextStyle(
-                  fontFamily: 'Nunito',
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.1,
-                  color: muted,
-                ),
-              ),
-            ),
-          ),
-
-          // ── League list ────────────────────────────────────────────────
-          SliverPadding(
+        // ── "League Ladder" header ─────────────────────────────────────
+        SliverToBoxAdapter(
+          child: Padding(
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.screenHorizontal,
-              0,
+              AppSpacing.lg,
               AppSpacing.screenHorizontal,
-              AppSpacing.xxxl,
+              AppSpacing.sm,
             ),
-            sliver: SliverList.builder(
-              itemCount: LeagueDef.all.length,
-              itemBuilder: (context, i) {
-                // Render in reverse: Aurora at top, Seedling at bottom.
-                final idx = LeagueDef.all.length - 1 - i;
-                return _LadderRow(
-                  league: LeagueDef.all[idx],
-                  leagueIdx: idx,
-                  currentIdx: leagueIdx,
-                  userXp: xp,
-                  isDark: isDark,
-                  strong: strong,
-                  muted: muted,
-                );
-              },
+            child: Text(
+              'LEAGUE LADDER',
+              style: TextStyle(
+                fontFamily: 'Nunito',
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.1,
+                color: muted,
+              ),
             ),
           ),
-        ],
-      ),
+        ),
+
+        // ── League list ────────────────────────────────────────────────
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.screenHorizontal,
+            0,
+            AppSpacing.screenHorizontal,
+            AppSpacing.xxxl,
+          ),
+          sliver: SliverList.builder(
+            itemCount: LeagueDef.all.length,
+            itemBuilder: (context, i) {
+              // Render in reverse: Aurora at top, Seedling at bottom.
+              final idx = LeagueDef.all.length - 1 - i;
+              return _LadderRow(
+                league: LeagueDef.all[idx],
+                leagueIdx: idx,
+                currentIdx: leagueIdx,
+                userXp: xp,
+                isDark: isDark,
+                strong: strong,
+                muted: muted,
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -173,10 +190,7 @@ class _LeagueHero extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Text(
-                    league.emoji,
-                    style: const TextStyle(fontSize: 48),
-                  ),
+                  Text(league.emoji, style: const TextStyle(fontSize: 48)),
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Column(
@@ -252,17 +266,21 @@ class _LeagueHero extends StatelessWidget {
                             decoration: BoxDecoration(
                               color: league.color.withValues(alpha: 0.18),
                               borderRadius: BorderRadius.circular(
-                                  AppSpacing.radiusFull),
+                                AppSpacing.radiusFull,
+                              ),
                             ),
                             child: SizedBox(
-                                height: 8, width: constraints.maxWidth),
+                              height: 8,
+                              width: constraints.maxWidth,
+                            ),
                           ),
                           if (fillW > 0)
                             DecoratedBox(
                               decoration: BoxDecoration(
                                 color: league.color,
                                 borderRadius: BorderRadius.circular(
-                                    AppSpacing.radiusFull),
+                                  AppSpacing.radiusFull,
+                                ),
                               ),
                               child: SizedBox(height: 8, width: fillW),
                             ),
@@ -289,17 +307,23 @@ class _LeagueHero extends StatelessWidget {
                     DecoratedBox(
                       decoration: BoxDecoration(
                         color: league.color.withValues(alpha: 0.15),
-                        borderRadius:
-                            BorderRadius.circular(AppSpacing.radiusFull),
+                        borderRadius: BorderRadius.circular(
+                          AppSpacing.radiusFull,
+                        ),
                       ),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.emoji_events_rounded,
-                                size: 14, color: league.color),
+                            Icon(
+                              Icons.emoji_events_rounded,
+                              size: 14,
+                              color: league.color,
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               '$xp XP · Max League',
@@ -404,7 +428,9 @@ class _LadderRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final isCurrent = leagueIdx == currentIdx;
     final isCompleted = leagueIdx < currentIdx;
-    final surfaceBg = isDark ? AppColors.surfaceVariantDark : AppColors.surfaceVariantLight;
+    final surfaceBg = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceVariantLight;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -415,20 +441,23 @@ class _LadderRow extends StatelessWidget {
               : surfaceBg,
           borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
           border: isCurrent
-              ? Border.all(color: league.color.withValues(alpha: 0.5), width: 1.5)
+              ? Border.all(
+                  color: league.color.withValues(alpha: 0.5),
+                  width: 1.5,
+                )
               : null,
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
           child: Row(
             children: [
               // Emoji badge
               Text(
                 league.emoji,
-                style: TextStyle(
-                  fontSize: isCurrent ? 28 : 22,
-                ),
+                style: TextStyle(fontSize: isCurrent ? 28 : 22),
               ),
               const SizedBox(width: AppSpacing.md),
 
@@ -454,11 +483,14 @@ class _LadderRow extends StatelessWidget {
                             decoration: BoxDecoration(
                               color: league.color,
                               borderRadius: BorderRadius.circular(
-                                  AppSpacing.radiusFull),
+                                AppSpacing.radiusFull,
+                              ),
                             ),
                             child: const Padding(
                               padding: EdgeInsets.symmetric(
-                                  horizontal: 7, vertical: 2),
+                                horizontal: 7,
+                                vertical: 2,
+                              ),
                               child: Text(
                                 'YOU',
                                 style: TextStyle(
@@ -495,8 +527,11 @@ class _LadderRow extends StatelessWidget {
                   ),
                   child: const Padding(
                     padding: EdgeInsets.all(5),
-                    child: Icon(Icons.check_rounded,
-                        size: 14, color: AppColors.grassGreen),
+                    child: Icon(
+                      Icons.check_rounded,
+                      size: 14,
+                      color: AppColors.grassGreen,
+                    ),
                   ),
                 )
               else if (!isCurrent)

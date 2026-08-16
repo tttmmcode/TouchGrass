@@ -57,7 +57,8 @@ class _CompanionViewState extends ConsumerState<CompanionView>
 
   // Derived animation values exposed to the painter
   double get _bobOffset => math.sin(_bobCtrl.value * 2 * math.pi);
-  double get _eyeOpen => _blinkCtrl.status == AnimationStatus.forward ||
+  double get _eyeOpen =>
+      _blinkCtrl.status == AnimationStatus.forward ||
           _blinkCtrl.status == AnimationStatus.reverse
       ? (1.0 - _blinkCtrl.value)
       : 1.0;
@@ -105,7 +106,8 @@ class _CompanionViewState extends ConsumerState<CompanionView>
   void _scheduleBlink() {
     const baseDelay = Duration(milliseconds: 3200);
     _blinkTimer = Timer(
-      baseDelay + Duration(milliseconds: (math.Random().nextDouble() * 2000).toInt()),
+      baseDelay +
+          Duration(milliseconds: (math.Random().nextDouble() * 2000).toInt()),
       () async {
         if (!mounted) return;
         await _blinkCtrl.forward(from: 0);
@@ -149,67 +151,102 @@ class _CompanionViewState extends ConsumerState<CompanionView>
           TweenSequenceItem(tween: Tween(begin: 0.9, end: 0), weight: 1),
         ]).animate(CurvedAnimation(parent: _moodCtrl, curve: Curves.easeInOut));
         _jumpAnim = Tween<double>(begin: 0, end: 0).animate(_moodCtrl);
-        _smileAnim = Tween<double>(begin: 0.55, end: 0.75)
-            .animate(CurvedAnimation(parent: _moodCtrl, curve: Curves.easeOut));
+        _smileAnim = Tween<double>(
+          begin: 0.55,
+          end: 0.75,
+        ).animate(CurvedAnimation(parent: _moodCtrl, curve: Curves.easeOut));
         _startMoodLoop(duration: const Duration(milliseconds: 1400));
 
       case CompanionMood.bounce:
-        _armAnim = Tween<double>(begin: 0, end: 0.3).animate(
-            CurvedAnimation(parent: _moodCtrl, curve: Curves.easeInOut));
+        _armAnim = Tween<double>(
+          begin: 0,
+          end: 0.3,
+        ).animate(CurvedAnimation(parent: _moodCtrl, curve: Curves.easeInOut));
         _jumpAnim = TweenSequence<double>([
           TweenSequenceItem(
-              tween: Tween<double>(begin: 0, end: 1)
-                  .chain(CurveTween(curve: Curves.easeOut)),
-              weight: 1),
+            tween: Tween<double>(
+              begin: 0,
+              end: 1,
+            ).chain(CurveTween(curve: Curves.easeOut)),
+            weight: 1,
+          ),
           TweenSequenceItem(
-              tween: Tween<double>(begin: 1, end: 0)
-                  .chain(CurveTween(curve: Curves.bounceOut)),
-              weight: 1),
+            tween: Tween<double>(
+              begin: 1,
+              end: 0,
+            ).chain(CurveTween(curve: Curves.bounceOut)),
+            weight: 1,
+          ),
         ]).animate(_moodCtrl);
-        _smileAnim = Tween<double>(begin: 0.6, end: 0.9)
-            .animate(CurvedAnimation(parent: _moodCtrl, curve: Curves.easeOut));
+        _smileAnim = Tween<double>(
+          begin: 0.6,
+          end: 0.9,
+        ).animate(CurvedAnimation(parent: _moodCtrl, curve: Curves.easeOut));
         _startMoodLoop(duration: const Duration(milliseconds: 700));
 
       case CompanionMood.cheer:
         // Arms shoot up, body jumps, big grin
         _armAnim = TweenSequence<double>([
           TweenSequenceItem(
-              tween: Tween<double>(begin: 0, end: 1.5)
-                  .chain(CurveTween(curve: Curves.easeOut)),
-              weight: 1),
+            tween: Tween<double>(
+              begin: 0,
+              end: 1.5,
+            ).chain(CurveTween(curve: Curves.easeOut)),
+            weight: 1,
+          ),
           TweenSequenceItem(tween: ConstantTween(1.5), weight: 3),
           TweenSequenceItem(
-              tween: Tween(begin: 1.5, end: 1.1)
-                  .chain(CurveTween(curve: Curves.easeInOut)),
-              weight: 1),
+            tween: Tween(
+              begin: 1.5,
+              end: 1.1,
+            ).chain(CurveTween(curve: Curves.easeInOut)),
+            weight: 1,
+          ),
           TweenSequenceItem(
-              tween: Tween(begin: 1.1, end: 1.5)
-                  .chain(CurveTween(curve: Curves.easeInOut)),
-              weight: 1),
+            tween: Tween(
+              begin: 1.1,
+              end: 1.5,
+            ).chain(CurveTween(curve: Curves.easeInOut)),
+            weight: 1,
+          ),
         ]).animate(_moodCtrl);
         _jumpAnim = TweenSequence<double>([
           TweenSequenceItem(
-              tween: Tween<double>(begin: 0, end: 0.9)
-                  .chain(CurveTween(curve: Curves.easeOut)),
-              weight: 2),
+            tween: Tween<double>(
+              begin: 0,
+              end: 0.9,
+            ).chain(CurveTween(curve: Curves.easeOut)),
+            weight: 2,
+          ),
           TweenSequenceItem(
-              tween: Tween<double>(begin: 0.9, end: 0)
-                  .chain(CurveTween(curve: Curves.bounceOut)),
-              weight: 3),
+            tween: Tween<double>(
+              begin: 0.9,
+              end: 0,
+            ).chain(CurveTween(curve: Curves.bounceOut)),
+            weight: 3,
+          ),
         ]).animate(_moodCtrl);
-        _smileAnim = Tween<double>(begin: 0.7, end: 1.0)
-            .animate(CurvedAnimation(parent: _moodCtrl, curve: Curves.easeOut));
+        _smileAnim = Tween<double>(
+          begin: 0.7,
+          end: 1.0,
+        ).animate(CurvedAnimation(parent: _moodCtrl, curve: Curves.easeOut));
         _startMoodLoop(duration: const Duration(milliseconds: 1000));
 
       case CompanionMood.encourage:
         // Gentle lean and warm expression
-        _armAnim = Tween<double>(begin: 0, end: 0.25)
-            .animate(CurvedAnimation(parent: _moodCtrl, curve: Curves.easeInOut));
+        _armAnim = Tween<double>(
+          begin: 0,
+          end: 0.25,
+        ).animate(CurvedAnimation(parent: _moodCtrl, curve: Curves.easeInOut));
         _jumpAnim = Tween<double>(begin: 0, end: 0).animate(_moodCtrl);
-        _smileAnim = Tween<double>(begin: 0.55, end: 0.72)
-            .animate(CurvedAnimation(parent: _moodCtrl, curve: Curves.easeInOut));
+        _smileAnim = Tween<double>(
+          begin: 0.55,
+          end: 0.72,
+        ).animate(CurvedAnimation(parent: _moodCtrl, curve: Curves.easeInOut));
         _startMoodLoop(
-            duration: const Duration(milliseconds: 2400), reverse: true);
+          duration: const Duration(milliseconds: 2400),
+          reverse: true,
+        );
     }
   }
 
@@ -217,6 +254,21 @@ class _CompanionViewState extends ConsumerState<CompanionView>
   void didUpdateWidget(CompanionView old) {
     super.didUpdateWidget(old);
     if (old.mood != widget.mood) _applyMood(widget.mood);
+    // A new message (e.g. a fresh tap-response) replays the reveal sequence.
+    // `initState` only schedules this once, for the widget's first message,
+    // so a later message change needs its own trigger — mirrors initState's
+    // own delayed-show logic exactly. If a bubble is already showing when
+    // the message changes, `_SpeechBubble`'s `key: ValueKey(widget.message)`
+    // below already gives it a fresh State (fresh entrance + dismiss timer)
+    // as soon as this rebuilds with the new message, so no extra handling
+    // is needed for that case beyond keeping `_showBubble` true.
+    if (widget.message != null &&
+        widget.message != old.message &&
+        !_showBubble) {
+      Future<void>.delayed(widget.messageDelay, () {
+        if (mounted) setState(() => _showBubble = true);
+      });
+    }
   }
 
   @override
@@ -315,8 +367,10 @@ class _SpeechBubbleState extends State<_SpeechBubble>
       duration: const Duration(milliseconds: 260),
     );
     _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
-    _scale = Tween<double>(begin: 0.82, end: 1.0)
-        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut));
+    _scale = Tween<double>(
+      begin: 0.82,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut));
     _ctrl.forward();
     _timer = Timer(const Duration(seconds: 3), _dismiss);
   }
@@ -338,8 +392,9 @@ class _SpeechBubbleState extends State<_SpeechBubble>
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? AppColors.surfaceVariantDark : Colors.white;
-    final textColor =
-        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final textColor = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
 
     return GestureDetector(
       onTap: _dismiss,

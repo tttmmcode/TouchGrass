@@ -10,8 +10,11 @@ Step-by-step checklist for getting to App Store and Play Store.
 
 The Firebase project was configured with `com.example.touchgrass`. You must update it:
 
-**Android:**
-- `build.gradle.kts` → `applicationId = "com.touchgrass.app"` ✅ (already done)
+**Android — currently a real, live mismatch, not just a future step:**
+`android/app/build.gradle.kts`'s `applicationId` is already `com.touchgrass.app` ✅, but
+`android/app/google-services.json`'s `package_name` still says `com.example.touchgrass` — these
+two values do not match *today*. This is not just cosmetic: Firebase/Google Sign-In package-name
+validation can reject the mismatch at runtime on Android release builds. Fix:
 - In Firebase Console → Project Settings → Your Apps → Android app
   - Add a new Android app with package name `com.touchgrass.app`
   - Download the new `google-services.json` → replace `android/app/google-services.json`
@@ -45,6 +48,20 @@ dart run flutter_launcher_icons
 ```
 
 This generates all icon sizes for both platforms automatically.
+
+### 4. Cloud Functions & secrets (Gemini, VAPID)
+
+Not required to ship the app as-is (the client-side Gemini flow still works without these), but
+required to close KNOWN_BUGS.md B1/B2 (server-authoritative AI verification) and B4 (web push):
+
+- **Gemini server-side verification** — `functions/src/index.ts` is written and compiles, but is
+  not deployed. Full deploy/cutover sequence (Blaze billing → secret → deploy → client cutover →
+  rules tightening, in that exact order) is in `functions/README.md` — do not skip ahead in that
+  order, it's sequenced deliberately.
+- **Web push VAPID key** — Firebase Console → Project Settings → Cloud Messaging → Web Push
+  certificates → generate one, then build web with `--dart-define=FCM_VAPID_KEY=<key>`. No other
+  code change needed — `NotificationService.getToken()` already picks it up
+  (`lib/services/notification_service.dart`).
 
 ---
 
@@ -167,8 +184,11 @@ URLs to register:
 ## FINAL CHECKLIST
 
 - [ ] Bundle IDs updated to `com.touchgrass.app` (Android + iOS + Firebase)
-- [ ] New `google-services.json` and `GoogleService-Info.plist` downloaded
+- [ ] New `google-services.json` downloaded (fixes the live Android package-name mismatch, see Part 1)
+- [ ] New `GoogleService-Info.plist` downloaded (iOS has none checked in at all yet)
 - [ ] Maps API key restricted to `com.touchgrass.app` + SHA-1
+- [ ] Cloud Function deployed and client cut over, or explicitly deferred (see functions/README.md)
+- [ ] FCM VAPID key generated and passed at web build time, or explicitly deferred (KNOWN_BUGS.md B4)
 - [ ] App icon artwork placed and `dart run flutter_launcher_icons` run
 - [ ] `key.properties` created with real keystore credentials
 - [ ] `key.properties` and `*.jks` in `.gitignore` ✅ (already done)

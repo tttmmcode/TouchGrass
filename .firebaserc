@@ -1,0 +1,18 @@
+{
+  "projects": {
+    "default": "touchgrass-today"
+  },
+  "targets": {
+    "touchgrass-today": {
+      "hosting": {
+        "today": [
+          "touchgrass-today"
+        ],
+        "main": [
+          "touchgrass"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

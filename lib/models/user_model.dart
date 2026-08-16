@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
 import '../core/constants/app_constants.dart';
+import 'entitlement.dart';
 
 /// Immutable representation of a TouchGrass user.
 ///
@@ -32,6 +33,7 @@ class UserModel {
     this.achievementTimestamps = const {},
     required this.settings,
     this.frozenDates = const [],
+    this.entitlementTier = EntitlementTier.free,
   });
 
   final String uid;
@@ -82,6 +84,12 @@ class UserModel {
   /// [UserRepository.awardCompletionRewards].
   final List<String> frozenDates;
 
+  /// Defaults to [EntitlementTier.free] when absent from the document
+  /// (every user today, since nothing writes this field yet). Deliberately
+  /// NOT written by [toFirestore] — see entitlement.dart's doc comment for
+  /// why the client must never be able to set this itself.
+  final EntitlementTier entitlementTier;
+
   // ── Computed properties ────────────────────────────────────────────────────
 
   int get level => AppConstants.levelForXp(xp);
@@ -129,17 +137,17 @@ class UserModel {
     );
   }
 
-  factory UserModel.fromFirestore(
-    DocumentSnapshot<Map<String, dynamic>> doc,
-  ) {
+  factory UserModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data()!;
 
     final rawTimestamps =
         data['achievementTimestamps'] as Map<String, dynamic>? ?? {};
-    final achievementTimestamps = rawTimestamps.map((k, v) => MapEntry(
-          k,
-          v is Timestamp ? v.toDate().toUtc() : DateTime.now().toUtc(),
-        ));
+    final achievementTimestamps = rawTimestamps.map(
+      (k, v) => MapEntry(
+        k,
+        v is Timestamp ? v.toDate().toUtc() : DateTime.now().toUtc(),
+      ),
+    );
 
     return UserModel(
       uid: doc.id,
@@ -150,8 +158,10 @@ class UserModel {
       xp: data['xp'] as int? ?? 0,
       weeklyXp: data['weeklyXp'] as int? ?? 0,
       // Default to epoch so first XP award after deploy triggers a reset.
-      weeklyXpResetDate: _tsToDate(data['weeklyXpResetDate'],
-          fallback: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true)),
+      weeklyXpResetDate: _tsToDate(
+        data['weeklyXpResetDate'],
+        fallback: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      ),
       streak: data['streak'] as int? ?? 0,
       longestStreak: data['longestStreak'] as int? ?? 0,
       totalCompletions: data['totalCompletions'] as int? ?? 0,
@@ -166,35 +176,38 @@ class UserModel {
         data['settings'] as Map<String, dynamic>? ?? {},
       ),
       frozenDates: List<String>.from(data['frozenDates'] as List? ?? []),
+      entitlementTier: EntitlementTierX.fromString(
+        data['entitlementTier'] as String?,
+      ),
     );
   }
 
   // ── Serialisation ──────────────────────────────────────────────────────────
 
   Map<String, dynamic> toFirestore() => {
-        'uid': uid,
-        'email': email,
-        'username': username,
-        'displayName': displayName,
-        'photoUrl': photoUrl,
-        'xp': xp,
-        'weeklyXp': weeklyXp,
-        'weeklyXpResetDate': Timestamp.fromDate(weeklyXpResetDate),
-        'level': level, // stored for Cloud Functions query efficiency
-        'streak': streak,
-        'longestStreak': longestStreak,
-        'totalCompletions': totalCompletions,
-        'totalPhotosUploaded': totalPhotosUploaded,
-        'rainyDayCount': rainyDayCount,
-        'currentLeague': currentLeague,
-        'createdAt': Timestamp.fromDate(createdAt),
-        'lastActiveDate': Timestamp.fromDate(lastActiveDate),
-        'achievements': achievements,
-        'settings': settings.toMap(),
-        'frozenDates': frozenDates,
-        // achievementTimestamps is omitted — entries are written individually
-        // using 'achievementTimestamps.{id}' field notation.
-      };
+    'uid': uid,
+    'email': email,
+    'username': username,
+    'displayName': displayName,
+    'photoUrl': photoUrl,
+    'xp': xp,
+    'weeklyXp': weeklyXp,
+    'weeklyXpResetDate': Timestamp.fromDate(weeklyXpResetDate),
+    'level': level, // stored for Cloud Functions query efficiency
+    'streak': streak,
+    'longestStreak': longestStreak,
+    'totalCompletions': totalCompletions,
+    'totalPhotosUploaded': totalPhotosUploaded,
+    'rainyDayCount': rainyDayCount,
+    'currentLeague': currentLeague,
+    'createdAt': Timestamp.fromDate(createdAt),
+    'lastActiveDate': Timestamp.fromDate(lastActiveDate),
+    'achievements': achievements,
+    'settings': settings.toMap(),
+    'frozenDates': frozenDates,
+    // achievementTimestamps is omitted — entries are written individually
+    // using 'achievementTimestamps.{id}' field notation.
+  };
 
   // ── Mutation ───────────────────────────────────────────────────────────────
 
@@ -218,30 +231,30 @@ class UserModel {
     Map<String, DateTime>? achievementTimestamps,
     UserSettings? settings,
     List<String>? frozenDates,
-  }) =>
-      UserModel(
-        uid: uid,
-        email: email ?? this.email,
-        username: username ?? this.username,
-        displayName: displayName ?? this.displayName,
-        photoUrl: clearPhoto ? null : (photoUrl ?? this.photoUrl),
-        xp: xp ?? this.xp,
-        weeklyXp: weeklyXp ?? this.weeklyXp,
-        weeklyXpResetDate: weeklyXpResetDate ?? this.weeklyXpResetDate,
-        streak: streak ?? this.streak,
-        longestStreak: longestStreak ?? this.longestStreak,
-        totalCompletions: totalCompletions ?? this.totalCompletions,
-        totalPhotosUploaded: totalPhotosUploaded ?? this.totalPhotosUploaded,
-        rainyDayCount: rainyDayCount ?? this.rainyDayCount,
-        currentLeague: currentLeague ?? this.currentLeague,
-        createdAt: createdAt,
-        lastActiveDate: lastActiveDate ?? this.lastActiveDate,
-        achievements: achievements ?? this.achievements,
-        achievementTimestamps:
-            achievementTimestamps ?? this.achievementTimestamps,
-        settings: settings ?? this.settings,
-        frozenDates: frozenDates ?? this.frozenDates,
-      );
+  }) => UserModel(
+    uid: uid,
+    email: email ?? this.email,
+    username: username ?? this.username,
+    displayName: displayName ?? this.displayName,
+    photoUrl: clearPhoto ? null : (photoUrl ?? this.photoUrl),
+    xp: xp ?? this.xp,
+    weeklyXp: weeklyXp ?? this.weeklyXp,
+    weeklyXpResetDate: weeklyXpResetDate ?? this.weeklyXpResetDate,
+    streak: streak ?? this.streak,
+    longestStreak: longestStreak ?? this.longestStreak,
+    totalCompletions: totalCompletions ?? this.totalCompletions,
+    totalPhotosUploaded: totalPhotosUploaded ?? this.totalPhotosUploaded,
+    rainyDayCount: rainyDayCount ?? this.rainyDayCount,
+    currentLeague: currentLeague ?? this.currentLeague,
+    createdAt: createdAt,
+    lastActiveDate: lastActiveDate ?? this.lastActiveDate,
+    achievements: achievements ?? this.achievements,
+    achievementTimestamps: achievementTimestamps ?? this.achievementTimestamps,
+    settings: settings ?? this.settings,
+    frozenDates: frozenDates ?? this.frozenDates,
+    // No override parameter, deliberately — see entitlement.dart.
+    entitlementTier: entitlementTier,
+  );
 
   // ── Equality ───────────────────────────────────────────────────────────────
 
@@ -287,23 +300,30 @@ class UserSettings {
     required this.locationEnabled,
     required this.profilePublic,
     this.companionType = 'sprout',
+    this.preferredCategories = const [],
   });
 
   factory UserSettings.defaults() => const UserSettings(
-        notificationsEnabled: true,
-        streakFreezesOwned: AppConstants.rainyDaysInitial,
-        locationEnabled: true,
-        profilePublic: true,
-        companionType: 'sprout',
-      );
+    notificationsEnabled: true,
+    streakFreezesOwned: AppConstants.rainyDaysInitial,
+    locationEnabled: true,
+    profilePublic: true,
+    companionType: 'sprout',
+    preferredCategories: [],
+  );
 
   factory UserSettings.fromMap(Map<String, dynamic> map) => UserSettings(
-        notificationsEnabled: map['notificationsEnabled'] as bool? ?? true,
-        streakFreezesOwned: map['streakFreezesOwned'] as int? ?? 0,
-        locationEnabled: map['locationEnabled'] as bool? ?? true,
-        profilePublic: map['profilePublic'] as bool? ?? true,
-        companionType: map['companionType'] as String? ?? 'sprout',
-      );
+    notificationsEnabled: map['notificationsEnabled'] as bool? ?? true,
+    streakFreezesOwned: map['streakFreezesOwned'] as int? ?? 0,
+    locationEnabled: map['locationEnabled'] as bool? ?? true,
+    profilePublic: map['profilePublic'] as bool? ?? true,
+    companionType: map['companionType'] as String? ?? 'sprout',
+    preferredCategories:
+        (map['preferredCategories'] as List<dynamic>?)
+            ?.cast<String>()
+            .toList() ??
+        const [],
+  );
 
   final bool notificationsEnabled;
   final int streakFreezesOwned;
@@ -317,13 +337,22 @@ class UserSettings {
   /// The user's chosen companion: 'sprout', 'pebble', 'sunny', or 'leafy'.
   final String companionType;
 
+  /// [ChallengeCategory.name] values the user wants their daily challenges
+  /// drawn from. An empty list means no preference — every category is
+  /// eligible. Stored as raw strings (not the enum) so an old client never
+  /// chokes on a category name it doesn't recognize yet; unrecognized names
+  /// are simply ignored by the filter rather than causing an error — see
+  /// ChallengeSeedLibrary.selectSeed's preferredCategories handling.
+  final List<String> preferredCategories;
+
   Map<String, dynamic> toMap() => {
-        'notificationsEnabled': notificationsEnabled,
-        'streakFreezesOwned': streakFreezesOwned,
-        'locationEnabled': locationEnabled,
-        'profilePublic': profilePublic,
-        'companionType': companionType,
-      };
+    'notificationsEnabled': notificationsEnabled,
+    'streakFreezesOwned': streakFreezesOwned,
+    'locationEnabled': locationEnabled,
+    'profilePublic': profilePublic,
+    'companionType': companionType,
+    'preferredCategories': preferredCategories,
+  };
 
   UserSettings copyWith({
     bool? notificationsEnabled,
@@ -331,12 +360,13 @@ class UserSettings {
     bool? locationEnabled,
     bool? profilePublic,
     String? companionType,
-  }) =>
-      UserSettings(
-        notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
-        streakFreezesOwned: streakFreezesOwned ?? this.streakFreezesOwned,
-        locationEnabled: locationEnabled ?? this.locationEnabled,
-        profilePublic: profilePublic ?? this.profilePublic,
-        companionType: companionType ?? this.companionType,
-      );
+    List<String>? preferredCategories,
+  }) => UserSettings(
+    notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
+    streakFreezesOwned: streakFreezesOwned ?? this.streakFreezesOwned,
+    locationEnabled: locationEnabled ?? this.locationEnabled,
+    profilePublic: profilePublic ?? this.profilePublic,
+    companionType: companionType ?? this.companionType,
+    preferredCategories: preferredCategories ?? this.preferredCategories,
+  );
 }

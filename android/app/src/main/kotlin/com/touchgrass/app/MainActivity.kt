@@ -1,4 +1,4 @@
-package com.example.touchgrass
+package com.touchgrass.app
 
 import io.flutter.embedding.android.FlutterActivity
 

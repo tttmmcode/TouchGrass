@@ -18,7 +18,6 @@ abstract final class RouteNames {
 
   // ── Profile sub-routes ────────────────────────────────────────────────────
   static const String settings = '/profile/settings';
-  static const String leagues = '/profile/leagues';
   static const String streakCalendar = '/profile/streak';
 
   // ── Achievements sub-routes ───────────────────────────────────────────────

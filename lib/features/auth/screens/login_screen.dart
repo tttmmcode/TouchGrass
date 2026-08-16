@@ -42,13 +42,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       parent: _entryController,
       curve: const Interval(0.0, 0.7, curve: Curves.easeOut),
     );
-    _slideAnim = Tween<Offset>(
-      begin: const Offset(0, 0.25),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _entryController,
-      curve: const Interval(0.0, 0.8, curve: Curves.easeOutCubic),
-    ));
+    _slideAnim = Tween<Offset>(begin: const Offset(0, 0.25), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _entryController,
+            curve: const Interval(0.0, 0.8, curve: Curves.easeOutCubic),
+          ),
+        );
     _entryController.forward();
   }
 
@@ -60,9 +60,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   bool get _anyLoading => _googleLoading || _appleLoading;
 
+  // defaultTargetPlatform reflects the browser's host OS on web (e.g. Safari
+  // on an iPhone/Mac reports iOS/macOS there too), so it alone can't tell
+  // native iOS/macOS apart from a web session — exclude web explicitly.
+  // sign_in_with_apple's web flow needs a registered Service ID + redirect
+  // URI this repo doesn't have configured, so the button stays hidden there.
   bool get _showAppleButton =>
-      defaultTargetPlatform == TargetPlatform.iOS ||
-      defaultTargetPlatform == TargetPlatform.macOS;
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.macOS);
 
   Future<void> _signInWithGoogle() async {
     if (_anyLoading) return;
@@ -72,8 +78,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     setState(() => _googleLoading = false);
     result
       ..onOk((user) {
-        final isNew =
-            DateTime.now().difference(user.createdAt).inMinutes < 5;
+        final isNew = DateTime.now().difference(user.createdAt).inMinutes < 5;
         if (isNew) {
           AnalyticsService.logSignUp('google');
         } else {
@@ -91,8 +96,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     setState(() => _appleLoading = false);
     result
       ..onOk((user) {
-        final isNew =
-            DateTime.now().difference(user.createdAt).inMinutes < 5;
+        final isNew = DateTime.now().difference(user.createdAt).inMinutes < 5;
         if (isNew) {
           AnalyticsService.logSignUp('apple');
         } else {
@@ -113,12 +117,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         content: Text(
           message,
           style: const TextStyle(
-              fontFamily: 'Nunito', fontWeight: FontWeight.w600),
+            fontFamily: 'Nunito',
+            fontWeight: FontWeight.w600,
+          ),
         ),
         backgroundColor: AppColors.error,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppSpacing.radiusMd)),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        ),
         margin: const EdgeInsets.all(AppSpacing.md),
       ),
     );
@@ -180,8 +187,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                         duration: AppMotion.standard,
                         switchInCurve: AppMotion.standardCurve,
                         switchOutCurve: Curves.easeIn,
-                        transitionBuilder: (child, animation) =>
-                            FadeTransition(
+                        transitionBuilder: (child, animation) => FadeTransition(
                           opacity: animation,
                           child: SlideTransition(
                             position: Tween<Offset>(
@@ -213,10 +219,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     ),
                   ),
                   const SizedBox(height: AppSpacing.xl),
-                  FadeTransition(
-                    opacity: _fadeAnim,
-                    child: const _TermsText(),
-                  ),
+                  FadeTransition(opacity: _fadeAnim, child: const _TermsText()),
                   const SizedBox(height: AppSpacing.xxl),
                 ],
               ),
@@ -276,7 +279,10 @@ class _HeroSectionState extends ConsumerState<_HeroSection>
             ),
             child: const Padding(
               padding: EdgeInsets.all(AppSpacing.xl),
-              child: Text('🌿', style: TextStyle(fontSize: AppSpacing.emojiLogo)),
+              child: Text(
+                '🌿',
+                style: TextStyle(fontSize: AppSpacing.emojiLogo),
+              ),
             ),
           ),
         ),
@@ -405,11 +411,12 @@ class _SocialSection extends StatelessWidget {
           children: [
             Expanded(
               child: Divider(
-                  color: Colors.white.withValues(alpha: 0.25), thickness: 1),
+                color: Colors.white.withValues(alpha: 0.25),
+                thickness: 1,
+              ),
             ),
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
               child: Text(
                 'or',
                 style: TextStyle(
@@ -422,7 +429,9 @@ class _SocialSection extends StatelessWidget {
             ),
             Expanded(
               child: Divider(
-                  color: Colors.white.withValues(alpha: 0.25), thickness: 1),
+                color: Colors.white.withValues(alpha: 0.25),
+                thickness: 1,
+              ),
             ),
           ],
         ),
@@ -450,8 +459,11 @@ class _SocialSection extends StatelessWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.email_outlined,
-                          color: Colors.white, size: AppSpacing.iconSm),
+                      Icon(
+                        Icons.email_outlined,
+                        color: Colors.white,
+                        size: AppSpacing.iconSm,
+                      ),
                       SizedBox(width: AppSpacing.md),
                       Text(
                         'Continue with Email',
@@ -535,9 +547,11 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
     setState(() => _isLoading = false);
     final isSignUp = _mode == _EmailMode.signUp;
     result
-      ..onOk((_) => isSignUp
-          ? AnalyticsService.logSignUp('email')
-          : AnalyticsService.logSignIn('email'))
+      ..onOk(
+        (_) => isSignUp
+            ? AnalyticsService.logSignUp('email')
+            : AnalyticsService.logSignIn('email'),
+      )
       ..onErr(widget.onError);
   }
 
@@ -545,12 +559,14 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
     final email = _emailCtrl.text.trim();
     if (email.isEmpty) {
       widget.onError(
-          const DataException(message: 'Enter your email address first.'));
+        const DataException(message: 'Enter your email address first.'),
+      );
       return;
     }
     setState(() => _isLoading = true);
-    final result =
-        await ref.read(userRepositoryProvider).sendPasswordResetEmail(email);
+    final result = await ref
+        .read(userRepositoryProvider)
+        .sendPasswordResetEmail(email);
     if (!mounted) return;
     setState(() => _isLoading = false);
     result.when(
@@ -566,19 +582,23 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
         content: Text(
           msg,
           style: const TextStyle(
-              fontFamily: 'Nunito', fontWeight: FontWeight.w600),
+            fontFamily: 'Nunito',
+            fontWeight: FontWeight.w600,
+          ),
         ),
         backgroundColor: AppColors.forestGreenDark,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppSpacing.radiusMd)),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        ),
         margin: const EdgeInsets.all(AppSpacing.md),
       ),
     );
   }
 
-  static final BorderRadius _kFieldRadius =
-      BorderRadius.circular(AppSpacing.radiusTextField);
+  static final BorderRadius _kFieldRadius = BorderRadius.circular(
+    AppSpacing.radiusTextField,
+  );
 
   InputDecoration _fieldDeco(String hint, IconData icon, {Widget? suffix}) {
     return InputDecoration(
@@ -588,22 +608,22 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
         fontSize: 14,
         color: Colors.white.withValues(alpha: 0.45),
       ),
-      prefixIcon: Icon(icon,
-          color: Colors.white.withValues(alpha: 0.6), size: AppSpacing.iconSm),
+      prefixIcon: Icon(
+        icon,
+        color: Colors.white.withValues(alpha: 0.6),
+        size: AppSpacing.iconSm,
+      ),
       suffixIcon: suffix,
       filled: true,
       fillColor: Colors.white.withValues(alpha: 0.12),
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       border: OutlineInputBorder(
         borderRadius: _kFieldRadius,
-        borderSide:
-            BorderSide(color: Colors.white.withValues(alpha: 0.2)),
+        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: _kFieldRadius,
-        borderSide:
-            BorderSide(color: Colors.white.withValues(alpha: 0.2)),
+        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: _kFieldRadius,
@@ -626,16 +646,14 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
   }
 
   Widget _eyeToggle(bool obscure, VoidCallback onToggle) => IconButton(
-        icon: Icon(
-          obscure
-              ? Icons.visibility_outlined
-              : Icons.visibility_off_outlined,
-          color: Colors.white.withValues(alpha: 0.55),
-          size: AppSpacing.iconSm,
-        ),
-        tooltip: obscure ? 'Show password' : 'Hide password',
-        onPressed: onToggle,
-      );
+    icon: Icon(
+      obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+      color: Colors.white.withValues(alpha: 0.55),
+      size: AppSpacing.iconSm,
+    ),
+    tooltip: obscure ? 'Show password' : 'Hide password',
+    onPressed: onToggle,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -657,8 +675,10 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
                   // Visual badge stays 36x36; the tap target itself is
                   // padded out to the 48x48 minimum around it.
                   child: ConstrainedBox(
-                    constraints:
-                        const BoxConstraints(minWidth: 48, minHeight: 48),
+                    constraints: const BoxConstraints(
+                      minWidth: 48,
+                      minHeight: 48,
+                    ),
                     child: Center(
                       child: DecoratedBox(
                         decoration: BoxDecoration(
@@ -667,8 +687,11 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
                         ),
                         child: const Padding(
                           padding: EdgeInsets.all(AppSpacing.sm),
-                          child: Icon(Icons.arrow_back_rounded,
-                              color: Colors.white, size: AppSpacing.iconSm),
+                          child: Icon(
+                            Icons.arrow_back_rounded,
+                            color: Colors.white,
+                            size: AppSpacing.iconSm,
+                          ),
                         ),
                       ),
                     ),
@@ -703,9 +726,13 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
                     child: TextFormField(
                       controller: _nameCtrl,
                       style: const TextStyle(
-                          color: Colors.white, fontFamily: 'Nunito'),
+                        color: Colors.white,
+                        fontFamily: 'Nunito',
+                      ),
                       decoration: _fieldDeco(
-                          'Your name', Icons.person_outline_rounded),
+                        'Your name',
+                        Icons.person_outline_rounded,
+                      ),
                       textCapitalization: TextCapitalization.words,
                       textInputAction: TextInputAction.next,
                       autofillHints: const [AutofillHints.name],
@@ -728,10 +755,8 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
           // Email field
           TextFormField(
             controller: _emailCtrl,
-            style: const TextStyle(
-                color: Colors.white, fontFamily: 'Nunito'),
-            decoration:
-                _fieldDeco('Email address', Icons.email_outlined),
+            style: const TextStyle(color: Colors.white, fontFamily: 'Nunito'),
+            decoration: _fieldDeco('Email address', Icons.email_outlined),
             keyboardType: TextInputType.emailAddress,
             autocorrect: false,
             textInputAction: TextInputAction.next,
@@ -750,14 +775,15 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
           // Password field
           TextFormField(
             controller: _passwordCtrl,
-            style: const TextStyle(
-                color: Colors.white, fontFamily: 'Nunito'),
+            style: const TextStyle(color: Colors.white, fontFamily: 'Nunito'),
             obscureText: _obscurePassword,
             decoration: _fieldDeco(
               'Password',
               Icons.lock_outline_rounded,
-              suffix: _eyeToggle(_obscurePassword,
-                  () => setState(() => _obscurePassword = !_obscurePassword)),
+              suffix: _eyeToggle(
+                _obscurePassword,
+                () => setState(() => _obscurePassword = !_obscurePassword),
+              ),
             ),
             textInputAction: _mode == _EmailMode.signUp
                 ? TextInputAction.next
@@ -787,15 +813,19 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
                     child: TextFormField(
                       controller: _confirmCtrl,
                       style: const TextStyle(
-                          color: Colors.white, fontFamily: 'Nunito'),
+                        color: Colors.white,
+                        fontFamily: 'Nunito',
+                      ),
                       obscureText: _obscureConfirm,
                       decoration: _fieldDeco(
                         'Confirm password',
                         Icons.lock_outline_rounded,
                         suffix: _eyeToggle(
-                            _obscureConfirm,
-                            () => setState(
-                                () => _obscureConfirm = !_obscureConfirm)),
+                          _obscureConfirm,
+                          () => setState(
+                            () => _obscureConfirm = !_obscureConfirm,
+                          ),
+                        ),
                       ),
                       textInputAction: TextInputAction.done,
                       autofillHints: const [AutofillHints.newPassword],
@@ -889,13 +919,13 @@ class _EmailAuthFormState extends ConsumerState<_EmailAuthForm> {
                 onPressed: _isLoading
                     ? null
                     : () => setState(() {
-                          _mode = _mode == _EmailMode.signIn
-                              ? _EmailMode.signUp
-                              : _EmailMode.signIn;
-                          _formKey.currentState?.reset();
-                          _passwordCtrl.clear();
-                          _confirmCtrl.clear();
-                        }),
+                        _mode = _mode == _EmailMode.signIn
+                            ? _EmailMode.signUp
+                            : _EmailMode.signIn;
+                        _formKey.currentState?.reset();
+                        _passwordCtrl.clear();
+                        _confirmCtrl.clear();
+                      }),
                 style: TextButton.styleFrom(
                   foregroundColor: Colors.white,
                   padding: EdgeInsets.zero,

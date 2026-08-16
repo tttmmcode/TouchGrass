@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:confetti/confetti.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,6 +25,7 @@ import '../../../services/perf_service.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_motion.dart';
 import '../../../theme/app_spacing.dart';
+import '../../../widgets/permission_primer.dart';
 import '../../../widgets/pressable_scale.dart';
 import '../utils/celebration_utils.dart';
 
@@ -161,13 +163,17 @@ class _AlreadyCompletedView extends StatelessWidget {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: AppColors.gradientForest,
-                    borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+                    borderRadius: BorderRadius.circular(
+                      AppSpacing.radiusButton,
+                    ),
                   ),
                   child: Material(
                     color: Colors.transparent,
                     child: InkWell(
                       onTap: () => context.go(RouteNames.home),
-                      borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+                      borderRadius: BorderRadius.circular(
+                        AppSpacing.radiusButton,
+                      ),
                       child: const SizedBox(
                         height: AppSpacing.buttonHeight,
                         child: Center(
@@ -231,7 +237,10 @@ class _ChallengeInfoCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     child: Text(
                       '${challenge.xpReward} XP',
                       style: const TextStyle(
@@ -248,6 +257,8 @@ class _ChallengeInfoCard extends StatelessWidget {
             const SizedBox(height: AppSpacing.sm),
             Text(
               challenge.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 fontFamily: 'Nunito',
                 fontSize: 20,
@@ -361,15 +372,18 @@ class _PickButton extends StatelessWidget {
       );
     }
 
-    final borderColor =
-        isDark ? AppColors.outlineDark : AppColors.outlineLight;
-    final textColor =
-        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final borderColor = isDark ? AppColors.outlineDark : AppColors.outlineLight;
+    final textColor = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
 
     return PressableScale(
       child: DecoratedBox(
         decoration: BoxDecoration(
-          border: Border.all(color: borderColor, width: AppSpacing.strokeRegular),
+          border: Border.all(
+            color: borderColor,
+            width: AppSpacing.strokeRegular,
+          ),
           borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
         ),
         child: Material(
@@ -449,6 +463,22 @@ class _LiveCameraViewState extends ConsumerState<_LiveCameraView>
   }
 
   Future<void> _requestAndInit() async {
+    // permission_handler has no web implementation — on web the browser's
+    // own getUserMedia prompt (triggered by CameraController.initialize()
+    // inside _initCamera) is the only permission gate, and _initCamera
+    // already turns a user's browser-level denial into the same
+    // "Could not open camera" error state.
+    if (kIsWeb) {
+      await _initCamera();
+      return;
+    }
+
+    // No-ops after the very first call (see maybeShowPermissionPrimer) — safe
+    // to call unconditionally here, including on the resume-after-Settings
+    // retry path in didChangeAppLifecycleState.
+    await maybeShowPermissionPrimer(context, PermissionPrimerKind.camera);
+    if (!mounted) return;
+
     final status = await Permission.camera.request();
     if (!mounted) return;
 
@@ -471,8 +501,9 @@ class _LiveCameraViewState extends ConsumerState<_LiveCameraView>
         setState(() => _error = 'No camera found on this device.');
         return;
       }
-      final desired =
-          _isRearCamera ? CameraLensDirection.back : CameraLensDirection.front;
+      final desired = _isRearCamera
+          ? CameraLensDirection.back
+          : CameraLensDirection.front;
       final camera = cameras.firstWhere(
         (c) => c.lensDirection == desired,
         orElse: () => cameras.first,
@@ -508,15 +539,11 @@ class _LiveCameraViewState extends ConsumerState<_LiveCameraView>
     await _initCamera();
   }
 
-  static const _flashCycle = [
-    FlashMode.off,
-    FlashMode.auto,
-    FlashMode.always,
-  ];
+  static const _flashCycle = [FlashMode.off, FlashMode.auto, FlashMode.always];
 
   Future<void> _toggleFlash() async {
-    final next = _flashCycle[
-        (_flashCycle.indexOf(_flashMode) + 1) % _flashCycle.length];
+    final next =
+        _flashCycle[(_flashCycle.indexOf(_flashMode) + 1) % _flashCycle.length];
     try {
       await _controller?.setFlashMode(next);
     } catch (_) {}
@@ -568,10 +595,7 @@ class _LiveCameraViewState extends ConsumerState<_LiveCameraView>
 
     // ── Permission: permanently denied ──
     if (_permPermanentlyDenied) {
-      return _PermissionDeniedView(
-        permanent: true,
-        onBack: notifier.reset,
-      );
+      return _PermissionDeniedView(permanent: true, onBack: notifier.reset);
     }
 
     // ── Permission: denied (can re-request) ──
@@ -596,8 +620,11 @@ class _LiveCameraViewState extends ConsumerState<_LiveCameraView>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.camera_alt_outlined,
-                    color: Colors.white54, size: 64),
+                const Icon(
+                  Icons.camera_alt_outlined,
+                  color: Colors.white54,
+                  size: 64,
+                ),
                 const SizedBox(height: AppSpacing.lg),
                 Text(
                   _error!,
@@ -670,9 +697,7 @@ class _LiveCameraViewState extends ConsumerState<_LiveCameraView>
             Positioned(
               left: _focusPoint!.dx - 30,
               top: _focusPoint!.dy - 30,
-              child: IgnorePointer(
-                child: _FocusSquare(),
-              ),
+              child: IgnorePointer(child: _FocusSquare()),
             ),
 
           // ── Top bar: close · flash ──
@@ -683,7 +708,9 @@ class _LiveCameraViewState extends ConsumerState<_LiveCameraView>
             child: SafeArea(
               child: Padding(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+                  horizontal: AppSpacing.sm,
+                  vertical: AppSpacing.xs,
+                ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -751,8 +778,11 @@ class _LiveCameraViewState extends ConsumerState<_LiveCameraView>
                           child: const SizedBox(
                             width: 48,
                             height: 48,
-                            child: Icon(Icons.photo_library_rounded,
-                                color: Colors.white, size: 22),
+                            child: Icon(
+                              Icons.photo_library_rounded,
+                              color: Colors.white,
+                              size: 22,
+                            ),
                           ),
                         ),
                       ),
@@ -781,8 +811,11 @@ class _LiveCameraViewState extends ConsumerState<_LiveCameraView>
                           child: const SizedBox(
                             width: 48,
                             height: 48,
-                            child: Icon(Icons.flip_camera_ios_rounded,
-                                color: Colors.white, size: 22),
+                            child: Icon(
+                              Icons.flip_camera_ios_rounded,
+                              color: Colors.white,
+                              size: 22,
+                            ),
                           ),
                         ),
                       ),
@@ -821,10 +854,14 @@ class _ShutterButton extends StatelessWidget {
             padding: const EdgeInsets.all(5),
             child: capturing
                 ? const CircularProgressIndicator(
-                    color: Colors.white, strokeWidth: 3)
+                    color: Colors.white,
+                    strokeWidth: 3,
+                  )
                 : const DecoratedBox(
                     decoration: BoxDecoration(
-                        color: Colors.white, shape: BoxShape.circle),
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
                     child: SizedBox.expand(),
                   ),
           ),
@@ -853,8 +890,10 @@ class _FocusSquareState extends State<_FocusSquare>
       vsync: this,
       duration: const Duration(milliseconds: 600),
     )..forward();
-    _fade = Tween<double>(begin: 1.0, end: 0.0)
-        .animate(CurvedAnimation(parent: _ctrl, curve: const Interval(0.5, 1.0)));
+    _fade = Tween<double>(
+      begin: 1.0,
+      end: 0.0,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: const Interval(0.5, 1.0)));
   }
 
   @override
@@ -905,8 +944,11 @@ class _PermissionDeniedView extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Icon(Icons.camera_alt_outlined,
-                  color: Colors.white54, size: 64),
+              const Icon(
+                Icons.camera_alt_outlined,
+                color: Colors.white54,
+                size: 64,
+              ),
               const SizedBox(height: AppSpacing.xl),
               const Text(
                 'Camera Access Required',
@@ -936,69 +978,82 @@ class _PermissionDeniedView extends StatelessWidget {
               if (permanent)
                 PressableScale(
                   child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: AppColors.gradientForest,
-                    borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
-                  ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: openAppSettings,
-                      borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
-                      child: const SizedBox(
-                        height: AppSpacing.buttonHeight,
-                        child: Center(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.settings_rounded,
-                                  color: Colors.white, size: AppSpacing.iconSm),
-                              SizedBox(width: AppSpacing.sm),
-                              Text(
-                                'Open Settings',
-                                style: TextStyle(
-                                  fontFamily: 'Nunito',
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                    decoration: BoxDecoration(
+                      gradient: AppColors.gradientForest,
+                      borderRadius: BorderRadius.circular(
+                        AppSpacing.radiusButton,
                       ),
                     ),
-                  ),
-                ))
-              else
-                PressableScale(
-                  child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: AppColors.gradientForest,
-                    borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
-                  ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: onRetry,
-                      borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
-                      child: const SizedBox(
-                        height: AppSpacing.buttonHeight,
-                        child: Center(
-                          child: Text(
-                            'Allow Camera Access',
-                            style: TextStyle(
-                              fontFamily: 'Nunito',
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: openAppSettings,
+                        borderRadius: BorderRadius.circular(
+                          AppSpacing.radiusButton,
+                        ),
+                        child: const SizedBox(
+                          height: AppSpacing.buttonHeight,
+                          child: Center(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.settings_rounded,
+                                  color: Colors.white,
+                                  size: AppSpacing.iconSm,
+                                ),
+                                SizedBox(width: AppSpacing.sm),
+                                Text(
+                                  'Open Settings',
+                                  style: TextStyle(
+                                    fontFamily: 'Nunito',
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                )),
+                )
+              else
+                PressableScale(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: AppColors.gradientForest,
+                      borderRadius: BorderRadius.circular(
+                        AppSpacing.radiusButton,
+                      ),
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: onRetry,
+                        borderRadius: BorderRadius.circular(
+                          AppSpacing.radiusButton,
+                        ),
+                        child: const SizedBox(
+                          height: AppSpacing.buttonHeight,
+                          child: Center(
+                            child: Text(
+                              'Allow Camera Access',
+                              style: TextStyle(
+                                fontFamily: 'Nunito',
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               const SizedBox(height: AppSpacing.md),
               TextButton(
                 onPressed: onBack,
@@ -1063,7 +1118,9 @@ class _PreviewView extends ConsumerWidget {
             child: SafeArea(
               child: Padding(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+                  horizontal: AppSpacing.sm,
+                  vertical: AppSpacing.xs,
+                ),
                 child: Row(
                   children: [
                     Material(
@@ -1080,8 +1137,10 @@ class _PreviewView extends ConsumerWidget {
                       color: Colors.black54,
                       shape: const CircleBorder(),
                       child: IconButton(
-                        icon: const Icon(Icons.replay_rounded,
-                            color: Colors.white),
+                        icon: const Icon(
+                          Icons.replay_rounded,
+                          color: Colors.white,
+                        ),
                         onPressed: notifier.retake,
                         tooltip: 'Retake',
                       ),
@@ -1108,8 +1167,10 @@ class _PreviewView extends ConsumerWidget {
                     if (challenge != null) ...[
                       Row(
                         children: [
-                          Text(challenge.emoji,
-                              style: const TextStyle(fontSize: 20)),
+                          Text(
+                            challenge.emoji,
+                            style: const TextStyle(fontSize: 20),
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Column(
@@ -1147,14 +1208,18 @@ class _PreviewView extends ConsumerWidget {
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           gradient: AppColors.gradientForest,
-                          borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+                          borderRadius: BorderRadius.circular(
+                            AppSpacing.radiusButton,
+                          ),
                         ),
                         child: Material(
                           color: Colors.transparent,
                           child: InkWell(
-                            onTap: () => ref.read(cameraFlowProvider.notifier).verify(),
-                            borderRadius:
-                                BorderRadius.circular(AppSpacing.radiusButton),
+                            onTap: () =>
+                                ref.read(cameraFlowProvider.notifier).verify(),
+                            borderRadius: BorderRadius.circular(
+                              AppSpacing.radiusButton,
+                            ),
                             child: SizedBox(
                               height: AppSpacing.buttonHeight,
                               child: Center(
@@ -1257,8 +1322,9 @@ class _VerifyingViewState extends ConsumerState<_VerifyingView>
         children: [
           Image.memory(widget.state.bytes, fit: BoxFit.cover),
           DecoratedBox(
-            decoration:
-                BoxDecoration(color: Colors.black.withValues(alpha: 0.65)),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.65),
+            ),
           ),
           Positioned(
             top: 0,
@@ -1272,8 +1338,9 @@ class _VerifyingViewState extends ConsumerState<_VerifyingView>
                   child: IconButton(
                     icon: const Icon(Icons.close, color: Colors.white),
                     tooltip: 'Cancel',
-                    onPressed: () =>
-                        ref.read(cameraFlowProvider.notifier).cancelVerification(),
+                    onPressed: () => ref
+                        .read(cameraFlowProvider.notifier)
+                        .cancelVerification(),
                   ),
                 ),
               ),
@@ -1295,7 +1362,8 @@ class _VerifyingViewState extends ConsumerState<_VerifyingView>
                             shape: BoxShape.circle,
                             border: Border.all(
                               color: AppColors.grassGreen.withValues(
-                                  alpha: 0.35 * (1 - _pulse.value)),
+                                alpha: 0.35 * (1 - _pulse.value),
+                              ),
                               width: 2,
                             ),
                           ),
@@ -1331,16 +1399,24 @@ class _VerifyingViewState extends ConsumerState<_VerifyingView>
                     ),
                   ),
                 ),
-                const SizedBox(height: AppSpacing.sm),
-                Text(
-                  'AI is reviewing your adventure',
-                  style: TextStyle(
-                    fontFamily: 'Nunito',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white.withValues(alpha: 0.55),
+                // Only claim AI is reviewing the photo when it actually is —
+                // never shown for the honor-system path (free-tier gate or
+                // no Gemini key configured) or once the analyzing stage has
+                // passed (the stage message above already accurately
+                // describes uploading/saving without needing this line).
+                if (widget.state.usingAi &&
+                    widget.state.stage == VerifyingStage.analyzing) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  Text(
+                    'AI is reviewing your adventure',
+                    style: TextStyle(
+                      fontFamily: 'Nunito',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white.withValues(alpha: 0.55),
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -1365,6 +1441,16 @@ class _CaptionViewState extends ConsumerState<_CaptionView> {
   bool _submitting = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Restore a reflection the user had already typed before a submission
+    // failure sent them back through retryVerification — otherwise a
+    // transient upload/save error would force a full retype.
+    final initial = widget.state.initialCaption;
+    if (initial != null && initial.isNotEmpty) _ctrl.text = initial;
+  }
+
+  @override
   void dispose() {
     _ctrl.dispose();
     super.dispose();
@@ -1376,6 +1462,64 @@ class _CaptionViewState extends ConsumerState<_CaptionView> {
     if (mounted) setState(() => _submitting = false);
   }
 
+  /// Closing this screen discards whatever the user has typed with no way
+  /// back — confirm first if there's actually something to lose, but don't
+  /// interrupt the common case of backing out with an empty field.
+  Future<void> _handleClose() async {
+    if (_ctrl.text.trim().isEmpty) {
+      ref.read(cameraFlowProvider.notifier).reset();
+      return;
+    }
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceLight;
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
+        ),
+        title: const Text(
+          'Discard your reflection?',
+          style: TextStyle(fontFamily: 'Nunito', fontWeight: FontWeight.w900),
+        ),
+        content: const Text(
+          "What you've written so far will be lost.",
+          style: TextStyle(fontFamily: 'Nunito', fontWeight: FontWeight.w500),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text(
+              'Keep writing',
+              style: TextStyle(
+                fontFamily: 'Nunito',
+                fontWeight: FontWeight.w700,
+                color: AppColors.forestGreenLight,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text(
+              'Discard',
+              style: TextStyle(
+                fontFamily: 'Nunito',
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (discard == true && mounted) {
+      ref.read(cameraFlowProvider.notifier).reset();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1385,8 +1529,9 @@ class _CaptionViewState extends ConsumerState<_CaptionView> {
         children: [
           Image.memory(widget.state.bytes, fit: BoxFit.cover),
           DecoratedBox(
-            decoration:
-                BoxDecoration(color: Colors.black.withValues(alpha: 0.70)),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.70),
+            ),
           ),
           SafeArea(
             child: Column(
@@ -1397,8 +1542,7 @@ class _CaptionViewState extends ConsumerState<_CaptionView> {
                     children: [
                       IconButton(
                         icon: const Icon(Icons.close, color: Colors.white),
-                        onPressed:
-                            ref.read(cameraFlowProvider.notifier).reset,
+                        onPressed: _handleClose,
                       ),
                       const Spacer(),
                       TextButton(
@@ -1425,160 +1569,231 @@ class _CaptionViewState extends ConsumerState<_CaptionView> {
                     builder: (context, constraints) => SingleChildScrollView(
                       reverse: true,
                       child: ConstrainedBox(
-                        constraints:
-                            BoxConstraints(minHeight: constraints.maxHeight),
+                        constraints: BoxConstraints(
+                          minHeight: constraints.maxHeight,
+                        ),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
                             Padding(
                               padding: const EdgeInsets.all(
-                                  AppSpacing.screenHorizontal),
+                                AppSpacing.screenHorizontal,
+                              ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                      // Only claim AI verification when Gemini actually ran
-                      // (its result map carries 'confidence') — never shown
-                      // for the no-API-key auto-approve path.
-                      if (widget.state.pendingVerificationResult
-                          .containsKey('confidence')) ...[
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.check_circle_rounded,
-                                size: 15,
-                                color: AppColors.grassGreen
-                                    .withValues(alpha: 0.9)),
-                            const SizedBox(width: 5),
-                            Text(
-                              'Adventure verified!',
-                              style: TextStyle(
-                                fontFamily: 'Nunito',
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                                color:
-                                    AppColors.grassGreen.withValues(alpha: 0.9),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: AppSpacing.sm),
-                      ],
-                      // AI prompt
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.12),
-                          borderRadius:
-                              BorderRadius.circular(AppSpacing.radiusMd),
-                          border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.20)),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(AppSpacing.md),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('✨',
-                                  style: TextStyle(fontSize: 16)),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  widget.state.captionPrompt,
-                                  style: TextStyle(
-                                    fontFamily: 'Nunito',
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white
-                                        .withValues(alpha: 0.90),
-                                    height: 1.4,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.10),
-                          borderRadius:
-                              BorderRadius.circular(AppSpacing.radiusTextField),
-                          border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.25)),
-                        ),
-                        child: TextField(
-                          controller: _ctrl,
-                          maxLines: 4,
-                          minLines: 3,
-                          maxLength: 280,
-                          style: const TextStyle(
-                            fontFamily: 'Nunito',
-                            fontSize: 14,
-                            color: Colors.white,
-                          ),
-                          decoration: InputDecoration(
-                            hintText: 'Write your adventure story…',
-                            hintStyle: TextStyle(
-                              fontFamily: 'Nunito',
-                              fontSize: 14,
-                              color: Colors.white.withValues(alpha: 0.35),
-                            ),
-                            border: InputBorder.none,
-                            contentPadding:
-                                const EdgeInsets.all(AppSpacing.md),
-                            counterStyle: TextStyle(
-                              fontFamily: 'Nunito',
-                              fontSize: 11,
-                              color: Colors.white.withValues(alpha: 0.40),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      PressableScale(
-                        enabled: !_submitting,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: AppColors.gradientForest,
-                            borderRadius:
-                                BorderRadius.circular(AppSpacing.radiusButton),
-                          ),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: _submitting ? null : _submit,
-                              borderRadius:
-                                  BorderRadius.circular(AppSpacing.radiusButton),
-                              child: SizedBox(
-                                height: AppSpacing.buttonHeight,
-                                child: Center(
-                                  child: _submitting
-                                      ? const SizedBox(
-                                          width: 22,
-                                          height: 22,
-                                          child: CircularProgressIndicator(
-                                            color: Colors.white,
-                                            strokeWidth: 2.5,
-                                          ),
-                                        )
-                                      : const Text(
-                                          'Share Adventure',
+                                  // Only claim AI verification when Gemini actually ran
+                                  // (its result map carries 'confidence') — never shown
+                                  // for the no-API-key auto-approve path.
+                                  if (widget.state.pendingVerificationResult
+                                      .containsKey('confidence')) ...[
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.check_circle_rounded,
+                                          size: 15,
+                                          color: AppColors.grassGreen
+                                              .withValues(alpha: 0.9),
+                                        ),
+                                        const SizedBox(width: 5),
+                                        Text(
+                                          'Adventure verified!',
                                           style: TextStyle(
                                             fontFamily: 'Nunito',
-                                            fontSize: 16,
+                                            fontSize: 12,
                                             fontWeight: FontWeight.w800,
-                                            color: Colors.white,
+                                            color: AppColors.grassGreen
+                                                .withValues(alpha: 0.9),
                                           ),
                                         ),
-                                ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: AppSpacing.sm),
+                                  ],
+                                  // Free-tier honor-system approval — AI verification is
+                                  // a paid feature (see camera_providers.dart's `aiLocked`
+                                  // branch). Still counts as a real completion (XP
+                                  // awarded normally), just without an AI-verified badge.
+                                  if (widget
+                                          .state
+                                          .pendingVerificationResult['aiLocked'] ==
+                                      true) ...[
+                                    Semantics(
+                                      label:
+                                          'AI verification is a premium feature, '
+                                          'coming soon. Your adventure was accepted.',
+                                      excludeSemantics: true,
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(
+                                            Icons.auto_awesome_rounded,
+                                            size: 15,
+                                            color: AppColors.achievementGold
+                                                .withValues(alpha: 0.9),
+                                          ),
+                                          const SizedBox(width: 5),
+                                          Text(
+                                            'AI verification — Coming soon!',
+                                            style: TextStyle(
+                                              fontFamily: 'Nunito',
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w800,
+                                              color: AppColors.achievementGold
+                                                  .withValues(alpha: 0.9),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: AppSpacing.sm),
+                                  ],
+                                  // AI prompt
+                                  DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.12,
+                                      ),
+                                      borderRadius: BorderRadius.circular(
+                                        AppSpacing.radiusMd,
+                                      ),
+                                      border: Border.all(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.20,
+                                        ),
+                                      ),
+                                    ),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(
+                                        AppSpacing.md,
+                                      ),
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            '✨',
+                                            style: TextStyle(fontSize: 16),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              widget.state.captionPrompt,
+                                              style: TextStyle(
+                                                fontFamily: 'Nunito',
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w700,
+                                                color: Colors.white.withValues(
+                                                  alpha: 0.90,
+                                                ),
+                                                height: 1.4,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: AppSpacing.md),
+                                  DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.10,
+                                      ),
+                                      borderRadius: BorderRadius.circular(
+                                        AppSpacing.radiusTextField,
+                                      ),
+                                      border: Border.all(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.25,
+                                        ),
+                                      ),
+                                    ),
+                                    child: TextField(
+                                      controller: _ctrl,
+                                      maxLines: 4,
+                                      minLines: 3,
+                                      maxLength: 280,
+                                      style: const TextStyle(
+                                        fontFamily: 'Nunito',
+                                        fontSize: 14,
+                                        color: Colors.white,
+                                      ),
+                                      decoration: InputDecoration(
+                                        hintText: 'Write your adventure story…',
+                                        hintStyle: TextStyle(
+                                          fontFamily: 'Nunito',
+                                          fontSize: 14,
+                                          color: Colors.white.withValues(
+                                            alpha: 0.35,
+                                          ),
+                                        ),
+                                        border: InputBorder.none,
+                                        contentPadding: const EdgeInsets.all(
+                                          AppSpacing.md,
+                                        ),
+                                        counterStyle: TextStyle(
+                                          fontFamily: 'Nunito',
+                                          fontSize: 11,
+                                          color: Colors.white.withValues(
+                                            alpha: 0.40,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: AppSpacing.md),
+                                  PressableScale(
+                                    enabled: !_submitting,
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        gradient: AppColors.gradientForest,
+                                        borderRadius: BorderRadius.circular(
+                                          AppSpacing.radiusButton,
+                                        ),
+                                      ),
+                                      child: Material(
+                                        color: Colors.transparent,
+                                        child: InkWell(
+                                          onTap: _submitting ? null : _submit,
+                                          borderRadius: BorderRadius.circular(
+                                            AppSpacing.radiusButton,
+                                          ),
+                                          child: SizedBox(
+                                            height: AppSpacing.buttonHeight,
+                                            child: Center(
+                                              child: _submitting
+                                                  ? const SizedBox(
+                                                      width: 22,
+                                                      height: 22,
+                                                      child:
+                                                          CircularProgressIndicator(
+                                                            color: Colors.white,
+                                                            strokeWidth: 2.5,
+                                                          ),
+                                                    )
+                                                  : const Text(
+                                                      'Share Adventure',
+                                                      style: TextStyle(
+                                                        fontFamily: 'Nunito',
+                                                        fontSize: 16,
+                                                        fontWeight:
+                                                            FontWeight.w800,
+                                                        color: Colors.white,
+                                                      ),
+                                                    ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: AppSpacing.lg),
+                                ],
                               ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.lg),
-                    ],
-                  ),
                             ),
                           ],
                         ),
@@ -1624,8 +1839,7 @@ class _SuccessViewState extends ConsumerState<_SuccessView>
       leagueChanged: widget.state.leagueChanged,
     );
     _confetti = ConfettiController(
-      duration: Duration(
-          seconds: confettiDurationSecondsFor(_celebrationTier)),
+      duration: Duration(seconds: confettiDurationSecondsFor(_celebrationTier)),
     );
     // Fast, front-loaded reveal — the celebration and photo should appear
     // almost immediately, XP/streak follow quickly, achievement cards last.
@@ -1645,8 +1859,13 @@ class _SuccessViewState extends ConsumerState<_SuccessView>
     }
 
     final hasAchievements = widget.state.newAchievements.isNotEmpty;
-    final isStreakMilestone =
-        const {3, 7, 14, 30, 100}.contains(widget.state.newStreak);
+    final isStreakMilestone = const {
+      3,
+      7,
+      14,
+      30,
+      100,
+    }.contains(widget.state.newStreak);
 
     if (widget.state.leveledUp) {
       _companionType = CompanionType.sunny;
@@ -1678,10 +1897,14 @@ class _SuccessViewState extends ConsumerState<_SuccessView>
     super.dispose();
   }
 
-  Animation<double> _curve(double begin, double end,
-          {Curve curve = Curves.easeOut}) =>
-      CurvedAnimation(
-          parent: _anim, curve: Interval(begin, end, curve: curve));
+  Animation<double> _curve(
+    double begin,
+    double end, {
+    Curve curve = Curves.easeOut,
+  }) => CurvedAnimation(
+    parent: _anim,
+    curve: Interval(begin, end, curve: curve),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -1690,34 +1913,37 @@ class _SuccessViewState extends ConsumerState<_SuccessView>
     // cards reveal last.
     final checkAnim = _curve(0.00, 0.30, curve: Curves.elasticOut);
     final photoFade = _curve(0.10, 0.40);
-    final photoSlide = Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero)
-        .animate(_curve(0.10, 0.40));
-    final titleSlide =
-        Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero)
-            .animate(_curve(0.25, 0.50));
+    final photoSlide = Tween<Offset>(
+      begin: const Offset(0, 0.15),
+      end: Offset.zero,
+    ).animate(_curve(0.10, 0.40));
+    final titleSlide = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(_curve(0.25, 0.50));
     final titleFade = _curve(0.25, 0.50);
     final xpFade = _curve(0.35, 0.60);
-    final streakAnim =
-        _curve(0.50, 0.75, curve: Curves.elasticOut);
-    final levelAnim =
-        _curve(0.55, 0.80, curve: Curves.elasticOut);
+    final streakAnim = _curve(0.50, 0.75, curve: Curves.elasticOut);
+    final levelAnim = _curve(0.55, 0.80, curve: Curves.elasticOut);
     // Reveals after the achievement cards (0.65–1.00) so the level-up/league
     // banners read as the celebration's closing beat rather than competing
     // with them — these sit lower in the layout, so a later reveal matches.
-    final postAchieveAnim =
-        _curve(0.78, 1.00, curve: Curves.elasticOut);
+    final postAchieveAnim = _curve(0.78, 1.00, curve: Curves.elasticOut);
     final detailFade = _curve(0.60, 0.85);
-    final btnSlide =
-        Tween<Offset>(begin: const Offset(0, 0.5), end: Offset.zero)
-            .animate(_curve(0.80, 1.00));
+    final btnSlide = Tween<Offset>(
+      begin: const Offset(0, 0.5),
+      end: Offset.zero,
+    ).animate(_curve(0.80, 1.00));
     final btnFade = _curve(0.80, 1.00);
-    final achieveSlide =
-        Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero)
-            .animate(_curve(0.65, 1.00));
+    final achieveSlide = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(_curve(0.65, 1.00));
     final achieveFade = _curve(0.65, 1.00);
 
     final completion = widget.state.completion;
-    final hasCaption = completion.caption != null && completion.caption!.isNotEmpty;
+    final hasCaption =
+        completion.caption != null && completion.caption!.isNotEmpty;
     final hasLocation = completion.location != null;
 
     return Scaffold(
@@ -1740,8 +1966,7 @@ class _SuccessViewState extends ConsumerState<_SuccessView>
                     // ── TOP: celebration heading ──
                     ScaleTransition(
                       scale: checkAnim,
-                      child: const Text('✅',
-                          style: TextStyle(fontSize: 72)),
+                      child: const Text('✅', style: TextStyle(fontSize: 72)),
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     FadeTransition(
@@ -1776,27 +2001,27 @@ class _SuccessViewState extends ConsumerState<_SuccessView>
                       child: SlideTransition(
                         position: photoSlide,
                         child: ClipRRect(
-                          borderRadius:
-                              BorderRadius.circular(AppSpacing.radiusLg),
+                          borderRadius: BorderRadius.circular(
+                            AppSpacing.radiusLg,
+                          ),
                           child: Image.network(
                             completion.photoUrl,
                             height: 220,
                             width: double.infinity,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) =>
-                                const SizedBox.shrink(),
+                            errorBuilder: (_, _, _) => const SizedBox.shrink(),
                             loadingBuilder: (_, child, progress) =>
                                 progress == null
-                                    ? child
-                                    : const SizedBox(
-                                        height: 220,
-                                        child: Center(
-                                          child: CircularProgressIndicator(
-                                            color: Colors.white54,
-                                            strokeWidth: 2,
-                                          ),
-                                        ),
+                                ? child
+                                : const SizedBox(
+                                    height: 220,
+                                    child: Center(
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white54,
+                                        strokeWidth: 2,
                                       ),
+                                    ),
+                                  ),
                           ),
                         ),
                       ),
@@ -1810,8 +2035,10 @@ class _SuccessViewState extends ConsumerState<_SuccessView>
                         position: titleSlide,
                         child: Column(
                           children: [
-                            Text(widget.state.emoji,
-                                style: const TextStyle(fontSize: 40)),
+                            Text(
+                              widget.state.emoji,
+                              style: const TextStyle(fontSize: 40),
+                            ),
                             const SizedBox(height: AppSpacing.sm),
                             Text(
                               widget.state.challengeTitle,
@@ -1845,26 +2072,29 @@ class _SuccessViewState extends ConsumerState<_SuccessView>
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           color: AppColors.xpGold.withValues(alpha: 0.18),
-                          borderRadius:
-                              BorderRadius.circular(AppSpacing.radiusFull),
+                          borderRadius: BorderRadius.circular(
+                            AppSpacing.radiusFull,
+                          ),
                           border: Border.all(
-                              color: AppColors.xpGold.withValues(alpha: 0.5),
-                              width: 1.5),
+                            color: AppColors.xpGold.withValues(alpha: 0.5),
+                            width: 1.5,
+                          ),
                         ),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: AppSpacing.xl,
-                              vertical: AppSpacing.md),
+                            horizontal: AppSpacing.xl,
+                            vertical: AppSpacing.md,
+                          ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Text('⭐',
-                                  style: TextStyle(fontSize: 22)),
+                              const Text('⭐', style: TextStyle(fontSize: 22)),
                               const SizedBox(width: AppSpacing.sm),
                               TweenAnimationBuilder<int>(
                                 tween: IntTween(
-                                    begin: 0,
-                                    end: widget.state.xpAwarded),
+                                  begin: 0,
+                                  end: widget.state.xpAwarded,
+                                ),
                                 duration: _reducedMotion
                                     ? Duration.zero
                                     : AppMotion.hero,
@@ -1891,19 +2121,17 @@ class _SuccessViewState extends ConsumerState<_SuccessView>
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.13),
-                          borderRadius:
-                              BorderRadius.circular(AppSpacing.radiusFull),
+                          borderRadius: BorderRadius.circular(
+                            AppSpacing.radiusFull,
+                          ),
                         ),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: AppSpacing.lg,
-                              vertical: AppSpacing.sm),
+                            horizontal: AppSpacing.lg,
+                            vertical: AppSpacing.sm,
+                          ),
                           child: Text(
-                            '🔥 ${streakCelebrationLabel(
-                              newStreak: widget.state.newStreak,
-                              streakIncreased: widget.state.streakIncreased,
-                              rainyDayConsumed: widget.state.rainyDayConsumed,
-                            )}',
+                            '🔥 ${streakCelebrationLabel(newStreak: widget.state.newStreak, streakIncreased: widget.state.streakIncreased, rainyDayConsumed: widget.state.rainyDayConsumed)}',
                             style: const TextStyle(
                               fontFamily: 'Nunito',
                               fontSize: 16,
@@ -1921,23 +2149,31 @@ class _SuccessViewState extends ConsumerState<_SuccessView>
                         scale: levelAnim,
                         child: DecoratedBox(
                           decoration: BoxDecoration(
-                            color: const Color(0xFF4EA8DE).withValues(alpha: 0.18),
-                            borderRadius:
-                                BorderRadius.circular(AppSpacing.radiusMd),
+                            color: const Color(
+                              0xFF4EA8DE,
+                            ).withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(
+                              AppSpacing.radiusMd,
+                            ),
                             border: Border.all(
-                                color: const Color(0xFF4EA8DE)
-                                    .withValues(alpha: 0.5),
-                                width: 1.5),
+                              color: const Color(
+                                0xFF4EA8DE,
+                              ).withValues(alpha: 0.5),
+                              width: 1.5,
+                            ),
                           ),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: AppSpacing.xl,
-                                vertical: AppSpacing.sm),
+                              horizontal: AppSpacing.xl,
+                              vertical: AppSpacing.sm,
+                            ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Text('🌧️',
-                                    style: TextStyle(fontSize: 16)),
+                                const Text(
+                                  '🌧️',
+                                  style: TextStyle(fontSize: 16),
+                                ),
                                 const SizedBox(width: AppSpacing.sm),
                                 Text(
                                   'Rainy Day used · ${widget.state.rainyDaysAvailable} left',
@@ -1961,23 +2197,31 @@ class _SuccessViewState extends ConsumerState<_SuccessView>
                         scale: levelAnim,
                         child: DecoratedBox(
                           decoration: BoxDecoration(
-                            color: const Color(0xFF4EA8DE).withValues(alpha: 0.18),
-                            borderRadius:
-                                BorderRadius.circular(AppSpacing.radiusMd),
+                            color: const Color(
+                              0xFF4EA8DE,
+                            ).withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(
+                              AppSpacing.radiusMd,
+                            ),
                             border: Border.all(
-                                color: const Color(0xFF4EA8DE)
-                                    .withValues(alpha: 0.5),
-                                width: 1.5),
+                              color: const Color(
+                                0xFF4EA8DE,
+                              ).withValues(alpha: 0.5),
+                              width: 1.5,
+                            ),
                           ),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: AppSpacing.xl,
-                                vertical: AppSpacing.sm),
+                              horizontal: AppSpacing.xl,
+                              vertical: AppSpacing.sm,
+                            ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Text('🌧️',
-                                    style: TextStyle(fontSize: 16)),
+                                const Text(
+                                  '🌧️',
+                                  style: TextStyle(fontSize: 16),
+                                ),
                                 const SizedBox(width: AppSpacing.sm),
                                 Text(
                                   '+${widget.state.rainyDayEarned} Rainy Day${widget.state.rainyDayEarned > 1 ? 's' : ''} earned!',
@@ -2023,9 +2267,11 @@ class _SuccessViewState extends ConsumerState<_SuccessView>
                           mainAxisSize: MainAxisSize.min,
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.location_on_rounded,
-                                size: 13,
-                                color: Colors.white.withValues(alpha: 0.6)),
+                            Icon(
+                              Icons.location_on_rounded,
+                              size: 13,
+                              color: Colors.white.withValues(alpha: 0.6),
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               'Location recorded',
@@ -2063,21 +2309,26 @@ class _SuccessViewState extends ConsumerState<_SuccessView>
                         child: DecoratedBox(
                           decoration: BoxDecoration(
                             color: Colors.amber.withValues(alpha: 0.22),
-                            borderRadius:
-                                BorderRadius.circular(AppSpacing.radiusMd),
+                            borderRadius: BorderRadius.circular(
+                              AppSpacing.radiusMd,
+                            ),
                             border: Border.all(
-                                color: Colors.amber.withValues(alpha: 0.7),
-                                width: 1.5),
+                              color: Colors.amber.withValues(alpha: 0.7),
+                              width: 1.5,
+                            ),
                           ),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: AppSpacing.xl,
-                                vertical: AppSpacing.sm),
+                              horizontal: AppSpacing.xl,
+                              vertical: AppSpacing.sm,
+                            ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Text('🏆',
-                                    style: TextStyle(fontSize: 18)),
+                                const Text(
+                                  '🏆',
+                                  style: TextStyle(fontSize: 18),
+                                ),
                                 const SizedBox(width: AppSpacing.sm),
                                 Text(
                                   'LEVEL UP! · Level ${widget.state.newLevel}',
@@ -2103,44 +2354,52 @@ class _SuccessViewState extends ConsumerState<_SuccessView>
                       const SizedBox(height: AppSpacing.md),
                       ScaleTransition(
                         scale: postAchieveAnim,
-                        child: Builder(builder: (context) {
-                          final league =
-                              LeagueDef.withId(widget.state.newLeague);
-                          if (league == null) return const SizedBox.shrink();
-                          return DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: league.color.withValues(alpha: 0.22),
-                              borderRadius:
-                                  BorderRadius.circular(AppSpacing.radiusMd),
-                              border: Border.all(
+                        child: Builder(
+                          builder: (context) {
+                            final league = LeagueDef.withId(
+                              widget.state.newLeague,
+                            );
+                            if (league == null) return const SizedBox.shrink();
+                            return DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: league.color.withValues(alpha: 0.22),
+                                borderRadius: BorderRadius.circular(
+                                  AppSpacing.radiusMd,
+                                ),
+                                border: Border.all(
                                   color: league.color.withValues(alpha: 0.7),
-                                  width: 1.5),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: AppSpacing.xl,
-                                  vertical: AppSpacing.sm),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(league.emoji,
-                                      style: const TextStyle(fontSize: 18)),
-                                  const SizedBox(width: AppSpacing.sm),
-                                  Text(
-                                    'New League · ${league.name}',
-                                    style: TextStyle(
-                                      fontFamily: 'Nunito',
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w900,
-                                      color: league.color,
-                                      letterSpacing: 0.5,
-                                    ),
-                                  ),
-                                ],
+                                  width: 1.5,
+                                ),
                               ),
-                            ),
-                          );
-                        }),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: AppSpacing.xl,
+                                  vertical: AppSpacing.sm,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      league.emoji,
+                                      style: const TextStyle(fontSize: 18),
+                                    ),
+                                    const SizedBox(width: AppSpacing.sm),
+                                    Text(
+                                      'New League · ${league.name}',
+                                      style: TextStyle(
+                                        fontFamily: 'Nunito',
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w900,
+                                        color: league.color,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                       ),
                     ],
                     const SizedBox(height: AppSpacing.xxxl),
@@ -2148,86 +2407,149 @@ class _SuccessViewState extends ConsumerState<_SuccessView>
                     // ── BOTTOM ACTIONS ──
                     // Primary: View Adventure / View on Map (56px, 16px radius)
                     // Secondary: Continue (48px)
+                    //
+                    // "View on Map" only makes sense when this completion
+                    // actually has a location — otherwise tapping it would
+                    // silently drop the user on the map with nothing to
+                    // focus on (no crash, but no explanation either). When
+                    // there's no location, "Continue" becomes the sole,
+                    // primary action instead of leaving a dead-feeling button.
                     FadeTransition(
                       opacity: btnFade,
                       child: SlideTransition(
                         position: btnSlide,
                         child: Column(
                           children: [
-                            PressableScale(
-                              child: SizedBox(
-                                width: double.infinity,
-                                height: AppSpacing.buttonHeight,
-                                child: Material(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(
-                                      AppSpacing.radiusButton),
-                                  elevation: 6,
-                                  shadowColor: Colors.black26,
-                                  child: InkWell(
-                                    onTap: () {
-                                      ref
-                                          .read(pendingMapFocusProvider
-                                              .notifier)
-                                          .state = completion.id;
-                                      context.go(RouteNames.map);
-                                    },
+                            if (hasLocation) ...[
+                              PressableScale(
+                                child: SizedBox(
+                                  width: double.infinity,
+                                  height: AppSpacing.buttonHeight,
+                                  child: Material(
+                                    color: Colors.white,
                                     borderRadius: BorderRadius.circular(
-                                        AppSpacing.radiusButton),
-                                    child: const Center(
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(Icons.map_rounded,
-                                              color: AppColors.forestGreen,
-                                              size: AppSpacing.iconSm),
-                                          SizedBox(width: AppSpacing.sm),
-                                          Text(
-                                            'View on Map',
-                                            style: TextStyle(
-                                              fontFamily: 'Nunito',
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.w900,
-                                              color: AppColors.forestGreen,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
+                                      AppSpacing.radiusButton,
                                     ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: AppSpacing.sm),
-                            PressableScale(
-                              child: SizedBox(
-                                width: double.infinity,
-                                height: 48,
-                                child: Material(
-                                  color: Colors.transparent,
-                                  borderRadius: BorderRadius.circular(
-                                      AppSpacing.radiusButton),
-                                  child: InkWell(
-                                    onTap: () => context.go(RouteNames.home),
-                                    borderRadius: BorderRadius.circular(
-                                        AppSpacing.radiusButton),
-                                    child: DecoratedBox(
-                                      decoration: BoxDecoration(
-                                        border: Border.all(
-                                          color: Colors.white
-                                              .withValues(alpha: 0.4),
-                                        ),
-                                        borderRadius: BorderRadius.circular(
-                                            AppSpacing.radiusButton),
+                                    elevation: 6,
+                                    shadowColor: Colors.black26,
+                                    child: InkWell(
+                                      onTap: () {
+                                        ref
+                                            .read(
+                                              pendingMapFocusProvider.notifier,
+                                            )
+                                            .state = completion
+                                            .id;
+                                        context.go(RouteNames.map);
+                                      },
+                                      borderRadius: BorderRadius.circular(
+                                        AppSpacing.radiusButton,
                                       ),
                                       child: const Center(
-                                        child: Text(
-                                          'Continue',
-                                          style: TextStyle(
-                                            fontFamily: 'Nunito',
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w700,
-                                            color: Colors.white,
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.map_rounded,
+                                              color: AppColors.forestGreen,
+                                              size: AppSpacing.iconSm,
+                                            ),
+                                            SizedBox(width: AppSpacing.sm),
+                                            Text(
+                                              'View on Map',
+                                              style: TextStyle(
+                                                fontFamily: 'Nunito',
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w900,
+                                                color: AppColors.forestGreen,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: AppSpacing.sm),
+                            ] else
+                              PressableScale(
+                                child: SizedBox(
+                                  width: double.infinity,
+                                  height: AppSpacing.buttonHeight,
+                                  child: Material(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(
+                                      AppSpacing.radiusButton,
+                                    ),
+                                    elevation: 6,
+                                    shadowColor: Colors.black26,
+                                    child: InkWell(
+                                      onTap: () => context.go(RouteNames.home),
+                                      borderRadius: BorderRadius.circular(
+                                        AppSpacing.radiusButton,
+                                      ),
+                                      child: const Center(
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.check_circle_rounded,
+                                              color: AppColors.forestGreen,
+                                              size: AppSpacing.iconSm,
+                                            ),
+                                            SizedBox(width: AppSpacing.sm),
+                                            Text(
+                                              'Continue',
+                                              style: TextStyle(
+                                                fontFamily: 'Nunito',
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w900,
+                                                color: AppColors.forestGreen,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            if (hasLocation)
+                              PressableScale(
+                                child: SizedBox(
+                                  width: double.infinity,
+                                  height: 48,
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    borderRadius: BorderRadius.circular(
+                                      AppSpacing.radiusButton,
+                                    ),
+                                    child: InkWell(
+                                      onTap: () => context.go(RouteNames.home),
+                                      borderRadius: BorderRadius.circular(
+                                        AppSpacing.radiusButton,
+                                      ),
+                                      child: DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          border: Border.all(
+                                            color: Colors.white.withValues(
+                                              alpha: 0.4,
+                                            ),
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            AppSpacing.radiusButton,
+                                          ),
+                                        ),
+                                        child: const Center(
+                                          child: Text(
+                                            'Continue',
+                                            style: TextStyle(
+                                              fontFamily: 'Nunito',
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w700,
+                                              color: Colors.white,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -2235,7 +2557,6 @@ class _SuccessViewState extends ConsumerState<_SuccessView>
                                   ),
                                 ),
                               ),
-                            ),
                           ],
                         ),
                       ),
@@ -2300,7 +2621,8 @@ class _FailureView extends ConsumerWidget {
           if (state.bytes != null)
             DecoratedBox(
               decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.72)),
+                color: Colors.black.withValues(alpha: 0.72),
+              ),
             ),
 
           // No-photo fallback background
@@ -2335,11 +2657,11 @@ class _FailureView extends ConsumerWidget {
                   DecoratedBox(
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.70),
-                      borderRadius:
-                          BorderRadius.circular(AppSpacing.radiusLg),
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
                       border: Border.all(
-                          color: AppColors.error.withValues(alpha: 0.5),
-                          width: 1.5),
+                        color: AppColors.error.withValues(alpha: 0.5),
+                        width: 1.5,
+                      ),
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(AppSpacing.lg),
@@ -2349,8 +2671,11 @@ class _FailureView extends ConsumerWidget {
                           // Header
                           Row(
                             children: [
-                              const Icon(Icons.error_outline_rounded,
-                                  color: AppColors.error, size: 22),
+                              const Icon(
+                                Icons.error_outline_rounded,
+                                color: AppColors.error,
+                                size: 22,
+                              ),
                               const SizedBox(width: 8),
                               // "Failed" implies AI reached a verdict (a
                               // genuine content rejection, which carries a
@@ -2392,16 +2717,19 @@ class _FailureView extends ConsumerWidget {
                             DecoratedBox(
                               decoration: BoxDecoration(
                                 color: Colors.white.withValues(alpha: 0.07),
-                                borderRadius:
-                                    BorderRadius.circular(AppSpacing.radiusSm),
+                                borderRadius: BorderRadius.circular(
+                                  AppSpacing.radiusSm,
+                                ),
                               ),
                               child: Padding(
                                 padding: const EdgeInsets.all(10),
                                 child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Text('🤖',
-                                        style: TextStyle(fontSize: 13)),
+                                    const Text(
+                                      '🤖',
+                                      style: TextStyle(fontSize: 13),
+                                    ),
                                     const SizedBox(width: 7),
                                     Expanded(
                                       child: Text(
@@ -2410,8 +2738,9 @@ class _FailureView extends ConsumerWidget {
                                           fontFamily: 'Nunito',
                                           fontSize: 12,
                                           fontWeight: FontWeight.w500,
-                                          color: Colors.white
-                                              .withValues(alpha: 0.65),
+                                          color: Colors.white.withValues(
+                                            alpha: 0.65,
+                                          ),
                                           height: 1.4,
                                         ),
                                       ),
@@ -2432,8 +2761,9 @@ class _FailureView extends ConsumerWidget {
                     child: DecoratedBox(
                       decoration: BoxDecoration(
                         gradient: AppColors.gradientForest,
-                        borderRadius:
-                            BorderRadius.circular(AppSpacing.radiusButton),
+                        borderRadius: BorderRadius.circular(
+                          AppSpacing.radiusButton,
+                        ),
                       ),
                       child: Material(
                         color: Colors.transparent,
@@ -2442,32 +2772,36 @@ class _FailureView extends ConsumerWidget {
                           label: 'Retake photo',
                           excludeSemantics: true,
                           child: InkWell(
-                          onTap: notifier.retake,
-                          borderRadius:
-                              BorderRadius.circular(AppSpacing.radiusButton),
-                          child: const SizedBox(
-                            height: AppSpacing.buttonHeight,
-                            child: Center(
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.camera_alt_rounded,
-                                      color: Colors.white, size: AppSpacing.iconSm),
-                                  SizedBox(width: AppSpacing.sm),
-                                  Text(
-                                    'Retake Photo',
-                                    style: TextStyle(
-                                      fontFamily: 'Nunito',
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w800,
+                            onTap: notifier.retake,
+                            borderRadius: BorderRadius.circular(
+                              AppSpacing.radiusButton,
+                            ),
+                            child: const SizedBox(
+                              height: AppSpacing.buttonHeight,
+                              child: Center(
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.camera_alt_rounded,
                                       color: Colors.white,
+                                      size: AppSpacing.iconSm,
                                     ),
-                                  ),
-                                ],
+                                    SizedBox(width: AppSpacing.sm),
+                                    Text(
+                                      'Retake Photo',
+                                      style: TextStyle(
+                                        fontFamily: 'Nunito',
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
-                        ),
                         ),
                       ),
                     ),
@@ -2494,26 +2828,31 @@ class _FailureView extends ConsumerWidget {
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.25),
-                              width: 1.5),
-                          borderRadius:
-                              BorderRadius.circular(AppSpacing.radiusButton),
+                            color: Colors.white.withValues(alpha: 0.25),
+                            width: 1.5,
+                          ),
+                          borderRadius: BorderRadius.circular(
+                            AppSpacing.radiusButton,
+                          ),
                         ),
                         child: Material(
                           color: Colors.transparent,
                           child: InkWell(
                             onTap: () => notifier.retryVerification(),
-                            borderRadius:
-                                BorderRadius.circular(AppSpacing.radiusButton),
+                            borderRadius: BorderRadius.circular(
+                              AppSpacing.radiusButton,
+                            ),
                             child: const SizedBox(
                               height: AppSpacing.buttonHeight,
                               child: Center(
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.refresh_rounded,
-                                        color: Colors.white,
-                                        size: AppSpacing.iconSm),
+                                    Icon(
+                                      Icons.refresh_rounded,
+                                      color: Colors.white,
+                                      size: AppSpacing.iconSm,
+                                    ),
                                     SizedBox(width: AppSpacing.sm),
                                     Text(
                                       'Retry Verification',
@@ -2536,51 +2875,57 @@ class _FailureView extends ConsumerWidget {
                     // Manual override
                     PressableScale(
                       child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        border: Border.all(
+                        decoration: BoxDecoration(
+                          border: Border.all(
                             color: Colors.white.withValues(alpha: 0.25),
-                            width: 1.5),
-                        borderRadius:
-                            BorderRadius.circular(AppSpacing.radiusButton),
-                      ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: () => notifier.override(),
-                          borderRadius:
-                              BorderRadius.circular(AppSpacing.radiusButton),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                                vertical: AppSpacing.md),
-                            child: Column(
-                              children: [
-                                const Text(
-                                  'Submit Anyway',
-                                  style: TextStyle(
-                                    fontFamily: 'Nunito',
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.white,
+                            width: 1.5,
+                          ),
+                          borderRadius: BorderRadius.circular(
+                            AppSpacing.radiusButton,
+                          ),
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () => notifier.override(),
+                            borderRadius: BorderRadius.circular(
+                              AppSpacing.radiusButton,
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: AppSpacing.md,
+                              ),
+                              child: Column(
+                                children: [
+                                  const Text(
+                                    'Submit Anyway',
+                                    style: TextStyle(
+                                      fontFamily: 'Nunito',
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  "We couldn't confirm this with AI — you can still submit it manually",
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontFamily: 'Nunito',
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w500,
-                                    color:
-                                        Colors.white.withValues(alpha: 0.50),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    "We couldn't confirm this with AI — you can still submit it manually",
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontFamily: 'Nunito',
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.white.withValues(
+                                        alpha: 0.50,
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    )),
+                    ),
                   ],
                   const SizedBox(height: AppSpacing.sm),
                   TextButton(
@@ -2692,12 +3037,15 @@ class _UnlockCard extends StatelessWidget {
                   DecoratedBox(
                     decoration: BoxDecoration(
                       color: rarityColor.withValues(alpha: 0.20),
-                      borderRadius:
-                          BorderRadius.circular(AppSpacing.radiusFull),
+                      borderRadius: BorderRadius.circular(
+                        AppSpacing.radiusFull,
+                      ),
                     ),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
                       child: Text(
                         def.rarity.label,
                         style: TextStyle(
@@ -2719,7 +3067,9 @@ class _UnlockCard extends StatelessWidget {
               ),
               child: Padding(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.sm, vertical: 4),
+                  horizontal: AppSpacing.sm,
+                  vertical: 4,
+                ),
                 child: Text(
                   '+${def.xpReward} XP',
                   style: const TextStyle(

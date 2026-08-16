@@ -2,10 +2,18 @@ class WeatherModel {
   const WeatherModel({
     required this.temperatureCelsius,
     required this.weatherCode,
+    this.sunrise,
+    this.sunset,
   });
 
   final double temperatureCelsius;
   final int weatherCode;
+
+  /// Today's local sunrise/sunset, when Open-Meteo's response included them.
+  /// Null only if the API omitted the `daily` block (never fabricated) —
+  /// callers (e.g. automatic sunrise/sunset theming) must handle null.
+  final DateTime? sunrise;
+  final DateTime? sunset;
 
   String get emoji {
     if (weatherCode == 0) return '☀️';
@@ -35,6 +43,11 @@ class WeatherModel {
 
   String get outdoorAdvice {
     if (weatherCode >= 95) return 'Stay safe — storm nearby';
+    // Snow showers (83-86) must be checked before the general "rain
+    // showers" (80-82) range below — otherwise a snow-shower day (which
+    // `condition` correctly labels "Snow showers") would show rain-shower
+    // advice, contradicting the condition label shown right next to it.
+    if (weatherCode >= 83 && weatherCode <= 86) return 'Snowy — bundle up!';
     if (weatherCode >= 80) return 'Rain showers — grab a jacket';
     if (weatherCode >= 71) return 'Snowy — bundle up!';
     if (weatherCode >= 61) return 'Rainy — grab a raincoat!';
@@ -45,6 +58,7 @@ class WeatherModel {
     if (weatherCode <= 2 && temperatureCelsius >= 10) {
       return 'Perfect weather for a challenge!';
     }
+    if (temperatureCelsius < 10) return 'Chilly — bring a light jacket';
     return 'Good enough to go outside!';
   }
 

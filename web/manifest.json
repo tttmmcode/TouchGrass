@@ -1,11 +1,11 @@
 {
-    "name": "touchgrass",
-    "short_name": "touchgrass",
+    "name": "TouchGrass",
+    "short_name": "TouchGrass",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#EAF7EC",
+    "theme_color": "#2E7D32",
+    "description": "Turn going outside into an adventure — daily outdoor challenges, XP, streaks, and a personal exploration journal.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

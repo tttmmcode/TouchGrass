@@ -22,6 +22,7 @@ import '../../../theme/app_spacing.dart';
 import '../../../widgets/error_retry_view.dart';
 import '../../../widgets/initials_avatar.dart';
 import '../../../widgets/loading_widgets.dart';
+import '../utils/member_since.dart';
 
 // ── Design tokens for this screen ─────────────────────────────────────────────
 const double _kPad = 24;
@@ -111,18 +112,14 @@ class _ProfileBody extends ConsumerWidget {
         // ── Hero card ──────────────────────────────────────────────────────
         SliverPadding(
           padding: const EdgeInsets.symmetric(horizontal: _kPad),
-          sliver: SliverToBoxAdapter(
-            child: _HeroCard(user: user),
-          ),
+          sliver: SliverToBoxAdapter(child: _HeroCard(user: user)),
         ),
         const SliverToBoxAdapter(child: SizedBox(height: _kGap)),
 
         // ── Stats banner ───────────────────────────────────────────────────
         SliverPadding(
           padding: const EdgeInsets.symmetric(horizontal: _kPad),
-          sliver: SliverToBoxAdapter(
-            child: _StatsBanner(user: user),
-          ),
+          sliver: SliverToBoxAdapter(child: _StatsBanner(user: user)),
         ),
         const SliverToBoxAdapter(child: SizedBox(height: _kBreak)),
 
@@ -231,11 +228,7 @@ class _ProfileBody extends ConsumerWidget {
 // ── Section label ─────────────────────────────────────────────────────────────
 
 class _SectionLabel extends StatelessWidget {
-  const _SectionLabel({
-    required this.title,
-    required this.icon,
-    this.trailing,
-  });
+  const _SectionLabel({required this.title, required this.icon, this.trailing});
 
   final String title;
   final IconData icon;
@@ -244,7 +237,9 @@ class _SectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textStrong = isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final textStrong = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
 
     return Row(
       children: [
@@ -259,10 +254,7 @@ class _SectionLabel extends StatelessWidget {
             color: textStrong,
           ),
         ),
-        if (trailing != null) ...[
-          const Spacer(),
-          trailing!,
-        ],
+        if (trailing != null) ...[const Spacer(), trailing!],
       ],
     );
   }
@@ -286,8 +278,11 @@ class _AchievementCount extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.emoji_events_rounded,
-                size: 13, color: Colors.white),
+            const Icon(
+              Icons.emoji_events_rounded,
+              size: 13,
+              color: Colors.white,
+            ),
             const SizedBox(width: 4),
             Text(
               '$earned / $total',
@@ -360,6 +355,23 @@ class _HeroCard extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
+                      // "Who am I" should include email, not just the display
+                      // name — this was previously shown only in Settings,
+                      // never here on the identity card itself.
+                      if (user.email.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          user.email,
+                          style: TextStyle(
+                            fontFamily: 'Nunito',
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white.withValues(alpha: 0.75),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                       const SizedBox(height: 6),
                       Row(
                         children: [
@@ -370,7 +382,9 @@ class _HeroCard extends StatelessWidget {
                           const SizedBox(width: 8),
                           _Pill(
                             label: _rankTitle(user.level),
-                            bg: AppColors.achievementGold.withValues(alpha: 0.28),
+                            bg: AppColors.achievementGold.withValues(
+                              alpha: 0.28,
+                            ),
                             textColor: AppColors.achievementGold,
                           ),
                         ],
@@ -410,7 +424,10 @@ class _HeroCard extends StatelessWidget {
             const SizedBox(height: 8),
 
             TweenAnimationBuilder<double>(
-              tween: Tween<double>(begin: 0, end: user.levelProgress.clamp(0.0, 1.0)),
+              tween: Tween<double>(
+                begin: 0,
+                end: user.levelProgress.clamp(0.0, 1.0),
+              ),
               duration: const Duration(milliseconds: 1100),
               curve: Curves.easeOutCubic,
               builder: (_, value, _) => LayoutBuilder(
@@ -421,18 +438,22 @@ class _HeroCard extends StatelessWidget {
                       DecoratedBox(
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.2),
-                          borderRadius:
-                              BorderRadius.circular(AppSpacing.radiusFull),
+                          borderRadius: BorderRadius.circular(
+                            AppSpacing.radiusFull,
+                          ),
                         ),
                         child: SizedBox(
-                            height: 10, width: constraints.maxWidth),
+                          height: 10,
+                          width: constraints.maxWidth,
+                        ),
                       ),
                       if (fillWidth > 0)
                         DecoratedBox(
                           decoration: BoxDecoration(
                             color: Colors.white,
-                            borderRadius:
-                                BorderRadius.circular(AppSpacing.radiusFull),
+                            borderRadius: BorderRadius.circular(
+                              AppSpacing.radiusFull,
+                            ),
                           ),
                           child: SizedBox(height: 10, width: fillWidth),
                         ),
@@ -696,7 +717,9 @@ class _RainyDaysRow extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final surface = isDark ? AppColors.surfaceDark : AppColors.surfaceLight;
     final outline = isDark ? AppColors.outlineDark : AppColors.outlineLight;
-    final onSurface = isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final onSurface = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
 
     final available = user.rainyDaysAvailable;
     final used = user.rainyDaysUsed;
@@ -710,7 +733,9 @@ class _RainyDaysRow extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(
-            horizontal: _kCardPad, vertical: _kGap),
+          horizontal: _kCardPad,
+          vertical: _kGap,
+        ),
         child: Row(
           children: [
             const Text('🌧️', style: TextStyle(fontSize: 22)),
@@ -774,22 +799,15 @@ class _RainyDaysRow extends StatelessWidget {
 // ── Exploration stats ─────────────────────────────────────────────────────────
 
 class _ExplorationStats extends StatelessWidget {
-  const _ExplorationStats({
-    required this.user,
-    required this.completions,
-  });
+  const _ExplorationStats({required this.user, required this.completions});
 
   final UserModel user;
   final List<CompletionModel> completions;
 
-  String _memberSince() {
-    final d = user.createdAt.toLocal();
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-    ];
-    return '${months[d.month - 1]} ${d.year}';
-  }
+  String _memberSince() => memberSinceDuration(
+    createdAt: user.createdAt.toLocal(),
+    now: DateTime.now(),
+  );
 
   String _topCategory() {
     if (completions.isEmpty) return 'None yet';
@@ -853,8 +871,7 @@ class _ExplorationStats extends StatelessWidget {
       mainAxisSpacing: _kGap,
       childAspectRatio: 1.65,
       children: [
-        for (final t in tiles)
-          _ExplorationTile(data: t, isDark: isDark),
+        for (final t in tiles) _ExplorationTile(data: t, isDark: isDark),
       ],
     );
   }
@@ -884,8 +901,9 @@ class _ExplorationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final bg = isDark ? AppColors.surfaceDark : AppColors.surfaceLight;
     final border = isDark ? AppColors.outlineDark : AppColors.outlineLight;
-    final textStrong =
-        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final textStrong = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
     final textMuted = isDark
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
@@ -963,10 +981,7 @@ class _AchievementBadgeState extends ConsumerState<_AchievementBadge>
   @override
   void initState() {
     super.initState();
-    _entry = AnimationController(
-      vsync: this,
-      duration: AppMotion.long,
-    );
+    _entry = AnimationController(vsync: this, duration: AppMotion.long);
     _fade = CurvedAnimation(parent: _entry, curve: Curves.easeOut);
     _slide = Tween<Offset>(
       begin: const Offset(0, 0.1),
@@ -995,10 +1010,7 @@ class _AchievementBadgeState extends ConsumerState<_AchievementBadge>
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => _AchievementSheet(
-        model: widget.model,
-        user: widget.user,
-      ),
+      builder: (_) => _AchievementSheet(model: widget.model, user: widget.user),
     );
   }
 
@@ -1009,7 +1021,9 @@ class _AchievementBadgeState extends ConsumerState<_AchievementBadge>
     final isDark = widget.isDark;
 
     final bg = earned
-        ? (isDark ? AppColors.surfaceVariantDark : AppColors.surfaceVariantLight)
+        ? (isDark
+              ? AppColors.surfaceVariantDark
+              : AppColors.surfaceVariantLight)
         : (isDark ? AppColors.surfaceDark : AppColors.surfaceLight);
     final borderColor = earned
         ? AppColors.grassGreen.withValues(alpha: 0.5)
@@ -1017,8 +1031,8 @@ class _AchievementBadgeState extends ConsumerState<_AchievementBadge>
     final textColor = earned
         ? (isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight)
         : (isDark
-            ? AppColors.onSurfaceVariantDark
-            : AppColors.onSurfaceVariantLight);
+              ? AppColors.onSurfaceVariantDark
+              : AppColors.onSurfaceVariantLight);
 
     Widget card = GestureDetector(
       onTap: () => _onTap(context),
@@ -1084,10 +1098,26 @@ class _AchievementBadgeState extends ConsumerState<_AchievementBadge>
     if (!earned) {
       card = ColorFiltered(
         colorFilter: const ColorFilter.matrix([
-          0.60, 0.35, 0.05, 0, 0,
-          0.10, 0.65, 0.05, 0, 0,
-          0.10, 0.35, 0.55, 0, 0,
-          0,    0,    0,    0.72, 0,
+          0.60,
+          0.35,
+          0.05,
+          0,
+          0,
+          0.10,
+          0.65,
+          0.05,
+          0,
+          0,
+          0.10,
+          0.35,
+          0.55,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0.72,
+          0,
         ]),
         child: card,
       );
@@ -1140,13 +1170,15 @@ class _AchievementSheet extends ConsumerWidget {
     final reducedMotion = ref.watch(reducedMotionProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? AppColors.surfaceDark : AppColors.surfaceLight;
-    final textStrong =
-        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final textStrong = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
     final textMuted = isDark
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
-    final trackColor =
-        isDark ? AppColors.surfaceVariantDark : AppColors.surfaceVariantLight;
+    final trackColor = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceVariantLight;
 
     final def = model.def;
     final earned = model.isUnlocked;
@@ -1154,8 +1186,7 @@ class _AchievementSheet extends ConsumerWidget {
     return Container(
       decoration: BoxDecoration(
         color: bg,
-        borderRadius:
-            const BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: EdgeInsets.fromLTRB(
         _kPad,
@@ -1201,8 +1232,7 @@ class _AchievementSheet extends ConsumerWidget {
               borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
             ),
             child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -1271,8 +1301,9 @@ class _AchievementSheet extends ConsumerWidget {
             const SizedBox(height: 8),
             TweenAnimationBuilder<double>(
               tween: Tween<double>(begin: 0, end: model.progressFraction),
-              duration:
-                  reducedMotion ? Duration.zero : const Duration(milliseconds: 900),
+              duration: reducedMotion
+                  ? Duration.zero
+                  : const Duration(milliseconds: 900),
               curve: Curves.easeOutCubic,
               builder: (_, value, _) => LayoutBuilder(
                 builder: (_, constraints) {
@@ -1282,18 +1313,22 @@ class _AchievementSheet extends ConsumerWidget {
                       DecoratedBox(
                         decoration: BoxDecoration(
                           color: trackColor,
-                          borderRadius:
-                              BorderRadius.circular(AppSpacing.radiusFull),
+                          borderRadius: BorderRadius.circular(
+                            AppSpacing.radiusFull,
+                          ),
                         ),
                         child: SizedBox(
-                            height: 10, width: constraints.maxWidth),
+                          height: 10,
+                          width: constraints.maxWidth,
+                        ),
                       ),
                       if (fillWidth > 0)
                         DecoratedBox(
                           decoration: BoxDecoration(
                             gradient: AppColors.gradientForest,
-                            borderRadius:
-                                BorderRadius.circular(AppSpacing.radiusFull),
+                            borderRadius: BorderRadius.circular(
+                              AppSpacing.radiusFull,
+                            ),
                           ),
                           child: SizedBox(height: 10, width: fillWidth),
                         ),
@@ -1344,8 +1379,18 @@ class _HistoryCard extends StatelessWidget {
   String _formattedDate() {
     final d = completion.completedAt.toLocal();
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${months[d.month - 1]} ${d.day}';
   }
@@ -1355,8 +1400,9 @@ class _HistoryCard extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? AppColors.surfaceDark : AppColors.surfaceLight;
     final border = isDark ? AppColors.outlineDark : AppColors.outlineLight;
-    final textStrong =
-        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final textStrong = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
     final textMuted = isDark
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
@@ -1409,8 +1455,11 @@ class _HistoryCard extends StatelessWidget {
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      Icon(Icons.calendar_today_rounded,
-                          size: 11, color: textMuted),
+                      Icon(
+                        Icons.calendar_today_rounded,
+                        size: 11,
+                        color: textMuted,
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         _formattedDate(),
@@ -1424,14 +1473,16 @@ class _HistoryCard extends StatelessWidget {
                       const SizedBox(width: 8),
                       DecoratedBox(
                         decoration: BoxDecoration(
-                          color:
-                              AppColors.grassGreen.withValues(alpha: 0.12),
-                          borderRadius:
-                              BorderRadius.circular(AppSpacing.radiusFull),
+                          color: AppColors.grassGreen.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(
+                            AppSpacing.radiusFull,
+                          ),
                         ),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
                           child: Text(
                             completion.challengeCategory.displayName,
                             style: const TextStyle(
@@ -1457,8 +1508,10 @@ class _HistoryCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
               ),
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 child: Text(
                   '+${completion.xpAwarded} XP',
                   style: const TextStyle(

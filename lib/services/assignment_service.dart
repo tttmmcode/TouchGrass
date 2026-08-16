@@ -15,10 +15,10 @@ class AssignmentService {
     required ChallengeGenerationService challengeGenerationService,
     required WeatherService weatherService,
     required LocationService locationService,
-  })  : _repo = challengeRepository,
-        _generator = challengeGenerationService,
-        _weather = weatherService,
-        _location = locationService;
+  }) : _repo = challengeRepository,
+       _generator = challengeGenerationService,
+       _weather = weatherService,
+       _location = locationService;
 
   final ChallengeRepository _repo;
   final ChallengeGenerationService _generator;
@@ -33,6 +33,7 @@ class AssignmentService {
   Future<void> ensureTodaysChallenge(
     String userId, {
     required int dayNumber,
+    Set<ChallengeCategory> preferredCategories = const {},
   }) async {
     try {
       if (await _repo.todaysChallengeExists(userId)) return;
@@ -42,6 +43,7 @@ class AssignmentService {
         dayNumber: dayNumber,
         rerollCount: 0,
         excludedTheme: null,
+        preferredCategories: preferredCategories,
       );
       (await _repo.saveChallenge(challenge)).valueOrThrow;
     } catch (e, st) {
@@ -61,22 +63,23 @@ class AssignmentService {
   /// Unlimited rerolls — no cap enforced.
   Future<void> rerollChallenge(
     String userId,
-    ChallengeModel currentChallenge,
-  ) async {
+    ChallengeModel currentChallenge, {
+    Set<ChallengeCategory> preferredCategories = const {},
+  }) async {
     try {
-      final excludedTheme = ChallengeSeedLibrary
-          .selectSeed(
-            dayNumber: currentChallenge.dayNumber,
-            userId: userId,
-            difficulty: currentChallenge.difficulty,
-          )
-          .theme;
+      final excludedTheme = ChallengeSeedLibrary.selectSeed(
+        dayNumber: currentChallenge.dayNumber,
+        userId: userId,
+        difficulty: currentChallenge.difficulty,
+        preferredCategories: preferredCategories,
+      ).theme;
 
       final challenge = await _buildChallenge(
         userId: userId,
         dayNumber: currentChallenge.dayNumber,
         rerollCount: currentChallenge.rerollCount + 1,
         excludedTheme: excludedTheme,
+        preferredCategories: preferredCategories,
       );
 
       // Preserve the doc ID (same date) so this overwrites the existing doc.
@@ -120,6 +123,7 @@ class AssignmentService {
     required int dayNumber,
     required int rerollCount,
     required String? excludedTheme,
+    Set<ChallengeCategory> preferredCategories = const {},
   }) async {
     // Pick difficulty based on day number: increases every 7 days, max hard.
     final difficulty = _difficultyForDay(dayNumber);
@@ -130,6 +134,7 @@ class AssignmentService {
             dayNumber: dayNumber,
             userId: userId,
             difficulty: difficulty,
+            preferredCategories: preferredCategories,
           )
         : ChallengeSeedLibrary.selectRerollSeed(
             dayNumber: dayNumber,
@@ -137,6 +142,7 @@ class AssignmentService {
             difficulty: difficulty,
             rerollCount: rerollCount,
             excludedTheme: excludedTheme,
+            preferredCategories: preferredCategories,
           );
 
     // Fetch exclusion list and weather in parallel; both are best-effort.
@@ -162,7 +168,9 @@ class AssignmentService {
     if (dayNumber <= 7) return ChallengeDifficulty.easy;
     if (dayNumber <= 14) return ChallengeDifficulty.medium;
     // After day 14 alternate medium/hard to keep variety.
-    return dayNumber.isEven ? ChallengeDifficulty.hard : ChallengeDifficulty.medium;
+    return dayNumber.isEven
+        ? ChallengeDifficulty.hard
+        : ChallengeDifficulty.medium;
   }
 
   Future<WeatherModel?> _fetchWeather() async {
@@ -174,8 +182,10 @@ class AssignmentService {
         longitude: position.longitude,
       );
     } catch (e) {
-      dev.log('Weather fetch failed (non-critical): $e',
-          name: 'AssignmentService');
+      dev.log(
+        'Weather fetch failed (non-critical): $e',
+        name: 'AssignmentService',
+      );
       return null;
     }
   }

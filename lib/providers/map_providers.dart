@@ -3,10 +3,14 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../services/location_service.dart';
 
-final locationServiceProvider = Provider<LocationService>((_) => LocationService());
+final locationServiceProvider = Provider<LocationService>(
+  (_) => LocationService(),
+);
 
 final currentLocationProvider = FutureProvider<LatLng?>((ref) async {
-  final geoPoint = await ref.watch(locationServiceProvider).getCurrentLocation();
+  final geoPoint = await ref
+      .watch(locationServiceProvider)
+      .getCurrentLocation();
   if (geoPoint == null) return null;
   return LatLng(geoPoint.latitude, geoPoint.longitude);
 });
@@ -17,8 +21,8 @@ final currentLocationProvider = FutureProvider<LatLng?>((ref) async {
 /// returns from the OS Settings screen) — never triggers an OS prompt itself.
 final locationAccessStatusProvider =
     FutureProvider.autoDispose<LocationAccessStatus>(
-  (ref) => ref.watch(locationServiceProvider).checkAccessStatus(),
-);
+      (ref) => ref.watch(locationServiceProvider).checkAccessStatus(),
+    );
 
 /// Set right before navigating to the map screen (from the completion
 /// screen's "View on Map" action) so MapScreen can center on and emphasize
@@ -31,3 +35,10 @@ final locationAccessStatusProvider =
 /// IndexedStack — `context.go` there doesn't reliably rebuild the screen
 /// with fresh route params the way a pushed route would.
 final pendingMapFocusProvider = StateProvider<String?>((ref) => null);
+
+/// Set right before navigating to the map screen (from Home's Journal
+/// shortcut) so MapScreen opens directly on its Journal tab (index 1)
+/// instead of the default Map tab (index 0). Same consume-once-and-clear
+/// pattern as [pendingMapFocusProvider], for the same reason (`/map` is a
+/// kept-alive IndexedStack branch, not a fresh route push).
+final pendingMapTabProvider = StateProvider<int?>((ref) => null);

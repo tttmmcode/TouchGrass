@@ -47,6 +47,11 @@ abstract final class AppConstants {
   // Do NOT hardcode a real key here — use a Cloud Function proxy in production.
   static const String geminiApiKey = EnvironmentConfig.geminiApiKey;
 
+  // ── Web push ──────────────────────────────────────────────────────────────
+  // Injected at build time: flutter build web --dart-define=FCM_VAPID_KEY=...
+  static const String fcmVapidKey = EnvironmentConfig.fcmVapidKey;
+  static bool get fcmVapidConfigured => EnvironmentConfig.fcmVapidConfigured;
+
   // ── Challenge System ──────────────────────────────────────────────────────
   /// Days back we look when avoiding duplicate challenge assignments.
   static const int challengeDedupeWindowDays = 14;

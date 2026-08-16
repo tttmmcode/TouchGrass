@@ -56,7 +56,8 @@ List<List<AdventureMemoryModel>> clusterMemoriesByProximity(
   final cellSize = cellSizeForZoom(zoom);
   final cells = <String, List<AdventureMemoryModel>>{};
   for (final m in memories) {
-    final key = '${(m.latitude! / cellSize).floor()}_'
+    final key =
+        '${(m.latitude! / cellSize).floor()}_'
         '${(m.longitude! / cellSize).floor()}';
     cells.putIfAbsent(key, () => []).add(m);
   }
@@ -144,7 +145,17 @@ class _MapScreenState extends ConsumerState<MapScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _tabController = TabController(length: 2, vsync: this);
+    final initialTab = ref.read(pendingMapTabProvider);
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: initialTab ?? 0,
+    );
+    if (initialTab != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) ref.read(pendingMapTabProvider.notifier).state = null;
+      });
+    }
     _tabController.addListener(_onTabChanged);
     _loadTrace = PerfService.startTrace(PerfService.traceMapLoad);
 
@@ -230,7 +241,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
     return Marker(
       markerId: MarkerId(m.memoryId),
       position: LatLng(m.latitude!, m.longitude!),
-      icon: icon ??
+      icon:
+          icon ??
           BitmapDescriptor.defaultMarkerWithHue(
             _hueForCategory(m.challengeCategory),
           ),
@@ -239,7 +251,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
       // Gives the marker an accessible title (surfaced by the platform's
       // screen reader) in addition to the tap target below.
       infoWindow: InfoWindow(
-        title: 'Adventure photo from ${m.displayLocation}, '
+        title:
+            'Adventure photo from ${m.displayLocation}, '
             '${DateFormat('MMMM d').format(m.completionDate)}',
       ),
       onTap: () => _showMemoryModal(m),
@@ -257,7 +270,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
     return Marker(
       markerId: MarkerId('cluster_${group.map((m) => m.memoryId).join('_')}'),
       position: LatLng(lat, lng),
-      icon: icon ??
+      icon:
+          icon ??
           BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
       anchor: const Offset(0.5, 0.5),
       infoWindow: InfoWindow(title: '$count adventures here'),
@@ -366,8 +380,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
     if (controller == null) return;
     _isProgrammaticMove = true;
     final reduceMotion = ref.read(reducedMotionProvider);
-    final future =
-        reduceMotion ? controller.moveCamera(update) : controller.animateCamera(update);
+    final future = reduceMotion
+        ? controller.moveCamera(update)
+        : controller.animateCamera(update);
     future.whenComplete(() => _isProgrammaticMove = false);
   }
 
@@ -396,15 +411,15 @@ class _MapScreenState extends ConsumerState<MapScreen>
   }
 
   double _hueForCategory(ChallengeCategory cat) => switch (cat) {
-        ChallengeCategory.nature => BitmapDescriptor.hueGreen,
-        ChallengeCategory.observation => BitmapDescriptor.hueAzure,
-        ChallengeCategory.exercise => BitmapDescriptor.hueOrange,
-        ChallengeCategory.exploration => BitmapDescriptor.hueYellow,
-        ChallengeCategory.photography => BitmapDescriptor.hueCyan,
-        ChallengeCategory.mindfulness => BitmapDescriptor.hueViolet,
-        ChallengeCategory.environmental => BitmapDescriptor.hueGreen,
-        ChallengeCategory.microAdventure => BitmapDescriptor.hueRose,
-      };
+    ChallengeCategory.nature => BitmapDescriptor.hueGreen,
+    ChallengeCategory.observation => BitmapDescriptor.hueAzure,
+    ChallengeCategory.exercise => BitmapDescriptor.hueOrange,
+    ChallengeCategory.exploration => BitmapDescriptor.hueYellow,
+    ChallengeCategory.photography => BitmapDescriptor.hueCyan,
+    ChallengeCategory.mindfulness => BitmapDescriptor.hueViolet,
+    ChallengeCategory.environmental => BitmapDescriptor.hueGreen,
+    ChallengeCategory.microAdventure => BitmapDescriptor.hueRose,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -516,8 +531,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
             children: [
               // Map tab
               GoogleMap(
-                initialCameraPosition:
-                    CameraPosition(target: initialTarget, zoom: initialZoom),
+                initialCameraPosition: CameraPosition(
+                  target: initialTarget,
+                  zoom: initialZoom,
+                ),
                 markers: markers,
                 myLocationEnabled:
                     locationStatus == LocationAccessStatus.granted,
@@ -627,7 +644,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                   'Location access needed to show your position on the map. Tap to allow.',
                               },
                               onTap: () {
-                                final service = ref.read(locationServiceProvider);
+                                final service = ref.read(
+                                  locationServiceProvider,
+                                );
                                 switch (locationStatus) {
                                   case LocationAccessStatus.serviceDisabled:
                                     service.openLocationServiceSettings();
@@ -640,7 +659,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                     // sending the user to Settings.
                                     ref.invalidate(currentLocationProvider);
                                     ref.invalidate(
-                                        locationAccessStatusProvider);
+                                      locationAccessStatusProvider,
+                                    );
                                 }
                               },
                             ),
@@ -650,8 +670,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     _CategoryFilterBar(
                       selected: _selectedCategory,
                       onSelect: (cat) => setState(() {
-                        _selectedCategory =
-                            _selectedCategory == cat ? null : cat;
+                        _selectedCategory = _selectedCategory == cat
+                            ? null
+                            : cat;
                       }),
                       isDark: isDark,
                     ),
@@ -768,8 +789,10 @@ class _PillTab extends StatelessWidget {
                   borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
                 ),
                 child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 1,
+                  ),
                   child: Text(
                     badge!,
                     style: TextStyle(
@@ -850,8 +873,9 @@ class _EnableLocationButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final surface = isDark ? AppColors.surfaceDark : AppColors.surfaceLight;
-    final onSurface =
-        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final onSurface = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -953,13 +977,16 @@ class _CategoryFilterBar extends StatelessWidget {
                     duration: AppMotion.fast,
                     curve: AppMotion.standardCurve,
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 5),
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
                     decoration: BoxDecoration(
                       color: isSelected
                           ? AppColors.forestGreen
                           : surface.withValues(alpha: 0.9),
-                      borderRadius:
-                          BorderRadius.circular(AppSpacing.radiusFull),
+                      borderRadius: BorderRadius.circular(
+                        AppSpacing.radiusFull,
+                      ),
                       boxShadow: AppElevation.low,
                     ),
                     child: Text(
@@ -1051,15 +1078,18 @@ class _JournalTabState extends State<_JournalTab> {
 
   @override
   Widget build(BuildContext context) {
-    final surface =
-        widget.isDark ? AppColors.surfaceDark : AppColors.surfaceLight;
+    final surface = widget.isDark
+        ? AppColors.surfaceDark
+        : AppColors.surfaceLight;
     final muted = widget.isDark
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
     final state = widget.state;
 
     // Initial load failed with nothing on screen yet.
-    if (state.error != null && state.memories.isEmpty && !state.initialLoading) {
+    if (state.error != null &&
+        state.memories.isEmpty &&
+        !state.initialLoading) {
       return ColoredBox(
         color: surface,
         child: Padding(
@@ -1153,8 +1183,9 @@ class _JournalSkeleton extends StatelessWidget {
               ShimmerBox(
                 width: 64,
                 height: 64,
-                borderRadius:
-                    BorderRadius.all(Radius.circular(AppSpacing.radiusMd)),
+                borderRadius: BorderRadius.all(
+                  Radius.circular(AppSpacing.radiusMd),
+                ),
               ),
               SizedBox(width: AppSpacing.md),
               Expanded(
@@ -1351,173 +1382,206 @@ class _JournalTile extends StatelessWidget {
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
 
-    final locationPart = memory.hasLocation ? ', ${memory.displayLocation}' : '';
-    final semanticLabel = '${memory.challengeTitle}, '
+    final locationPart = memory.hasLocation
+        ? ', ${memory.displayLocation}'
+        : '';
+    final semanticLabel =
+        '${memory.challengeTitle}, '
         '${memory.challengeCategory.displayName}, '
         'completed ${DateFormat('MMMM d').format(memory.completionDate)}'
         '$locationPart, +${memory.xpEarned} XP';
+
+    final surface = isDark ? AppColors.surfaceDark : AppColors.surfaceLight;
+    final border = isDark ? AppColors.outlineDark : AppColors.outlineLight;
 
     return Semantics(
       button: true,
       label: semanticLabel,
       excludeSemantics: true,
       child: PressableScale(
-      enabled: !reducedMotion,
-      child: InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.screenHorizontal,
-          vertical: AppSpacing.sm,
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Thumbnail
-            ClipRRect(
-              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-              child: memory.photoUrl.isEmpty
-                  ? DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: surfaceVar,
-                        borderRadius:
-                            BorderRadius.circular(AppSpacing.radiusMd),
-                      ),
-                      child: SizedBox(
-                        width: 64,
-                        height: 64,
-                        child: Center(
-                          child: Text(
-                            memory.challengeEmoji,
-                            style: const TextStyle(fontSize: 28),
-                          ),
-                        ),
-                      ),
-                    )
-                  : CachedNetworkImage(
-                      imageUrl: memory.photoUrl,
-                      width: 64,
-                      height: 64,
-                      fit: BoxFit.cover,
-                      placeholder: (ctx, url) =>
-                          const ShimmerBox(width: 64, height: 64),
-                      errorWidget: (ctx, url, err) => DecoratedBox(
-                        decoration: BoxDecoration(color: surfaceVar),
-                        child: SizedBox(
-                          width: 64,
-                          height: 64,
-                          child: Center(
-                            child: Text(
-                              memory.challengeEmoji,
-                              style: const TextStyle(fontSize: 28),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+        enabled: !reducedMotion,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.screenHorizontal,
+            vertical: AppSpacing.xs,
+          ),
+          // A journal entry should read as something collectible — a plain
+          // list row (the previous look) doesn't communicate that the same
+          // way an achievement card's card-shell treatment already does
+          // elsewhere in the app.
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: surface,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+              border: Border.all(color: border, width: 1),
+              boxShadow: AppElevation.low,
             ),
-            const SizedBox(width: AppSpacing.md),
-            // Content
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                onTap: onTap,
+                borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.md,
+                    vertical: AppSpacing.sm,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _DayBadge(day: memory.challengeDay),
+                      // Thumbnail
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(
+                          AppSpacing.radiusMd,
+                        ),
+                        child: memory.photoUrl.isEmpty
+                            ? DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: surfaceVar,
+                                  borderRadius: BorderRadius.circular(
+                                    AppSpacing.radiusMd,
+                                  ),
+                                ),
+                                child: SizedBox(
+                                  width: 64,
+                                  height: 64,
+                                  child: Center(
+                                    child: Text(
+                                      memory.challengeEmoji,
+                                      style: const TextStyle(fontSize: 28),
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : CachedNetworkImage(
+                                imageUrl: memory.photoUrl,
+                                width: 64,
+                                height: 64,
+                                fit: BoxFit.cover,
+                                placeholder: (ctx, url) =>
+                                    const ShimmerBox(width: 64, height: 64),
+                                errorWidget: (ctx, url, err) => DecoratedBox(
+                                  decoration: BoxDecoration(color: surfaceVar),
+                                  child: SizedBox(
+                                    width: 64,
+                                    height: 64,
+                                    child: Center(
+                                      child: Text(
+                                        memory.challengeEmoji,
+                                        style: const TextStyle(fontSize: 28),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                      ),
+                      const SizedBox(width: AppSpacing.md),
+                      // Content
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                _DayBadge(day: memory.challengeDay),
+                                const SizedBox(width: AppSpacing.sm),
+                                Text(
+                                  DateFormat(
+                                    'MMM d',
+                                  ).format(memory.completionDate),
+                                  style: TextStyle(
+                                    fontFamily: 'Nunito',
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: muted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              memory.challengeTitle,
+                              style: TextStyle(
+                                fontFamily: 'Nunito',
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: strong,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 3),
+                            Row(
+                              children: [
+                                Text(
+                                  '${memory.challengeCategory.emoji} '
+                                  '${memory.challengeCategory.displayName}',
+                                  style: TextStyle(
+                                    fontFamily: 'Nunito',
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: muted,
+                                  ),
+                                ),
+                                if (memory.hasLocation) ...[
+                                  const SizedBox(width: 6),
+                                  const Icon(
+                                    Icons.location_on_rounded,
+                                    size: 10,
+                                    color: AppColors.forestGreenLight,
+                                  ),
+                                  const SizedBox(width: 2),
+                                  Expanded(
+                                    child: Text(
+                                      memory.displayLocation,
+                                      style: TextStyle(
+                                        fontFamily: 'Nunito',
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: muted,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            if (memory.hasCaption) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                memory.caption!,
+                                style: TextStyle(
+                                  fontFamily: 'Nunito',
+                                  fontSize: 12,
+                                  fontStyle: FontStyle.italic,
+                                  color: muted,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      // XP
                       const SizedBox(width: AppSpacing.sm),
                       Text(
-                        DateFormat('MMM d').format(memory.completionDate),
-                        style: TextStyle(
+                        '+${memory.xpEarned} XP',
+                        style: const TextStyle(
                           fontFamily: 'Nunito',
                           fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: muted,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    memory.challengeTitle,
-                    style: TextStyle(
-                      fontFamily: 'Nunito',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: strong,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 3),
-                  Row(
-                    children: [
-                      Text(
-                        '${memory.challengeCategory.emoji} '
-                        '${memory.challengeCategory.displayName}',
-                        style: TextStyle(
-                          fontFamily: 'Nunito',
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: muted,
-                        ),
-                      ),
-                      if (memory.hasLocation) ...[
-                        const SizedBox(width: 6),
-                        const Icon(
-                          Icons.location_on_rounded,
-                          size: 10,
+                          fontWeight: FontWeight.w800,
                           color: AppColors.forestGreenLight,
                         ),
-                        const SizedBox(width: 2),
-                        Expanded(
-                          child: Text(
-                            memory.displayLocation,
-                            style: TextStyle(
-                              fontFamily: 'Nunito',
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: muted,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
+                      ),
                     ],
                   ),
-                  if (memory.hasCaption) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      memory.caption!,
-                      style: TextStyle(
-                        fontFamily: 'Nunito',
-                        fontSize: 12,
-                        fontStyle: FontStyle.italic,
-                        color: muted,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ],
+                ),
               ),
             ),
-            // XP
-            const SizedBox(width: AppSpacing.sm),
-            Text(
-              '+${memory.xpEarned} XP',
-              style: const TextStyle(
-                fontFamily: 'Nunito',
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                color: AppColors.forestGreenLight,
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
-      ),
       ),
     );
   }
@@ -1537,7 +1601,9 @@ class _EmptyJournal extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.xxl, vertical: AppSpacing.xl),
+        horizontal: AppSpacing.xxl,
+        vertical: AppSpacing.xl,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1622,8 +1688,9 @@ class _MemoryDetailModalState extends ConsumerState<_MemoryDetailModal> {
   @override
   void initState() {
     super.initState();
-    _captionController =
-        TextEditingController(text: widget.memory.caption ?? '');
+    _captionController = TextEditingController(
+      text: widget.memory.caption ?? '',
+    );
   }
 
   @override
@@ -1636,7 +1703,9 @@ class _MemoryDetailModalState extends ConsumerState<_MemoryDetailModal> {
     final text = _captionController.text.trim();
     setState(() => _saving = true);
 
-    final result = await ref.read(memoryRepositoryProvider).updateCaption(
+    final result = await ref
+        .read(memoryRepositoryProvider)
+        .updateCaption(
           userId: widget.memory.userId,
           memoryId: widget.memory.memoryId,
           newCaption: text,
@@ -1647,12 +1716,7 @@ class _MemoryDetailModalState extends ConsumerState<_MemoryDetailModal> {
       ok: (_) => Navigator.of(context).pop(),
       err: (e) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.message),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ErrorService.showError(context, e);
       },
     );
   }
@@ -1694,8 +1758,7 @@ class _MemoryDetailModalState extends ConsumerState<_MemoryDetailModal> {
                     color: isDark
                         ? AppColors.outlineDark
                         : AppColors.outlineLight,
-                    borderRadius:
-                        BorderRadius.circular(AppSpacing.radiusFull),
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
                   ),
                   child: const SizedBox(width: 36, height: 4),
                 ),
@@ -1755,6 +1818,8 @@ class _MemoryDetailModalState extends ConsumerState<_MemoryDetailModal> {
                               Expanded(
                                 child: Text(
                                   m.challengeTitle,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     fontFamily: 'Nunito',
                                     fontSize: 20,
@@ -1793,8 +1858,9 @@ class _MemoryDetailModalState extends ConsumerState<_MemoryDetailModal> {
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
-                                    DateFormat('EEE, MMM d y · h:mm a')
-                                        .format(m.completionDate),
+                                    DateFormat(
+                                      'EEE, MMM d y · h:mm a',
+                                    ).format(m.completionDate),
                                     style: TextStyle(
                                       fontFamily: 'Nunito',
                                       fontSize: 12,
@@ -1815,16 +1881,18 @@ class _MemoryDetailModalState extends ConsumerState<_MemoryDetailModal> {
                             children: [
                               _Badge(
                                 label: '+${m.xpEarned} XP',
-                                bgColor: AppColors.grassGreen
-                                    .withValues(alpha: 0.14),
+                                bgColor: AppColors.grassGreen.withValues(
+                                  alpha: 0.14,
+                                ),
                                 textColor: AppColors.forestGreenLight,
                               ),
                               _Badge(
                                 label: m.verificationLabel,
-                                bgColor: (m.isAiVerified
-                                        ? AppColors.skyBlue
-                                        : AppColors.warmYellow)
-                                    .withValues(alpha: 0.14),
+                                bgColor:
+                                    (m.isAiVerified
+                                            ? AppColors.skyBlue
+                                            : AppColors.warmYellow)
+                                        .withValues(alpha: 0.14),
                                 textColor: m.isAiVerified
                                     ? AppColors.skyBlue
                                     : AppColors.warmYellow,
@@ -1868,21 +1936,22 @@ class _MemoryDetailModalState extends ConsumerState<_MemoryDetailModal> {
                           if (m.captionPrompt != null) ...[
                             DecoratedBox(
                               decoration: BoxDecoration(
-                                color: AppColors.skyBlue
-                                    .withValues(alpha: 0.08),
+                                color: AppColors.skyBlue.withValues(
+                                  alpha: 0.08,
+                                ),
                                 borderRadius: BorderRadius.circular(
-                                    AppSpacing.radiusMd),
+                                  AppSpacing.radiusMd,
+                                ),
                                 border: Border.all(
-                                  color: AppColors.skyBlue
-                                      .withValues(alpha: 0.2),
+                                  color: AppColors.skyBlue.withValues(
+                                    alpha: 0.2,
+                                  ),
                                 ),
                               ),
                               child: Padding(
-                                padding:
-                                    const EdgeInsets.all(AppSpacing.md),
+                                padding: const EdgeInsets.all(AppSpacing.md),
                                 child: Row(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     const Text(
                                       '💭',
@@ -1980,11 +2049,7 @@ class _CaptionSection extends StatelessWidget {
             controller: controller,
             maxLines: 4,
             autofocus: true,
-            style: TextStyle(
-              fontFamily: 'Nunito',
-              fontSize: 14,
-              color: strong,
-            ),
+            style: TextStyle(fontFamily: 'Nunito', fontSize: 14, color: strong),
             decoration: InputDecoration(
               hintText: 'Write your reflection…',
               hintStyle: TextStyle(color: muted),

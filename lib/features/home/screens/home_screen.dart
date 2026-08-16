@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_performance/firebase_performance.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -17,6 +19,7 @@ import '../../../models/weather_model.dart';
 import '../../../providers/assignment_providers.dart';
 import '../../../providers/challenge_providers.dart';
 import '../../../providers/companion_providers.dart';
+import '../../../providers/map_providers.dart';
 import '../../../providers/settings_providers.dart';
 import '../../../providers/user_providers.dart';
 import '../../../providers/weather_providers.dart';
@@ -136,16 +139,17 @@ class _AdventureTrailState extends State<_AdventureTrail> {
         title: 'Day ${node.dayNumber} is locked',
         message: daysAway == 1
             ? "This adventure unlocks tomorrow — come back after you've "
-                "finished today's challenge!"
+                  "finished today's challenge!"
             : "This adventure unlocks in $daysAway days. Keep completing "
-                'daily challenges to reach it!',
+                  'daily challenges to reach it!',
       );
     } else if (node is MissedPathNode) {
       _showTrailInfoDialog(
         context,
         emoji: '🌱',
         title: 'Day ${node.dayNumber} was missed',
-        message: 'Every explorer has an off day — it happens. Focus on '
+        message:
+            'Every explorer has an off day — it happens. Focus on '
             "today's challenge and keep your adventure moving forward!",
       );
     }
@@ -184,8 +188,7 @@ class _AdventureTrailState extends State<_AdventureTrail> {
     _maybLogChallengeViewed();
 
     final todayNode = widget.nodes.first;
-    final completedCount =
-        widget.nodes.whereType<CompletedPathNode>().length;
+    final completedCount = widget.nodes.whereType<CompletedPathNode>().length;
 
     return Stack(
       children: [
@@ -193,19 +196,14 @@ class _AdventureTrailState extends State<_AdventureTrail> {
         AnimatedBuilder(
           animation: _scrollCtrl,
           builder: (_, _) {
-            final offset =
-                _scrollCtrl.hasClients ? _scrollCtrl.offset : 0.0;
+            final offset = _scrollCtrl.hasClients ? _scrollCtrl.offset : 0.0;
             return Positioned.fill(
               child: _LandscapeBackground(scrollOffset: offset),
             );
           },
         ),
-        const Positioned.fill(
-          child: IgnorePointer(child: _AmbientLeaves()),
-        ),
-        const Positioned.fill(
-          child: IgnorePointer(child: _PollenSystem()),
-        ),
+        const Positioned.fill(child: IgnorePointer(child: _AmbientLeaves())),
+        const Positioned.fill(child: IgnorePointer(child: _PollenSystem())),
         CustomScrollView(
           controller: _scrollCtrl,
           physics: const BouncingScrollPhysics(),
@@ -237,6 +235,21 @@ class _AdventureTrailState extends State<_AdventureTrail> {
                   ),
                 ),
               ),
+            // Progress (stats pills + XP bar) — sits between the mascot and
+            // today's challenge (Header → Mascot → Progress → Challenge →
+            // Trail), matching the mascot's own top padding since it now
+            // plays the same "next thing after the greeting" role the
+            // mascot does. Always visible (not gated on ActivePathNode),
+            // matching its prior always-visible behavior inside the header.
+            const SliverPadding(
+              padding: EdgeInsets.only(top: AppSpacing.sm),
+              sliver: SliverToBoxAdapter(
+                child: _FadeSlideIn(
+                  delay: Duration(milliseconds: 45),
+                  child: _TrailProgress(),
+                ),
+              ),
+            ),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(
                 AppSpacing.screenHorizontal,
@@ -248,6 +261,20 @@ class _AdventureTrailState extends State<_AdventureTrail> {
                 child: _FadeSlideIn(
                   delay: const Duration(milliseconds: 60),
                   child: TodaysChallengeCard(todayNode: todayNode),
+                ),
+              ),
+            ),
+            const SliverPadding(
+              padding: EdgeInsets.fromLTRB(
+                AppSpacing.screenHorizontal,
+                AppSpacing.md,
+                AppSpacing.screenHorizontal,
+                0,
+              ),
+              sliver: SliverToBoxAdapter(
+                child: _FadeSlideIn(
+                  delay: Duration(milliseconds: 75),
+                  child: _JournalShortcut(),
                 ),
               ),
             ),
@@ -399,7 +426,11 @@ class _LandscapePainter extends CustomPainter {
     // stay live below, unchanged, preserving the exact original z-order.
     canvas.drawPicture(_staticLayersPicture(size));
 
-    _withShift(canvas, scrollOffset * 0.22, () => _paintGrassBlades(canvas, size));
+    _withShift(
+      canvas,
+      scrollOffset * 0.22,
+      () => _paintGrassBlades(canvas, size),
+    );
     _withShift(canvas, scrollOffset * 0.22, () => _paintFlowers(canvas, size));
 
     if (!isDark) _paintClouds(canvas, size);
@@ -418,11 +449,31 @@ class _LandscapePainter extends CustomPainter {
 
     final recorder = ui.PictureRecorder();
     final recordCanvas = Canvas(recorder);
-    _withShift(recordCanvas, scrollOffset * 0.03, () => _paintFarMountains(recordCanvas, size));
-    _withShift(recordCanvas, scrollOffset * 0.07, () => _paintMidMountains(recordCanvas, size));
-    _withShift(recordCanvas, scrollOffset * 0.11, () => _paintMidForest(recordCanvas, size));
-    _withShift(recordCanvas, scrollOffset * 0.16, () => _paintNearHills(recordCanvas, size));
-    _withShift(recordCanvas, scrollOffset * 0.22, () => _paintForeground(recordCanvas, size));
+    _withShift(
+      recordCanvas,
+      scrollOffset * 0.03,
+      () => _paintFarMountains(recordCanvas, size),
+    );
+    _withShift(
+      recordCanvas,
+      scrollOffset * 0.07,
+      () => _paintMidMountains(recordCanvas, size),
+    );
+    _withShift(
+      recordCanvas,
+      scrollOffset * 0.11,
+      () => _paintMidForest(recordCanvas, size),
+    );
+    _withShift(
+      recordCanvas,
+      scrollOffset * 0.16,
+      () => _paintNearHills(recordCanvas, size),
+    );
+    _withShift(
+      recordCanvas,
+      scrollOffset * 0.22,
+      () => _paintForeground(recordCanvas, size),
+    );
     final picture = recorder.endRecording();
 
     cache
@@ -443,30 +494,31 @@ class _LandscapePainter extends CustomPainter {
   void _paintSky(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
     final paint = Paint()
-      ..shader = (isDark
-              ? const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0xFF04091C),
-                    Color(0xFF07102E),
-                    Color(0xFF0C1A42),
-                    Color(0xFF112248),
-                  ],
-                  stops: [0.0, 0.3, 0.65, 1.0],
-                )
-              : const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0xFF5BB5D8),
-                    Color(0xFF84CCEB),
-                    Color(0xFFB0E5D5),
-                    Color(0xFFC8ECD4),
-                  ],
-                  stops: [0.0, 0.32, 0.68, 1.0],
-                ))
-          .createShader(rect);
+      ..shader =
+          (isDark
+                  ? const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0xFF04091C),
+                        Color(0xFF07102E),
+                        Color(0xFF0C1A42),
+                        Color(0xFF112248),
+                      ],
+                      stops: [0.0, 0.3, 0.65, 1.0],
+                    )
+                  : const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0xFF5BB5D8),
+                        Color(0xFF84CCEB),
+                        Color(0xFFB0E5D5),
+                        Color(0xFFC8ECD4),
+                      ],
+                      stops: [0.0, 0.32, 0.68, 1.0],
+                    ))
+              .createShader(rect);
     canvas.drawRect(rect, paint);
 
     if (isDark) _paintMoonAndStars(canvas, size);
@@ -501,12 +553,23 @@ class _LandscapePainter extends CustomPainter {
 
     // Stars — scattered across upper sky
     const starSpecs = [
-      (0.06, 0.035, 1.4), (0.15, 0.055, 1.0), (0.34, 0.02,  1.6),
-      (0.44, 0.06,  1.1), (0.58, 0.03,  1.3), (0.68, 0.075, 0.9),
-      (0.78, 0.025, 1.5), (0.88, 0.055, 1.2), (0.95, 0.04,  1.0),
-      (0.10, 0.14,  0.8), (0.28, 0.12,  1.1), (0.50, 0.16,  0.9),
-      (0.72, 0.13,  1.3), (0.90, 0.17,  1.0), (0.38, 0.22,  0.8),
-      (0.62, 0.20,  1.2), (0.82, 0.24,  0.7),
+      (0.06, 0.035, 1.4),
+      (0.15, 0.055, 1.0),
+      (0.34, 0.02, 1.6),
+      (0.44, 0.06, 1.1),
+      (0.58, 0.03, 1.3),
+      (0.68, 0.075, 0.9),
+      (0.78, 0.025, 1.5),
+      (0.88, 0.055, 1.2),
+      (0.95, 0.04, 1.0),
+      (0.10, 0.14, 0.8),
+      (0.28, 0.12, 1.1),
+      (0.50, 0.16, 0.9),
+      (0.72, 0.13, 1.3),
+      (0.90, 0.17, 1.0),
+      (0.38, 0.22, 0.8),
+      (0.62, 0.20, 1.2),
+      (0.82, 0.24, 0.7),
     ];
 
     final twinkle = math.sin(ambientProgress * 2 * math.pi * 3.0);
@@ -532,15 +595,18 @@ class _LandscapePainter extends CustomPainter {
     const rayCount = 7;
     final rayPaint = Paint()
       ..style = PaintingStyle.fill
-      ..shader = RadialGradient(
-        colors: [
-          Colors.white.withValues(alpha: 0.11),
-          Colors.white.withValues(alpha: 0.0),
-        ],
-      ).createShader(Rect.fromCircle(
-        center: Offset(sunX, sunY),
-        radius: size.width * 0.9,
-      ));
+      ..shader =
+          RadialGradient(
+            colors: [
+              Colors.white.withValues(alpha: 0.11),
+              Colors.white.withValues(alpha: 0.0),
+            ],
+          ).createShader(
+            Rect.fromCircle(
+              center: Offset(sunX, sunY),
+              radius: size.width * 0.9,
+            ),
+          );
 
     for (var i = 0; i < rayCount; i++) {
       final baseAngle = math.pi * 0.55 + (i / rayCount) * math.pi * 0.90;
@@ -575,7 +641,8 @@ class _LandscapePainter extends CustomPainter {
   void _paintFarMountains(Canvas canvas, Size size) {
     // Distant hazy range — blue-grey
     _drawSilhouette(
-      canvas, size,
+      canvas,
+      size,
       baselineFrac: 0.40,
       ampFrac: 0.10,
       freq1: 1.8,
@@ -589,7 +656,8 @@ class _LandscapePainter extends CustomPainter {
   void _paintMidMountains(Canvas canvas, Size size) {
     // Second mountain layer — slightly darker, more defined peaks
     _drawSilhouette(
-      canvas, size,
+      canvas,
+      size,
       baselineFrac: 0.50,
       ampFrac: 0.115,
       freq1: 2.6,
@@ -611,10 +679,11 @@ class _LandscapePainter extends CustomPainter {
     for (var i = 0; i <= steps; i++) {
       final x = size.width * i / steps;
       final t = x / size.width;
-      final y = baseline
-          - math.sin(t * math.pi * 8.0 + 0.3).abs() * amp
-          - math.sin(t * math.pi * 4.0 + 1.1).abs() * amp * 0.45
-          - math.sin(t * math.pi * 14.0 + 2.2).abs() * amp * 0.20;
+      final y =
+          baseline -
+          math.sin(t * math.pi * 8.0 + 0.3).abs() * amp -
+          math.sin(t * math.pi * 4.0 + 1.1).abs() * amp * 0.45 -
+          math.sin(t * math.pi * 14.0 + 2.2).abs() * amp * 0.20;
       path.lineTo(x, y);
     }
     path.lineTo(size.width, size.height);
@@ -631,10 +700,11 @@ class _LandscapePainter extends CustomPainter {
       for (var i = 0; i <= steps; i++) {
         final x = size.width * i / steps;
         final t = x / size.width;
-        final y = baseline
-            - math.sin(t * math.pi * 8.0 + 0.3).abs() * amp
-            - math.sin(t * math.pi * 4.0 + 1.1).abs() * amp * 0.45
-            - math.sin(t * math.pi * 14.0 + 2.2).abs() * amp * 0.20;
+        final y =
+            baseline -
+            math.sin(t * math.pi * 8.0 + 0.3).abs() * amp -
+            math.sin(t * math.pi * 4.0 + 1.1).abs() * amp * 0.45 -
+            math.sin(t * math.pi * 14.0 + 2.2).abs() * amp * 0.20;
         edgePath.lineTo(x, y);
       }
       canvas.drawPath(edgePath, edgePaint);
@@ -644,7 +714,8 @@ class _LandscapePainter extends CustomPainter {
   void _paintNearHills(Canvas canvas, Size size) {
     // Rolling foreground hills
     _drawSilhouette(
-      canvas, size,
+      canvas,
+      size,
       baselineFrac: 0.725,
       ampFrac: 0.042,
       freq1: 3.8,
@@ -656,18 +727,24 @@ class _LandscapePainter extends CustomPainter {
 
     // Rock/stone accents along hills
     if (!isDark) {
-      final stonePaint = Paint()..color = const Color(0xFF2D6A4A).withValues(alpha: 0.55);
+      final stonePaint = Paint()
+        ..color = const Color(0xFF2D6A4A).withValues(alpha: 0.55);
       const stoneCount = 6;
       for (var i = 0; i < stoneCount; i++) {
         final xFrac = 0.05 + i * 0.16 + math.sin(i * 2.1) * 0.04;
         final x = size.width * xFrac;
-        final hillY = size.height * 0.725
-            - math.sin(xFrac * math.pi * 3.8 + 1.2) * size.height * 0.042
-            - math.sin(xFrac * math.pi * 1.9 + 0.2) * size.height * 0.042 * 0.45;
+        final hillY =
+            size.height * 0.725 -
+            math.sin(xFrac * math.pi * 3.8 + 1.2) * size.height * 0.042 -
+            math.sin(xFrac * math.pi * 1.9 + 0.2) * size.height * 0.042 * 0.45;
         final rw = 6.0 + math.sin(i * 1.7) * 3.0;
         final rh = 4.0 + math.sin(i * 2.3) * 2.0;
         canvas.drawOval(
-          Rect.fromCenter(center: Offset(x, hillY + 2), width: rw * 2, height: rh),
+          Rect.fromCenter(
+            center: Offset(x, hillY + 2),
+            width: rw * 2,
+            height: rh,
+          ),
           stonePaint,
         );
       }
@@ -677,7 +754,8 @@ class _LandscapePainter extends CustomPainter {
   void _paintForeground(Canvas canvas, Size size) {
     // Main grass band
     _drawSilhouette(
-      canvas, size,
+      canvas,
+      size,
       baselineFrac: 0.848,
       ampFrac: 0.016,
       freq1: 5.5,
@@ -689,9 +767,8 @@ class _LandscapePainter extends CustomPainter {
     // Rich dark strip at bottom
     canvas.drawRect(
       Rect.fromLTWH(0, size.height * 0.925, size.width, size.height * 0.075),
-      Paint()..color = isDark
-          ? const Color(0xFF0D201A)
-          : const Color(0xFF2A6347),
+      Paint()
+        ..color = isDark ? const Color(0xFF0D201A) : const Color(0xFF2A6347),
     );
   }
 
@@ -709,18 +786,16 @@ class _LandscapePainter extends CustomPainter {
       final xFrac = i / count + math.sin(i * 1.37) * 0.012;
       final x = size.width * xFrac;
       // Base on foreground top edge
-      final baseY = size.height * 0.848
-          - math.sin(xFrac * math.pi * 5.5 + 0.5) * size.height * 0.016
-          - math.sin(xFrac * math.pi * 2.8 + 1.7) * size.height * 0.016 * 0.45;
+      final baseY =
+          size.height * 0.848 -
+          math.sin(xFrac * math.pi * 5.5 + 0.5) * size.height * 0.016 -
+          math.sin(xFrac * math.pi * 2.8 + 1.7) * size.height * 0.016 * 0.45;
       final h = 10.0 + math.sin(i * 2.11) * 6.0;
       // Gentle ambient sway
-      final sway = math.sin(ambientProgress * 2 * math.pi * 2.0 + i * 0.42) * 2.5;
+      final sway =
+          math.sin(ambientProgress * 2 * math.pi * 2.0 + i * 0.42) * 2.5;
       paint.color = (i % 3 == 0) ? darkBlade : bladeColor;
-      canvas.drawLine(
-        Offset(x, baseY),
-        Offset(x + sway, baseY - h),
-        paint,
-      );
+      canvas.drawLine(Offset(x, baseY), Offset(x + sway, baseY - h), paint);
     }
   }
 
@@ -752,8 +827,11 @@ class _LandscapePainter extends CustomPainter {
         );
       }
       // Center
-      canvas.drawCircle(Offset(x, y), 2.2,
-          Paint()..color = const Color(0xFFFFEA6A));
+      canvas.drawCircle(
+        Offset(x, y),
+        2.2,
+        Paint()..color = const Color(0xFFFFEA6A),
+      );
       // Stem
       canvas.drawLine(
         Offset(x, y + 2.5),
@@ -804,19 +882,22 @@ class _LandscapePainter extends CustomPainter {
     canvas.drawRect(
       Rect.fromLTWH(0, size.height * 0.38, size.width, size.height * 0.15),
       Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            const Color(0xFFB8DDE8).withValues(alpha: 0.18),
-            Colors.transparent,
-          ],
-        ).createShader(Rect.fromLTWH(
-          0,
-          size.height * 0.38,
-          size.width,
-          size.height * 0.15,
-        )),
+        ..shader =
+            LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                const Color(0xFFB8DDE8).withValues(alpha: 0.18),
+                Colors.transparent,
+              ],
+            ).createShader(
+              Rect.fromLTWH(
+                0,
+                size.height * 0.38,
+                size.width,
+                size.height * 0.15,
+              ),
+            ),
     );
   }
 
@@ -840,9 +921,10 @@ class _LandscapePainter extends CustomPainter {
     for (var i = 0; i <= steps; i++) {
       final x = size.width * i / steps;
       final t = x / size.width;
-      final y = baseline
-          - math.sin(t * math.pi * freq1 + phase1) * amp
-          - math.sin(t * math.pi * freq2 + phase2) * amp * 0.45;
+      final y =
+          baseline -
+          math.sin(t * math.pi * freq1 + phase1) * amp -
+          math.sin(t * math.pi * freq2 + phase2) * amp * 0.45;
       path.lineTo(x, y);
     }
     path.lineTo(size.width, size.height);
@@ -995,8 +1077,22 @@ class _LeafPainter extends CustomPainter {
       // Teardrop leaf: two cubic bezier arcs meeting at tip and base
       final path = Path()
         ..moveTo(0, -half)
-        ..cubicTo(half * 0.72, -half * 0.35, half * 0.72, half * 0.42, 0, half * 0.85)
-        ..cubicTo(-half * 0.72, half * 0.42, -half * 0.72, -half * 0.35, 0, -half);
+        ..cubicTo(
+          half * 0.72,
+          -half * 0.35,
+          half * 0.72,
+          half * 0.42,
+          0,
+          half * 0.85,
+        )
+        ..cubicTo(
+          -half * 0.72,
+          half * 0.42,
+          -half * 0.72,
+          -half * 0.35,
+          0,
+          -half,
+        );
 
       canvas.drawPath(path, paint);
       canvas.restore();
@@ -1065,7 +1161,7 @@ const _pollenSpecs = [
   (0.28, 0.62, 18.0, 0.55, 2.0),
   (0.42, 0.82, 12.0, 0.70, 1.6),
   (0.56, 0.22, 16.0, 0.90, 1.5),
-  (0.70, 0.52, 8.0,  0.65, 1.9),
+  (0.70, 0.52, 8.0, 0.65, 1.9),
   (0.84, 0.90, 14.0, 0.75, 1.7),
 ];
 
@@ -1188,7 +1284,34 @@ class _TrailHeader extends ConsumerWidget {
               const _HeaderWeather(),
             ],
           ),
-          const SizedBox(height: AppSpacing.sm),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Trail progress — stats pills + XP bar ─────────────────────────────────────
+//
+// Split out of _TrailHeader so the mascot can render between the greeting
+// header and this progress block (Header → Mascot → Progress → Challenge →
+// Trail) rather than before it. Same data dependency, same visuals, same
+// always-visible behavior as before — purely a position move, not a redesign.
+
+class _TrailProgress extends ConsumerWidget {
+  const _TrailProgress();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final userAsync = ref.watch(currentUserProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.screenHorizontal,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           // Stats pills get their own row rather than sharing the header row
           // with the avatar/greeting/weather — on narrow phones, four
           // elements competing for one row left too little width for the
@@ -1210,6 +1333,96 @@ class _TrailHeader extends ConsumerWidget {
             orElse: () => const SizedBox.shrink(),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Journal shortcut ──────────────────────────────────────────────────────────
+
+/// A persistent entry point into the adventure journal, which otherwise only
+/// lives behind a secondary pill-tab inside the Map screen — one of the
+/// product's five core pillars ("a personal exploration journal") deserves
+/// more discoverability than that. Tapping this navigates to the Map screen
+/// pre-opened on its Journal tab via [pendingMapTabProvider], rather than
+/// promoting Journal to its own bottom-nav destination (a much larger,
+/// harder-to-reverse IA change this pass deliberately avoided).
+class _JournalShortcut extends ConsumerWidget {
+  const _JournalShortcut();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(currentUserProvider).valueOrNull;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final count = user?.totalCompletions ?? 0;
+    final surface = isDark ? AppColors.surfaceDark : AppColors.surfaceLight;
+    final border = isDark ? AppColors.outlineDark : AppColors.outlineLight;
+    final textStrong = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
+    final textMuted = isDark
+        ? AppColors.onSurfaceVariantDark
+        : AppColors.onSurfaceVariantLight;
+
+    return Material(
+      color: surface,
+      borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        onTap: () {
+          ref.read(pendingMapTabProvider.notifier).state = 1;
+          context.go(RouteNames.map);
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+            border: Border.all(color: border, width: 1.5),
+          ),
+          child: Row(
+            children: [
+              const Text('📖', style: TextStyle(fontSize: AppSpacing.emojiSm)),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Your Adventure Journal',
+                      style: TextStyle(
+                        fontFamily: 'Nunito',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: textStrong,
+                      ),
+                    ),
+                    Text(
+                      count > 0
+                          ? '$count ${count == 1 ? 'memory' : 'memories'} saved — relive your adventures'
+                          : 'Every adventure you complete is saved here',
+                      style: TextStyle(
+                        fontFamily: 'Nunito',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: textMuted,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: textMuted,
+                size: AppSpacing.iconMd,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1258,33 +1471,38 @@ class _CompactStatsPills extends ConsumerWidget {
                 constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                 child: Center(
                   child: DecoratedBox(
-          decoration: BoxDecoration(
-              gradient: AppColors.gradientStreak,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.local_fire_department_rounded,
-                    size: 14,
-                    color: Colors.white,
-                  ),
-                  const SizedBox(width: 3),
-                  Text(
-                    '${user.streak}',
-                    style: const TextStyle(
-                      fontFamily: 'Nunito',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
+                    decoration: BoxDecoration(
+                      gradient: AppColors.gradientStreak,
+                      borderRadius: BorderRadius.circular(
+                        AppSpacing.radiusFull,
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.local_fire_department_rounded,
+                            size: 14,
+                            color: Colors.white,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            '${user.streak}',
+                            style: const TextStyle(
+                              fontFamily: 'Nunito',
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -1294,9 +1512,7 @@ class _CompactStatsPills extends ConsumerWidget {
       ],
     );
   }
-
 }
-
 
 class _TrailXpBar extends ConsumerWidget {
   const _TrailXpBar({required this.user, required this.isDark});
@@ -1329,8 +1545,9 @@ class _TrailXpBar extends ConsumerWidget {
         const SizedBox(height: 4),
         TweenAnimationBuilder<double>(
           tween: Tween(begin: 0, end: target),
-          duration:
-              reducedMotion ? Duration.zero : const Duration(milliseconds: 1200),
+          duration: reducedMotion
+              ? Duration.zero
+              : const Duration(milliseconds: 1200),
           curve: Curves.easeOutCubic,
           builder: (_, progress, _) => LayoutBuilder(
             builder: (_, constraints) {
@@ -1340,16 +1557,18 @@ class _TrailXpBar extends ConsumerWidget {
                   DecoratedBox(
                     decoration: BoxDecoration(
                       color: trackColor,
-                      borderRadius:
-                          BorderRadius.circular(AppSpacing.radiusFull),
+                      borderRadius: BorderRadius.circular(
+                        AppSpacing.radiusFull,
+                      ),
                     ),
                     child: SizedBox(height: 7, width: constraints.maxWidth),
                   ),
                   DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: AppColors.gradientForest,
-                      borderRadius:
-                          BorderRadius.circular(AppSpacing.radiusFull),
+                      borderRadius: BorderRadius.circular(
+                        AppSpacing.radiusFull,
+                      ),
                     ),
                     child: SizedBox(height: 7, width: fillWidth),
                   ),
@@ -1429,7 +1648,7 @@ class _HeaderWeather extends ConsumerWidget {
       button: true,
       label: weather != null
           ? 'Weather: ${weather.condition}, '
-              '${weather.tempFahrenheitRounded} degrees. Tap for details.'
+                '${weather.tempFahrenheitRounded} degrees. Tap for details.'
           : 'Weather unavailable',
       excludeSemantics: true,
       child: PressableScale(
@@ -1442,46 +1661,48 @@ class _HeaderWeather extends ConsumerWidget {
             constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
             child: Center(
               child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.09)
-                  : Colors.white.withValues(alpha: 0.55),
-              borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-              border: Border.all(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.10)
-                    : AppColors.grassGreen.withValues(alpha: 0.28),
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.sm,
-                vertical: AppSpacing.sm,
-              ),
-              child: weather != null
-                  ? Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(weather.emoji,
-                            style: const TextStyle(fontSize: 15)),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${weather.tempFahrenheitRounded}°',
-                          style: TextStyle(
-                            fontFamily: 'Nunito',
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: textColor,
-                          ),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.09)
+                      : Colors.white.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                  border: Border.all(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.10)
+                        : AppColors.grassGreen.withValues(alpha: 0.28),
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.sm,
+                    vertical: AppSpacing.sm,
+                  ),
+                  child: weather != null
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              weather.emoji,
+                              style: const TextStyle(fontSize: 15),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${weather.tempFahrenheitRounded}°',
+                              style: TextStyle(
+                                fontFamily: 'Nunito',
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: textColor,
+                              ),
+                            ),
+                          ],
+                        )
+                      : Icon(
+                          Icons.cloud_outlined,
+                          size: AppSpacing.iconSm,
+                          color: textColor.withValues(alpha: 0.55),
                         ),
-                      ],
-                    )
-                  : Icon(
-                      Icons.cloud_outlined,
-                      size: AppSpacing.iconSm,
-                      color: textColor.withValues(alpha: 0.55),
-                    ),
-            ),
+                ),
               ),
             ),
           ),
@@ -1496,19 +1717,19 @@ class _HeaderWeather extends ConsumerWidget {
       builder: (ctx) => AlertDialog(
         title: Row(
           children: [
-            Text(weather?.emoji ?? '🌥️',
-                style: const TextStyle(fontSize: AppSpacing.emojiSm)),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: Text(weather?.condition ?? 'Weather unavailable'),
+            Text(
+              weather?.emoji ?? '🌥️',
+              style: const TextStyle(fontSize: AppSpacing.emojiSm),
             ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(child: Text(weather?.condition ?? 'Weather unavailable')),
           ],
         ),
         content: Text(
           weather != null
               ? '${weather.tempFahrenheitRounded}°F · ${weather.outdoorAdvice}'
               : "We couldn't get your local weather. Check location "
-                  'permission in Settings to enable it.',
+                    'permission in Settings to enable it.',
         ),
         actions: [
           TextButton(
@@ -1568,9 +1789,7 @@ class _TrailJunction extends StatelessWidget {
                 ),
                 const SizedBox(width: AppSpacing.xs),
                 Text(
-                  completedCount == 0
-                      ? 'YOUR TRAIL'
-                      : '$completedCount DONE',
+                  completedCount == 0 ? 'YOUR TRAIL' : '$completedCount DONE',
                   style: TextStyle(
                     fontFamily: 'Nunito',
                     fontSize: 11,
@@ -1592,14 +1811,60 @@ class _TrailJunction extends StatelessWidget {
 //
 // Only shown while today's challenge is still active (not yet completed),
 // so it reads as "come on, let's go" rather than a stale leftover greeting.
-// Message is chosen deterministically per day (not random) so it doesn't
-// flicker between rebuilds, and only one companion is ever on screen.
+// The starting message is chosen deterministically per day (not random) so
+// it doesn't flicker between rebuilds; tapping the companion picks a fresh
+// one from the same pool (never immediately repeating), so it feels alive
+// without ever contacting the network or writing to Firestore.
 
-class _TrailCompanion extends ConsumerWidget {
+class _TrailCompanion extends ConsumerStatefulWidget {
   const _TrailCompanion();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_TrailCompanion> createState() => _TrailCompanionState();
+}
+
+class _TrailCompanionState extends ConsumerState<_TrailCompanion> {
+  // Debounces rapid repeated taps so a fast double-tap can't stack up
+  // overlapping mood-reset timers or fire haptics twice for one gesture.
+  static const _tapCooldown = Duration(milliseconds: 400);
+  // How long the "cheer" mood burst plays before settling back to the
+  // resting "encourage" pose — matches CompanionMood.cheer's own loop
+  // duration (see companion_widget.dart) so the reset lands on a beat
+  // rather than cutting the animation off mid-cycle.
+  static const _cheerDuration = Duration(milliseconds: 1000);
+
+  String? _tappedMessage;
+  CompanionMood _mood = CompanionMood.encourage;
+  DateTime _lastTap = DateTime.fromMillisecondsSinceEpoch(0);
+  Timer? _moodResetTimer;
+
+  @override
+  void dispose() {
+    _moodResetTimer?.cancel();
+    super.dispose();
+  }
+
+  void _handleTap(List<String> pool) {
+    final now = DateTime.now();
+    if (now.difference(_lastTap) < _tapCooldown) return;
+    _lastTap = now;
+
+    unawaited(HapticFeedback.lightImpact());
+    _moodResetTimer?.cancel();
+    setState(() {
+      _tappedMessage = nextCompanionMessage(
+        pool: pool,
+        previous: _tappedMessage ?? '',
+      );
+      _mood = CompanionMood.cheer;
+    });
+    _moodResetTimer = Timer(_cheerDuration, () {
+      if (mounted) setState(() => _mood = CompanionMood.encourage);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final companionType = ref.watch(activeCompanionProvider);
     final user = ref.watch(currentUserProvider).valueOrNull;
     if (user == null) return const SizedBox.shrink();
@@ -1607,21 +1872,30 @@ class _TrailCompanion extends ConsumerWidget {
     final dayOfYear = DateTime.now()
         .difference(DateTime(DateTime.now().year))
         .inDays;
-    final messages = user.streak >= 3
+    final pool = user.streak >= 3
         ? companionType.streakMessages
         : companionType.encouragementMessages;
-    final message = messages[dayOfYear % messages.length];
+    final message = _tappedMessage ?? pool[dayOfYear % pool.length];
 
     return Align(
-      alignment: Alignment.centerLeft,
+      alignment: Alignment.center,
       child: Semantics(
-        label: '${companionType.displayName} says: $message',
+        button: true,
+        label:
+            '${companionType.displayName} says: $message. '
+            'Tap for another word of encouragement.',
         excludeSemantics: true,
-        child: CompanionView(
-          type: companionType,
-          mood: CompanionMood.encourage,
-          size: AppSpacing.avatarLg,
-          message: message,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _handleTap(pool),
+          child: PressableScale(
+            child: CompanionView(
+              type: companionType,
+              mood: _mood,
+              size: AppSpacing.avatarLg,
+              message: message,
+            ),
+          ),
         ),
       ),
     );
@@ -1670,9 +1944,9 @@ class _FadeSlideInState extends State<_FadeSlideIn>
 
   @override
   Widget build(BuildContext context) => FadeTransition(
-        opacity: _fade,
-        child: SlideTransition(position: _slide, child: widget.child),
-      );
+    opacity: _fade,
+    child: SlideTransition(position: _slide, child: widget.child),
+  );
 }
 
 // ── Loading ───────────────────────────────────────────────────────────────────

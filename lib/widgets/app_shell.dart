@@ -10,9 +10,11 @@ import '../core/constants/route_names.dart';
 import '../providers/connectivity_providers.dart';
 import '../providers/map_providers.dart';
 import '../providers/notification_providers.dart';
+import '../services/notification_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_spacing.dart';
+import 'permission_primer.dart';
 
 /// The root scaffold that wraps all main-tab screens.
 ///
@@ -30,6 +32,12 @@ class AppShell extends ConsumerStatefulWidget {
 class _AppShellState extends ConsumerState<AppShell> {
   StreamSubscription<RemoteMessage>? _tapSub;
 
+  /// Gates the first read of [currentLocationProvider] (which itself
+  /// triggers the native location-permission prompt) until after
+  /// [PermissionPrimerKind.location]'s explanation has had a chance to show
+  /// — see [_primePermissions].
+  bool _readyForLocation = false;
+
   @override
   void initState() {
     super.initState();
@@ -40,6 +48,28 @@ class _AppShellState extends ConsumerState<AppShell> {
         .read(notificationServiceProvider)
         .onTap
         .listen(_navigateFromMessage);
+    unawaited(_primePermissions());
+  }
+
+  /// Contextual priming for the two permissions this shell itself kicks off
+  /// (camera is primed separately, right where it's requested in
+  /// CameraScreen) — explain why before either native prompt fires, once
+  /// per permission ever (see maybeShowPermissionPrimer). Notification
+  /// permission used to be requested from a bare `main()` post-frame
+  /// callback with no BuildContext (and before the user had even signed
+  /// in); doing it here instead means it fires once, contextually, inside
+  /// the real app.
+  Future<void> _primePermissions() async {
+    await maybeShowPermissionPrimer(
+      context,
+      PermissionPrimerKind.notifications,
+    );
+    if (!mounted) return;
+    unawaited(NotificationService().initialize());
+
+    await maybeShowPermissionPrimer(context, PermissionPrimerKind.location);
+    if (!mounted) return;
+    setState(() => _readyForLocation = true);
   }
 
   @override
@@ -49,8 +79,9 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 
   Future<void> _handleInitialMessage() async {
-    final message =
-        await ref.read(notificationServiceProvider).getInitialMessage();
+    final message = await ref
+        .read(notificationServiceProvider)
+        .getInitialMessage();
     if (message != null && mounted) _navigateFromMessage(message);
   }
 
@@ -72,8 +103,11 @@ class _AppShellState extends ConsumerState<AppShell> {
   @override
   Widget build(BuildContext context) {
     // Kick off GPS resolution at app startup so location is ready by the time
-    // the user navigates to the Map tab.
-    ref.watch(currentLocationProvider);
+    // the user navigates to the Map tab — deferred until the location
+    // permission primer has had its one-time chance to show first (see
+    // _primePermissions); on every launch after the first, that primer is a
+    // no-op and this fires effectively immediately.
+    if (_readyForLocation) ref.watch(currentLocationProvider);
 
     // Show an in-app banner for foreground messages (FCM suppresses the system
     // notification while the app is in the foreground on Android).
@@ -87,7 +121,10 @@ class _AppShellState extends ConsumerState<AppShell> {
           SnackBar(
             content: Row(
               children: [
-                const Text('🌿', style: TextStyle(fontSize: AppSpacing.emojiSm)),
+                const Text(
+                  '🌿',
+                  style: TextStyle(fontSize: AppSpacing.emojiSm),
+                ),
                 const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Column(
@@ -179,8 +216,11 @@ class _OfflineBanner extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.cloud_off_rounded,
-                size: AppSpacing.iconTiny, color: Colors.white),
+            Icon(
+              Icons.cloud_off_rounded,
+              size: AppSpacing.iconTiny,
+              color: Colors.white,
+            ),
             SizedBox(width: AppSpacing.sm),
             Text(
               "You're offline — some content may be out of date",

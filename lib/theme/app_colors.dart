@@ -16,11 +16,13 @@ abstract final class AppColors {
   // ── Accents ───────────────────────────────────────────────────────────────
   static const Color skyBlue = Color(0xFF4EA8DE);
   static const Color skyBlueLight = Color(0xFF90C2E7);
+
   /// Golden Yellow — the app's secondary brand accent (CTAs, highlights,
   /// streak/gold gradients). Distinct from [xpGold] and [warning], which
   /// used to be aliased to this same value.
   static const Color warmYellow = Color(0xFFF9A825);
   static const Color achievementGold = Color(0xFFFFB703);
+
   /// Bright Gold used specifically for XP counters/badges — visually
   /// distinct from [achievementGold] (achievement rarity/stars) even
   /// though both sit in the same warm-gold family.
@@ -53,6 +55,7 @@ abstract final class AppColors {
   static const Color onSurfaceVariantLight = Color(0xFF4A6358);
   static const Color outlineLight = Color(0xFFB2CFBF);
   static const Color dividerLight = Color(0xFFDDEDE4);
+
   /// Soft sky-blue accent for light-mode illustrative backgrounds.
   static const Color skyAccentLight = Color(0xFFDCEFFF);
 
@@ -89,10 +92,20 @@ abstract final class AppColors {
   static const Color rarityMythic = Color(0xFFFC4E6F);
 
   // ── Challenge category colors ─────────────────────────────────────────────
+  // One entry per ChallengeCategory case (see ChallengeCategoryX.color in
+  // challenge_model.dart) — reuses existing brand/rarity tokens for the same
+  // reason the rarity tiers above do, rather than introduce near-duplicate
+  // hex values. Kept in the same hue families as map_screen.dart's
+  // _hueForCategory so category color reads consistently between the
+  // Daily Challenge card and the map's category-colored markers.
   static const Color categoryNature = grassGreen;
-  static const Color categoryExploration = skyBlue;
-  static const Color categoryObservation = achievementGold;
-  static const Color categoryActivity = streakOrange;
+  static const Color categoryObservation = skyBlue;
+  static const Color categoryExercise = streakOrange;
+  static const Color categoryExploration = warmYellow;
+  static const Color categoryPhotography = Color(0xFF00B4D8);
+  static const Color categoryMindfulness = rarityEpic;
+  static const Color categoryEnvironmental = forestGreenDark;
+  static const Color categoryMicroAdventure = rarityMythic;
 
   // ── Challenge path node states ────────────────────────────────────────────
   static const Color nodeCompleted = grassGreen;

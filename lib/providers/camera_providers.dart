@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:developer' as dev;
-import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -24,8 +24,64 @@ import '../services/weather_service.dart';
 import 'auth_providers.dart';
 import 'challenge_providers.dart';
 import 'connectivity_providers.dart';
+import 'entitlement_providers.dart';
 import 'memory_providers.dart';
 import 'user_providers.dart';
+
+/// The `verificationResult` map recorded on a completion that skipped a
+/// real Gemini call — either because AI verification is a paid feature and
+/// this user is free-tier ([aiLocked]), or because no Gemini key is
+/// configured at all (dev/staging fallback, unrelated to entitlement).
+/// Extracted as a pure function — the one piece of business logic in this
+/// honor-system path that could silently regress — so it's unit-testable
+/// without needing to mock [CameraNotifier]'s Firebase-backed dependencies
+/// (matches this codebase's established pattern of extracting pure
+/// decision logic, e.g. `resolveStreakOutcome`, `mapLocationAccessStatus`).
+@visibleForTesting
+Map<String, dynamic> honorSystemVerificationResult({required bool aiLocked}) {
+  return aiLocked
+      ? const {
+          'reason':
+              'Honor-system approved — AI verification is a '
+              'premium feature.',
+          'aiLocked': true,
+        }
+      : const {'reason': 'Auto-approved — AI verification not configured.'};
+}
+
+// ── Diagnostics ──────────────────────────────────────────────────────────────
+
+/// Appends the underlying cause to an [AppException]'s message when it's an
+/// [UnexpectedException] — i.e. specifically the generic "An unexpected
+/// error occurred." case, which otherwise hides what actually went wrong.
+/// Every other [AppException] subtype already carries a specific, meaningful
+/// message, so this is a no-op for those.
+///
+/// Deliberately does NOT assume the cause is a [FirebaseException] — on
+/// Flutter Web, `cloud_firestore`'s JS interop layer frequently throws
+/// errors that never get converted to a typed Dart [FirebaseException] at
+/// all (this was confirmed in the field: a first version of this helper
+/// that only handled [FirebaseException] produced no visible change,
+/// meaning the real cause is some other type). Falls back to the cause's
+/// runtime type and a truncated `toString()` so *something* diagnosable
+/// always surfaces, whatever shape the cause turns out to be.
+///
+/// TEMPORARY diagnostic aid (KNOWN_BUGS.md A1 follow-up) — safe to remove
+/// once the completions-write failure reported there is confirmed resolved
+/// in the field, since at that point this is just extra noise in the UI.
+@visibleForTesting
+String diagnosticFailureMessage(AppException e) {
+  if (e is! UnexpectedException) return e.message;
+  final cause = e.cause;
+  if (cause is FirebaseException) {
+    return '${e.message} [${cause.code}]';
+  }
+  var causeText = cause.toString();
+  if (causeText.length > 140) {
+    causeText = '${causeText.substring(0, 140)}…';
+  }
+  return '${e.message} [${cause.runtimeType}: $causeText]';
+}
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -64,9 +120,18 @@ final class CameraVerifying extends CameraFlowState {
   const CameraVerifying({
     required this.bytes,
     this.stage = VerifyingStage.analyzing,
+    this.usingAi = true,
   });
   final Uint8List bytes;
   final VerifyingStage stage;
+
+  /// Whether this verification pass is actually calling Gemini. False for
+  /// both honor-system reasons (`aiLocked` paid-tier gate, or no API key
+  /// configured) — the UI must never claim AI is reviewing the photo when
+  /// no AI call is happening. Defaults `true` to match the real-Gemini
+  /// branch's existing behavior; the honor-system branch in [verify]
+  /// explicitly passes `false`.
+  final bool usingAi;
 }
 
 /// Verification passed — waiting for the user to write a caption.
@@ -79,6 +144,7 @@ final class CameraCaptionStep extends CameraFlowState {
     required this.pendingVerificationResult,
     required this.pendingPhotoUrl,
     this.pendingLocation,
+    this.initialCaption,
   });
 
   final Uint8List bytes;
@@ -88,6 +154,12 @@ final class CameraCaptionStep extends CameraFlowState {
   final Map<String, dynamic> pendingVerificationResult;
   final String pendingPhotoUrl;
   final GeoPoint? pendingLocation;
+
+  /// Text the user had already typed before a submission failure sent them
+  /// back through [CameraNotifier.retryVerification] — carried here so the
+  /// caption field can be pre-filled instead of forcing a full retype of
+  /// their reflection. Null on the normal (first-attempt) path.
+  final String? initialCaption;
 }
 
 final class CameraSuccess extends CameraFlowState {
@@ -144,11 +216,19 @@ final class CameraFailure extends CameraFlowState {
     this.bytes,
     this.confidence,
     this.explanation,
+    this.caption,
   });
   final String message;
   final Uint8List? bytes;
   final double? confidence;
   final String? explanation;
+
+  /// The reflection the user had already typed when this failure happened
+  /// (submission-time failures only — verification-time failures never
+  /// reach the caption step, so this is null there). Carried through so a
+  /// retry can restore it instead of forcing a retype; see
+  /// [CameraCaptionStep.initialCaption].
+  final String? caption;
 }
 
 // ── Notifier ──────────────────────────────────────────────────────────────────
@@ -164,14 +244,14 @@ class CameraNotifier extends StateNotifier<CameraFlowState> {
     required UserRepository userRepository,
     required ChallengeRepository challengeRepository,
     required MemoryRepository memoryRepository,
-  })  : _gemini = geminiService,
-        _storage = storageService,
-        _completions = completionRepository,
-        _users = userRepository,
-        _challenges = challengeRepository,
-        _memories = memoryRepository,
-        _picker = ImagePicker(),
-        super(const CameraIdle());
+  }) : _gemini = geminiService,
+       _storage = storageService,
+       _completions = completionRepository,
+       _users = userRepository,
+       _challenges = challengeRepository,
+       _memories = memoryRepository,
+       _picker = ImagePicker(),
+       super(const CameraIdle());
 
   final ChallengeModel? _challenge;
   final String? _userId;
@@ -189,11 +269,23 @@ class CameraNotifier extends StateNotifier<CameraFlowState> {
   /// beats letting the user sit on a spinner until a network timeout fires.
   bool get _isOffline => _ref.read(isOnlineProvider).valueOrNull == false;
 
+  /// AI photo verification is a paid feature (KNOWN_BUGS.md / entitlement
+  /// architecture) — free-tier users (everyone, until a payment provider or
+  /// a manual `premium`/`admin_test` grant exists) never reach Gemini at
+  /// all, honor-system-approved instead. See [verify]'s first branch.
+  bool get _canUseAi => _ref.read(canUseAiVerificationProvider);
+
   /// Bumped by [cancelVerification]; captured at the start of [verify]/
   /// [override] so in-flight awaits can tell they were cancelled and skip
   /// their pending `state = ...` write instead of ambushing the user back
   /// into the flow after they've already backed out to the idle screen.
   int _generation = 0;
+
+  /// Caption text preserved from a [CameraFailure] that happened during
+  /// [submitCaption] (i.e. after the user had already typed a reflection),
+  /// set by [retryVerification] and consumed once by the next successful
+  /// [CameraCaptionStep] this run produces — see [CameraCaptionStep.initialCaption].
+  String? _pendingCaptionOnRetry;
 
   /// Lets the user back out of the verifying screen. Does not (and cannot)
   /// abort the underlying network calls, but ensures their eventual result
@@ -250,12 +342,31 @@ class CameraNotifier extends StateNotifier<CameraFlowState> {
     }
 
     final gen = ++_generation;
-    state = CameraVerifying(bytes: bytes);
 
-    // No API key: skip AI verification and auto-approve so the app works
-    // without a Gemini key. Re-enable by configuring GEMINI_API_KEY.
-    if (AppConstants.geminiApiKey.isEmpty) {
-      state = CameraVerifying(bytes: bytes, stage: VerifyingStage.uploading);
+    // Two distinct reasons to skip the real Gemini call and honor-system
+    // approve instead — both must never fabricate a `confidence`/`matches`
+    // verdict, only differ in the message shown/stored:
+    //   1. AI verification is a paid feature (KNOWN_BUGS.md) and this user
+    //      is free-tier — never reaches Gemini at all, regardless of
+    //      whether a key is configured, so a free user can't consume paid
+    //      AI quota. This is the common case today (everyone is free-tier
+    //      until a payment provider or manual grant exists).
+    //   2. No API key configured at all (dev/staging build) — unrelated to
+    //      entitlement, preserved as a fallback so the app still works
+    //      without a Gemini key regardless of tier.
+    // Computed before the first `CameraVerifying` state-set below so the
+    // "AI is reviewing" copy is never shown, even momentarily, for a
+    // completion that will never actually call Gemini.
+    final aiLocked = !_canUseAi;
+    final usingAi = !aiLocked && AppConstants.geminiApiKey.isNotEmpty;
+    state = CameraVerifying(bytes: bytes, usingAi: usingAi);
+
+    if (aiLocked || AppConstants.geminiApiKey.isEmpty) {
+      state = CameraVerifying(
+        bytes: bytes,
+        stage: VerifyingStage.uploading,
+        usingAi: false,
+      );
       // Location is a best-effort enrichment — a failure there shouldn't
       // block completion. The photo upload is not optional: silently
       // proceeding with an empty photoUrl would persist a broken
@@ -268,10 +379,15 @@ class CameraNotifier extends StateNotifier<CameraFlowState> {
       final String photoUrl;
       try {
         photoUrl = await _storage.uploadCompletionPhoto(
-            userId: userId, bytes: bytes);
+          userId: userId,
+          bytes: bytes,
+        );
       } on AppException catch (e) {
         if (gen != _generation) return;
-        state = CameraFailure(message: e.message, bytes: bytes);
+        state = CameraFailure(
+          message: diagnosticFailureMessage(e),
+          bytes: bytes,
+        );
         return;
       } catch (_) {
         if (gen != _generation) return;
@@ -290,13 +406,17 @@ class CameraNotifier extends StateNotifier<CameraFlowState> {
         pendingChallenge: challenge,
         // No fabricated confidence/matches — this bypassed AI entirely, so
         // the completion record should honestly say so rather than claiming
-        // a verification that never happened.
-        pendingVerificationResult: const {
-          'reason': 'Auto-approved — AI verification not configured.',
-        },
+        // a verification that never happened. `aiLocked` lets the caption
+        // screen show "Coming Soon" messaging specifically for the paid-
+        // feature case, distinct from the generic dev/staging fallback.
+        pendingVerificationResult: honorSystemVerificationResult(
+          aiLocked: aiLocked,
+        ),
         pendingPhotoUrl: photoUrl,
         pendingLocation: location,
+        initialCaption: _pendingCaptionOnRetry,
       );
+      _pendingCaptionOnRetry = null;
       return;
     }
 
@@ -325,7 +445,9 @@ class CameraNotifier extends StateNotifier<CameraFlowState> {
 
       if (!result.matches) {
         state = CameraFailure(
-          message: VerificationException.lowConfidence(result.confidence).message,
+          message: VerificationException.lowConfidence(
+            result.confidence,
+          ).message,
           bytes: bytes,
           confidence: result.confidence,
           explanation: result.reason,
@@ -361,10 +483,12 @@ class CameraNotifier extends StateNotifier<CameraFlowState> {
         pendingVerificationResult: result.toMap(),
         pendingPhotoUrl: photoUrl,
         pendingLocation: location,
+        initialCaption: _pendingCaptionOnRetry,
       );
+      _pendingCaptionOnRetry = null;
     } on AppException catch (e) {
       if (gen != _generation) return;
-      state = CameraFailure(message: e.message, bytes: bytes);
+      state = CameraFailure(message: diagnosticFailureMessage(e), bytes: bytes);
     } catch (e) {
       if (gen != _generation) return;
       state = CameraFailure(
@@ -381,6 +505,7 @@ class CameraNotifier extends StateNotifier<CameraFlowState> {
     final current = state;
     if (current is! CameraFailure || current.bytes == null) return;
     _ref.read(verificationRetryCountProvider.notifier).state++;
+    _pendingCaptionOnRetry = current.caption;
     state = CameraImagePicked(bytes: current.bytes!);
     await verify();
   }
@@ -416,7 +541,11 @@ class CameraNotifier extends StateNotifier<CameraFlowState> {
       CompletionModel? completion;
       completionResult.when(
         ok: (c) => completion = c,
-        err: (e) => state = CameraFailure(message: e.message, bytes: bytes),
+        err: (e) => state = CameraFailure(
+          message: diagnosticFailureMessage(e),
+          bytes: bytes,
+          caption: caption,
+        ),
       );
       if (completion == null) return;
 
@@ -427,11 +556,16 @@ class CameraNotifier extends StateNotifier<CameraFlowState> {
         captionPrompt: current.captionPrompt,
       );
     } on AppException catch (e) {
-      state = CameraFailure(message: e.message, bytes: bytes);
+      state = CameraFailure(
+        message: diagnosticFailureMessage(e),
+        bytes: bytes,
+        caption: caption,
+      );
     } catch (_) {
       state = CameraFailure(
         message: 'Something went wrong. Please try again.',
         bytes: bytes,
+        caption: caption,
       );
     }
   }
@@ -466,11 +600,19 @@ class CameraNotifier extends StateNotifier<CameraFlowState> {
     }
 
     final gen = ++_generation;
-    state = CameraVerifying(bytes: bytes, stage: VerifyingStage.uploading);
+    // Manual override — the user explicitly chose "Submit Anyway" after AI
+    // verification failed or was skipped, so AI is definitionally not
+    // reviewing this submission.
+    state = CameraVerifying(
+      bytes: bytes,
+      stage: VerifyingStage.uploading,
+      usingAi: false,
+    );
 
     try {
       AnalyticsService.logVerificationOverridden(
-          challengeId: challenge.challengeId);
+        challengeId: challenge.challengeId,
+      );
 
       final location = await LocationService().getCurrentLocation();
       final photoUrl = await _storage.uploadCompletionPhoto(
@@ -507,14 +649,17 @@ class CameraNotifier extends StateNotifier<CameraFlowState> {
       CompletionModel? completion;
       completionResult.when(
         ok: (c) => completion = c,
-        err: (e) => state = CameraFailure(message: e.message, bytes: bytes),
+        err: (e) => state = CameraFailure(
+          message: diagnosticFailureMessage(e),
+          bytes: bytes,
+        ),
       );
       if (completion == null) return;
 
       await _finishWithCompletion(completion!, bytes, challenge);
     } on AppException catch (e) {
       if (gen != _generation) return;
-      state = CameraFailure(message: e.message, bytes: bytes);
+      state = CameraFailure(message: diagnosticFailureMessage(e), bytes: bytes);
     } catch (_) {
       if (gen != _generation) return;
       state = CameraFailure(
@@ -542,11 +687,13 @@ class CameraNotifier extends StateNotifier<CameraFlowState> {
       completion.userId,
       challenge.challengeId,
     );
-    markResult.onErr((e) => dev.log(
-          'markChallengeCompleted failed for ${challenge.challengeId}: '
-          '${e.message}',
-          name: 'CameraNotifier',
-        ));
+    markResult.onErr(
+      (e) => dev.log(
+        'markChallengeCompleted failed for ${challenge.challengeId}: '
+        '${e.message}',
+        name: 'CameraNotifier',
+      ),
+    );
 
     final rewardResult = await _users.awardCompletionRewards(
       uid: completion.userId,
@@ -672,8 +819,8 @@ class CameraNotifier extends StateNotifier<CameraFlowState> {
         verificationMethod: completion.overrideUsed
             ? 'manual_override'
             : completion.verificationResult.containsKey('confidence')
-                ? 'ai_verified'
-                : 'auto_approved',
+            ? 'ai_verified'
+            : 'auto_approved',
         completionDate: completion.completedAt,
         createdAt: completion.completedAt,
       );
@@ -714,25 +861,26 @@ final geminiServiceProvider = Provider<GeminiService>((_) => GeminiService());
 
 // storageServiceProvider is defined in user_providers.dart — import that file.
 
-final completionRepositoryProvider =
-    Provider<CompletionRepository>((_) => const CompletionRepository());
+final completionRepositoryProvider = Provider<CompletionRepository>(
+  (_) => const CompletionRepository(),
+);
 
 // ── Camera notifier provider ──────────────────────────────────────────────────
 
 final cameraFlowProvider =
     StateNotifierProvider.autoDispose<CameraNotifier, CameraFlowState>((ref) {
-  // Use ref.read (not ref.watch) for challenge and auth so that Firestore
-  // updates to the challenge document (e.g. markChallengeCompleted) do NOT
-  // re-create this notifier mid-flow and wipe the CameraSuccess state.
-  return CameraNotifier(
-    challenge: ref.read(todaysChallengeProvider).valueOrNull,
-    userId: ref.read(authStateProvider).valueOrNull?.uid,
-    ref: ref,
-    geminiService: ref.watch(geminiServiceProvider),
-    storageService: ref.watch(storageServiceProvider),
-    completionRepository: ref.watch(completionRepositoryProvider),
-    userRepository: ref.watch(userRepositoryProvider),
-    challengeRepository: ref.watch(challengeRepositoryProvider),
-    memoryRepository: ref.watch(memoryRepositoryProvider),
-  );
-});
+      // Use ref.read (not ref.watch) for challenge and auth so that Firestore
+      // updates to the challenge document (e.g. markChallengeCompleted) do NOT
+      // re-create this notifier mid-flow and wipe the CameraSuccess state.
+      return CameraNotifier(
+        challenge: ref.read(todaysChallengeProvider).valueOrNull,
+        userId: ref.read(authStateProvider).valueOrNull?.uid,
+        ref: ref,
+        geminiService: ref.watch(geminiServiceProvider),
+        storageService: ref.watch(storageServiceProvider),
+        completionRepository: ref.watch(completionRepositoryProvider),
+        userRepository: ref.watch(userRepositoryProvider),
+        challengeRepository: ref.watch(challengeRepositoryProvider),
+        memoryRepository: ref.watch(memoryRepositoryProvider),
+      );
+    });

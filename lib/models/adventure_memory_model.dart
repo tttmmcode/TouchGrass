@@ -105,6 +105,7 @@ class AdventureMemoryModel {
     if (lat == 0 && lng == 0) return false;
     return true;
   }
+
   bool get hasCaption => caption != null && caption!.isNotEmpty;
   bool get hasWeather => weatherCondition != null;
 
@@ -134,25 +135,35 @@ class AdventureMemoryModel {
 
   /// Human-readable badge text covering all three [verificationMethod] values.
   String get verificationLabel => switch (verificationMethod) {
-        'ai_verified' => '🤖 AI Verified',
-        'manual_override' => '✋ Manual Submit',
-        _ => '✓ Auto-Approved',
-      };
+    'ai_verified' => '🤖 AI Verified',
+    'manual_override' => '✋ Manual Submit',
+    _ => '✓ Auto-Approved',
+  };
 
   // ── Serialization ───────────────────────────────────────────────────────────
 
   factory AdventureMemoryModel.fromFirestore(
     DocumentSnapshot<Map<String, dynamic>> doc,
-  ) {
-    final d = doc.data()!;
+  ) => AdventureMemoryModel.fromMap(doc.data()!, memoryId: doc.id);
+
+  /// The actual parsing logic behind [fromFirestore], taking a raw map
+  /// instead of a [DocumentSnapshot] so it's directly unit-testable without
+  /// a real or emulated Firestore instance (a snapshot can't be constructed
+  /// in a plain unit test).
+  @visibleForTesting
+  factory AdventureMemoryModel.fromMap(
+    Map<String, dynamic> d, {
+    required String memoryId,
+  }) {
     return AdventureMemoryModel(
-      memoryId: doc.id,
+      memoryId: memoryId,
       userId: d['userId'] as String,
       challengeId: d['challengeId'] as String,
       challengeDay: d['challengeDay'] as int? ?? 1,
       challengeTitle: d['challengeTitle'] as String? ?? '',
       challengeCategory: ChallengeCategory.fromString(
-          d['challengeCategory'] as String?),
+        d['challengeCategory'] as String?,
+      ),
       photoUrl: d['photoUrl'] as String? ?? '',
       caption: d['caption'] as String?,
       captionPrompt: d['captionPrompt'] as String?,
@@ -199,28 +210,27 @@ class AdventureMemoryModel {
     String? locationName,
     String? weatherCondition,
     String? weatherEmoji,
-  }) =>
-      AdventureMemoryModel(
-        memoryId: memoryId,
-        userId: userId,
-        challengeId: challengeId,
-        challengeDay: challengeDay,
-        challengeTitle: challengeTitle,
-        challengeCategory: challengeCategory,
-        photoUrl: photoUrl,
-        xpEarned: xpEarned,
-        verificationMethod: verificationMethod,
-        completionDate: completionDate,
-        createdAt: createdAt,
-        captionPrompt: captionPrompt,
-        latitude: latitude,
-        longitude: longitude,
-        caption: caption ?? this.caption,
-        locationName: locationName ?? this.locationName,
-        weatherCondition: weatherCondition ?? this.weatherCondition,
-        weatherEmoji: weatherEmoji ?? this.weatherEmoji,
-        captionUpdatedAt: captionUpdatedAt ?? this.captionUpdatedAt,
-      );
+  }) => AdventureMemoryModel(
+    memoryId: memoryId,
+    userId: userId,
+    challengeId: challengeId,
+    challengeDay: challengeDay,
+    challengeTitle: challengeTitle,
+    challengeCategory: challengeCategory,
+    photoUrl: photoUrl,
+    xpEarned: xpEarned,
+    verificationMethod: verificationMethod,
+    completionDate: completionDate,
+    createdAt: createdAt,
+    captionPrompt: captionPrompt,
+    latitude: latitude,
+    longitude: longitude,
+    caption: caption ?? this.caption,
+    locationName: locationName ?? this.locationName,
+    weatherCondition: weatherCondition ?? this.weatherCondition,
+    weatherEmoji: weatherEmoji ?? this.weatherEmoji,
+    captionUpdatedAt: captionUpdatedAt ?? this.captionUpdatedAt,
+  );
 
   // ── Equality ────────────────────────────────────────────────────────────────
 

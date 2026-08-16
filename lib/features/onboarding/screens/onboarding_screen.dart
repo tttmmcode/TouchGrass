@@ -55,7 +55,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       emoji: '🔥',
       title: 'Build your\nstreak & level up',
       subtitle:
-          'Earn XP for every challenge you complete. Maintain your streak, unlock achievements, and track your exploration on the map.',
+          'Earn XP for every challenge you complete. Maintain your streak, unlock achievements, and build a personal journal of everywhere you\'ve explored.',
       gradient: LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
@@ -87,8 +87,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       context.go(RouteNames.home);
       return;
     }
+    final reducedMotion = ref.read(reducedMotionProvider);
     await _pageController.nextPage(
-      duration: AppMotion.long,
+      duration: reducedMotion ? Duration.zero : AppMotion.long,
       curve: Curves.easeInOutCubic,
     );
   }
@@ -101,6 +102,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final reducedMotion = ref.watch(reducedMotionProvider);
     return Scaffold(
       body: Stack(
         children: [
@@ -139,7 +141,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                       children: List.generate(
                         _pages.length,
                         (i) => AnimatedContainer(
-                          duration: AppMotion.standard,
+                          duration: reducedMotion
+                              ? Duration.zero
+                              : AppMotion.standard,
                           margin: const EdgeInsets.symmetric(
                             horizontal: AppSpacing.xs,
                           ),
@@ -160,9 +164,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
                     // CTA button
                     _OnboardingButton(
-                      label: _isLastPage
-                          ? "Let's go! 🚀"
-                          : 'Continue',
+                      label: _isLastPage ? "Let's go! 🚀" : 'Continue',
                       onPressed: _nextPage,
                     ),
 
@@ -291,7 +293,9 @@ class _PageContentState extends ConsumerState<_PageContent>
                           padding: const EdgeInsets.all(AppSpacing.xxl),
                           child: Text(
                             widget.page.emoji,
-                            style: const TextStyle(fontSize: AppSpacing.emojiXl),
+                            style: const TextStyle(
+                              fontSize: AppSpacing.emojiXl,
+                            ),
                           ),
                         ),
                       ),

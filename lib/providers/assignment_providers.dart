@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/challenge_model.dart';
 import '../services/analytics_service.dart';
 import '../services/assignment_service.dart';
 import '../services/challenge_generation_service.dart';
@@ -11,12 +12,23 @@ import 'auth_providers.dart';
 import 'challenge_providers.dart';
 import 'user_providers.dart';
 
+/// Converts the raw preference strings on [UserSettings.preferredCategories]
+/// into real enum values, silently dropping any name that isn't a current
+/// [ChallengeCategory] (e.g. a category removed in a future update) rather
+/// than throwing — an empty result correctly falls back to "no preference".
+Set<ChallengeCategory> _parsePreferredCategories(List<String> raw) {
+  final names = raw.toSet();
+  return ChallengeCategory.values.where((c) => names.contains(c.name)).toSet();
+}
+
 // ── Reroll notifier (unlimited rerolls) ───────────────────────────────────────
 
 class RerollNotifier extends StateNotifier<AsyncValue<void>> {
-  RerollNotifier({required this.ref, required AssignmentService assignmentService})
-      : _service = assignmentService,
-        super(const AsyncValue.data(null));
+  RerollNotifier({
+    required this.ref,
+    required AssignmentService assignmentService,
+  }) : _service = assignmentService,
+       super(const AsyncValue.data(null));
 
   final Ref ref;
   final AssignmentService _service;
@@ -28,9 +40,18 @@ class RerollNotifier extends StateNotifier<AsyncValue<void>> {
     final uid = ref.read(authStateProvider).valueOrNull?.uid;
     if (uid == null) return;
 
+    final preferredCategories = _parsePreferredCategories(
+      ref.read(currentUserProvider).valueOrNull?.settings.preferredCategories ??
+          const [],
+    );
+
     state = const AsyncValue.loading();
     try {
-      await _service.rerollChallenge(uid, challenge);
+      await _service.rerollChallenge(
+        uid,
+        challenge,
+        preferredCategories: preferredCategories,
+      );
       AnalyticsService.logReroll();
       state = const AsyncValue.data(null);
     } catch (e) {
@@ -41,11 +62,11 @@ class RerollNotifier extends StateNotifier<AsyncValue<void>> {
 
 final rerollProvider =
     StateNotifierProvider.autoDispose<RerollNotifier, AsyncValue<void>>((ref) {
-  return RerollNotifier(
-    ref: ref,
-    assignmentService: ref.watch(assignmentServiceProvider),
-  );
-});
+      return RerollNotifier(
+        ref: ref,
+        assignmentService: ref.watch(assignmentServiceProvider),
+      );
+    });
 
 final assignmentServiceProvider = Provider<AssignmentService>((ref) {
   return AssignmentService(
@@ -82,8 +103,9 @@ class _CalendarDate extends Notifier<DateTime> {
   }
 }
 
-final _calendarDateProvider =
-    NotifierProvider<_CalendarDate, DateTime>(_CalendarDate.new);
+final _calendarDateProvider = NotifierProvider<_CalendarDate, DateTime>(
+  _CalendarDate.new,
+);
 
 /// Triggers daily challenge assignment on login AND at midnight when the app
 /// stays open across a day boundary.
@@ -101,9 +123,15 @@ final assignmentInitProvider = FutureProvider<void>((ref) async {
   final todayDate = DateTime(today.year, today.month, today.day);
   final joinDate = DateTime(createdAt.year, createdAt.month, createdAt.day);
   final dayNumber = todayDate.difference(joinDate).inDays + 1;
-
-  await ref.read(assignmentServiceProvider).ensureTodaysChallenge(
-    user.uid,
-    dayNumber: dayNumber,
+  final preferredCategories = _parsePreferredCategories(
+    currentUser?.settings.preferredCategories ?? const [],
   );
+
+  await ref
+      .read(assignmentServiceProvider)
+      .ensureTodaysChallenge(
+        user.uid,
+        dayNumber: dayNumber,
+        preferredCategories: preferredCategories,
+      );
 });

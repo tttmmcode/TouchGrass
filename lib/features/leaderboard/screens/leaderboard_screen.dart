@@ -19,15 +19,94 @@ import '../../../theme/app_spacing.dart';
 import '../../../widgets/error_retry_view.dart';
 import '../../../widgets/initials_avatar.dart';
 import '../../../widgets/loading_widgets.dart';
+import '../../leagues/screens/leagues_screen.dart';
+import '../widgets/league_background.dart';
 
-class LeaderboardScreen extends ConsumerStatefulWidget {
+/// Top-level Leaderboard destination — hosts two tabs sharing one "Leaderboard"
+/// header: Rankings (this file's original single-screen content) and Leagues
+/// (moved here from its former standalone Profile Settings destination; see
+/// LeaguesTabContent in leagues_screen.dart). Both tabs read the same
+/// underlying providers as before — no league/leaderboard state is
+/// duplicated, only the navigation shell around them changed.
+class LeaderboardScreen extends StatelessWidget {
   const LeaderboardScreen({super.key});
 
   @override
-  ConsumerState<LeaderboardScreen> createState() => _LeaderboardScreenState();
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final top = MediaQuery.paddingOf(context).top;
+
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        body: Column(
+          children: [
+            ColoredBox(
+              color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(height: top + AppSpacing.sm),
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      left: AppSpacing.screenHorizontal,
+                      bottom: AppSpacing.sm,
+                    ),
+                    child: Row(
+                      children: [
+                        Text(
+                          'Leaderboard',
+                          style: TextStyle(
+                            fontFamily: 'Nunito',
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            color: isDark
+                                ? AppColors.onSurfaceDark
+                                : AppColors.onSurfaceLight,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TabBar(
+                    labelColor: AppColors.forestGreen,
+                    unselectedLabelColor: isDark
+                        ? AppColors.onSurfaceVariantDark
+                        : AppColors.onSurfaceVariantLight,
+                    indicatorColor: AppColors.forestGreen,
+                    labelStyle: const TextStyle(
+                      fontFamily: 'Nunito',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                    ),
+                    tabs: const [
+                      Tab(text: 'Rankings', height: 44),
+                      Tab(text: 'Leagues', height: 44),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const Expanded(
+              child: TabBarView(
+                children: [_RankingsTab(), LeaguesTabContent()],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
-class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
+class _RankingsTab extends ConsumerStatefulWidget {
+  const _RankingsTab();
+
+  @override
+  ConsumerState<_RankingsTab> createState() => _RankingsTabState();
+}
+
+class _RankingsTabState extends ConsumerState<_RankingsTab> {
   late int _selectedIdx;
   final _navScrollCtrl = ScrollController();
   Trace? _loadTrace;
@@ -80,29 +159,39 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
             isDark: isDark,
           ),
 
-          // ── League header ───────────────────────────────────────────────
-          _LeagueHeader(
-            league: _selected,
-            isDark: isDark,
-          ),
-
-          // ── Leaderboard list ────────────────────────────────────────────
+          // ── League header + board, with the league's static background
+          // behind both. The nav bar above and self-position footer below
+          // keep their own solid ColoredBox backgrounds (unchanged) rather
+          // than joining this Stack, since the motif is only meant to sit
+          // behind the header/board content it was designed to accompany.
           Expanded(
-            child: boardAsync.when(
-              loading: () => const _BoardLoading(),
-              error: (e, _) => _BoardError(
-                error: e,
-                onRetry: () =>
-                    ref.invalidate(leagueBoardProvider(_selected.id)),
-              ),
-              data: (entries) => entries.isEmpty
-                  ? _EmptyBoard(league: _selected)
-                  : _Board(
-                      entries: entries,
-                      currentUid: currentUid,
-                      isDark: isDark,
-                      reducedMotion: reducedMotion,
+            child: Stack(
+              children: [
+                Positioned.fill(child: LeagueBackground(league: _selected)),
+                Column(
+                  children: [
+                    _LeagueHeader(league: _selected, isDark: isDark),
+                    Expanded(
+                      child: boardAsync.when(
+                        loading: () => const _BoardLoading(),
+                        error: (e, _) => _BoardError(
+                          error: e,
+                          onRetry: () =>
+                              ref.invalidate(leagueBoardProvider(_selected.id)),
+                        ),
+                        data: (entries) => entries.isEmpty
+                            ? _EmptyBoard(league: _selected)
+                            : _Board(
+                                entries: entries,
+                                currentUid: currentUid,
+                                isDark: isDark,
+                                reducedMotion: reducedMotion,
+                              ),
+                      ),
                     ),
+                  ],
+                ),
+              ],
             ),
           ),
 
@@ -140,40 +229,23 @@ class _LeagueNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final top = MediaQuery.paddingOf(context).top;
-
     return ColoredBox(
       color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(height: top + AppSpacing.sm),
-          Padding(
-            padding: const EdgeInsets.only(
-                left: AppSpacing.screenHorizontal, bottom: AppSpacing.sm),
-            child: Row(
-              children: [
-                Text(
-                  'Leaderboard',
-                  style: TextStyle(
-                    fontFamily: 'Nunito',
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: isDark
-                        ? AppColors.onSurfaceDark
-                        : AppColors.onSurfaceLight,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          // The "Leaderboard" title now lives once in the shared tab header
+          // (LeaderboardScreen) above both the Rankings and Leagues tabs —
+          // this bar only needs its own top inset before the chip row.
+          const SizedBox(height: AppSpacing.sm),
           SizedBox(
             height: 72,
             child: ListView.separated(
               controller: scrollCtrl,
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.screenHorizontal),
+                horizontal: AppSpacing.screenHorizontal,
+              ),
               itemCount: LeagueDef.all.length,
               separatorBuilder: (_, _) => const SizedBox(width: 8),
               itemBuilder: (context, i) {
@@ -232,13 +304,17 @@ class _LeagueChip extends StatelessWidget {
     final borderColor = isSelected
         ? league.color
         : (isDark
-            ? AppColors.outlineDark.withValues(alpha: 0.3)
-            : AppColors.outlineLight.withValues(alpha: 0.5));
+              ? AppColors.outlineDark.withValues(alpha: 0.3)
+              : AppColors.outlineLight.withValues(alpha: 0.5));
     final textColor = isSelected
         ? league.color
         : (isDark
-            ? AppColors.onSurfaceVariantDark
-            : AppColors.onSurfaceVariantLight);
+              ? AppColors.onSurfaceVariantDark
+              : AppColors.onSurfaceVariantLight);
+    // Locked leagues are still visible and tappable (to preview), but
+    // visually greyed out so they read as unavailable at a glance — the
+    // lock emoji alone wasn't a strong enough signal on its own.
+    final contentOpacity = isLocked ? 0.4 : 1.0;
 
     final semanticLabel = StringBuffer('${league.name} League')
       ..write(isMyLeague ? ', your league' : '')
@@ -251,58 +327,69 @@ class _LeagueChip extends StatelessWidget {
       label: semanticLabel.toString(),
       excludeSemantics: true,
       child: GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: AppMotion.fast,
-        curve: AppMotion.standardCurve,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-          border: Border.all(color: borderColor, width: isSelected ? 1.5 : 1),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Text(
-                  isLocked ? '🔒' : league.emoji,
-                  style: TextStyle(
-                    fontSize: 22,
-                    color: isLocked ? null : null,
-                  ),
-                ),
-                if (isMyLeague)
-                  Positioned(
-                    right: -4,
-                    top: -4,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: league.color,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const SizedBox(width: 8, height: 8),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 3),
-            Text(
-              league.name,
-              style: TextStyle(
-                fontFamily: 'Nunito',
-                fontSize: 10,
-                fontWeight:
-                    isSelected ? FontWeight.w800 : FontWeight.w600,
-                color: textColor,
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+          child: AnimatedContainer(
+            duration: AppMotion.fast,
+            curve: AppMotion.standardCurve,
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+              border: Border.all(
+                color: borderColor,
+                width: isSelected ? 1.5 : 1,
               ),
             ),
-          ],
+            child: Opacity(
+              opacity: contentOpacity,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      // Always the league's own emoji — never substitute a
+                      // generic lock glyph. Locked leagues are already
+                      // communicated visually via the Opacity(0.4) wrapper
+                      // around this whole Column and non-visually via the
+                      // Semantics label's ", locked" suffix below, so the
+                      // league keeps its identity even before it's unlocked.
+                      Text(league.emoji, style: const TextStyle(fontSize: 22)),
+                      if (isMyLeague)
+                        Positioned(
+                          right: -4,
+                          top: -4,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: league.color,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const SizedBox(width: 8, height: 8),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    league.name,
+                    style: TextStyle(
+                      fontFamily: 'Nunito',
+                      fontSize: 10,
+                      fontWeight: isSelected
+                          ? FontWeight.w800
+                          : FontWeight.w600,
+                      color: textColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
-      ),
       ),
     );
   }
@@ -311,10 +398,7 @@ class _LeagueChip extends StatelessWidget {
 // ── League header ─────────────────────────────────────────────────────────────
 
 class _LeagueHeader extends StatelessWidget {
-  const _LeagueHeader({
-    required this.league,
-    required this.isDark,
-  });
+  const _LeagueHeader({required this.league, required this.isDark});
 
   final LeagueDef league;
   final bool isDark;
@@ -323,13 +407,14 @@ class _LeagueHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-          AppSpacing.screenHorizontal, 10, AppSpacing.screenHorizontal, 8),
+        AppSpacing.screenHorizontal,
+        10,
+        AppSpacing.screenHorizontal,
+        8,
+      ),
       child: Row(
         children: [
-          Text(
-            league.emoji,
-            style: const TextStyle(fontSize: 18),
-          ),
+          Text(league.emoji, style: const TextStyle(fontSize: 18)),
           const SizedBox(width: 8),
           Text(
             '${league.name} League',
@@ -417,7 +502,8 @@ class _Board extends StatelessWidget {
           );
         }
 
-        final entryIdx = _hasHeader(total) && rawIdx > AppConstants.promotionZoneCount
+        final entryIdx =
+            _hasHeader(total) && rawIdx > AppConstants.promotionZoneCount
             ? rawIdx - 1
             : rawIdx;
         if (entryIdx >= total) return const SizedBox.shrink();
@@ -453,10 +539,7 @@ class _SectionDivider extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Divider(
-              color: color.withValues(alpha: 0.35),
-              thickness: 1,
-            ),
+            child: Divider(color: color.withValues(alpha: 0.35), thickness: 1),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -472,10 +555,7 @@ class _SectionDivider extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: Divider(
-              color: color.withValues(alpha: 0.35),
-              thickness: 1,
-            ),
+            child: Divider(color: color.withValues(alpha: 0.35), thickness: 1),
           ),
         ],
       ),
@@ -558,8 +638,9 @@ class _RankRowState extends State<_RankRow>
     final isMe = widget.isCurrentUser;
     final rank = entry.rank;
 
-    final textStrong =
-        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final textStrong = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
     final textMuted = isDark
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
@@ -578,8 +659,7 @@ class _RankRowState extends State<_RankRow>
         child: ColoredBox(
           color: _rowBg(context),
           child: Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
               children: [
                 // Rank
@@ -627,11 +707,14 @@ class _RankRowState extends State<_RankRow>
                               decoration: BoxDecoration(
                                 color: AppColors.grassGreen,
                                 borderRadius: BorderRadius.circular(
-                                    AppSpacing.radiusFull),
+                                  AppSpacing.radiusFull,
+                                ),
                               ),
                               child: const Padding(
                                 padding: EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 1),
+                                  horizontal: 6,
+                                  vertical: 1,
+                                ),
                                 child: Text(
                                   'YOU',
                                   style: TextStyle(
@@ -670,19 +753,23 @@ class _RankRowState extends State<_RankRow>
                                   ? AppColors.surfaceVariantDark
                                   : AppColors.surfaceVariantLight,
                               borderRadius: BorderRadius.circular(
-                                  AppSpacing.radiusFull),
+                                AppSpacing.radiusFull,
+                              ),
                             ),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 1),
+                                horizontal: 6,
+                                vertical: 1,
+                              ),
                               child: Text(
                                 'Lv.${entry.level}',
                                 style: TextStyle(
                                   fontFamily: 'Nunito',
                                   fontSize: 10,
                                   fontWeight: FontWeight.w700,
-                                  color:
-                                      isMe ? AppColors.grassGreen : textMuted,
+                                  color: isMe
+                                      ? AppColors.grassGreen
+                                      : textMuted,
                                 ),
                               ),
                             ),
@@ -694,10 +781,7 @@ class _RankRowState extends State<_RankRow>
                 ),
 
                 // Weekly XP badge
-                _XpBadge(
-                  weeklyXp: entry.weeklyXp,
-                  isMe: isMe,
-                ),
+                _XpBadge(weeklyXp: entry.weeklyXp, isMe: isMe),
               ],
             ),
           ),
@@ -710,11 +794,7 @@ class _RankRowState extends State<_RankRow>
 // ── Avatar ────────────────────────────────────────────────────────────────────
 
 class _Avatar extends StatelessWidget {
-  const _Avatar({
-    required this.entry,
-    required this.isMe,
-    required this.size,
-  });
+  const _Avatar({required this.entry, required this.isMe, required this.size});
 
   final LeaderboardEntryModel entry;
   final bool isMe;
@@ -827,8 +907,9 @@ class _SelfPositionBar extends ConsumerWidget {
     final dividerColor = isDark
         ? AppColors.outlineDark.withValues(alpha: 0.4)
         : AppColors.outlineLight.withValues(alpha: 0.6);
-    final surfaceBg =
-        isDark ? AppColors.surfaceVariantDark : AppColors.surfaceVariantLight;
+    final surfaceBg = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceVariantLight;
 
     // If browsing a different league than the user's own, show a "Jump" bar.
     if (myLeague != null && selectedLeague.id != myLeague!.id) {

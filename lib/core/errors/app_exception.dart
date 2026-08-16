@@ -44,6 +44,23 @@ final class AuthException extends AppException {
 
   factory AuthException.accountDisabled() =>
       const AuthException(message: 'This account has been disabled.');
+
+  /// The page's own domain isn't on Firebase Auth's "Authorized domains"
+  /// allowlist (Console-only setting — not something the app can fix
+  /// itself). Surfaced as `auth/unauthorized-domain` by Firebase.
+  factory AuthException.unauthorizedDomain() => const AuthException(
+        message:
+            "Sign-in isn't set up for this web address yet. "
+            'Please try again shortly, or use the TouchGrass app.',
+      );
+
+  /// The sign-in provider (Google/Apple/etc.) isn't enabled for this
+  /// Firebase project, or its OAuth client isn't configured correctly.
+  factory AuthException.providerDisabled() => const AuthException(
+        message:
+            'This sign-in method is temporarily unavailable. '
+            'Please try a different sign-in option.',
+      );
 }
 
 // ── Data / Firestore ───────────────────────────────────────────────────────

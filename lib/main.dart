@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -12,9 +13,9 @@ import 'core/router/app_router.dart';
 import 'core/utils/accessibility_prefs.dart';
 import 'firebase_options.dart';
 import 'providers/auth_providers.dart';
+import 'providers/notification_providers.dart';
 import 'providers/settings_providers.dart';
 import 'providers/user_providers.dart';
-import 'services/notification_service.dart';
 import 'services/perf_service.dart';
 import 'theme/app_theme.dart';
 
@@ -49,19 +50,20 @@ Future<void> main() async {
   await orientationFuture;
   await startupTrace?.stop();
 
-  runApp(ProviderScope(
-    overrides: [
-      onboardingCompleteProvider.overrideWith((ref) => onboardingComplete),
-    ],
-    child: const TouchGrassApp(),
-  ));
+  runApp(
+    ProviderScope(
+      overrides: [
+        onboardingCompleteProvider.overrideWith((ref) => onboardingComplete),
+      ],
+      child: const TouchGrassApp(),
+    ),
+  );
 
-  // Requesting notification permission triggers a native OS dialog — defer
-  // it until after the first frame renders so it never blocks (or precedes)
-  // the user's first view of the app.
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    NotificationService().initialize();
-  });
+  // Notification permission is no longer requested here — it triggers a
+  // native OS dialog with zero context, and firing it this early meant it
+  // could appear before the user had even signed in. It's now requested
+  // contextually (with an explanatory primer) from AppShell, once the user
+  // has actually reached the main app — see widgets/app_shell.dart.
 }
 
 /// Reads (and backfills) the onboarding-complete flag from [SharedPreferences].
@@ -85,6 +87,23 @@ Future<void> _initFirebase() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+
+    // Firestore offline persistence is on by default on Android/iOS, but
+    // web needs it enabled explicitly (IndexedDB-backed) — without this,
+    // previously loaded data (home, journal, leaderboard, etc.) simply
+    // isn't there anymore the moment the web build goes offline.
+    if (kIsWeb) {
+      try {
+        FirebaseFirestore.instance.settings = const Settings(
+          persistenceEnabled: true,
+        );
+      } catch (e) {
+        // Fails harmlessly if already set (e.g. hot restart in dev) or if
+        // the browser doesn't support IndexedDB — the app still works,
+        // just without offline caching on that browser.
+        debugPrint('⚠️  Firestore web persistence not enabled: $e');
+      }
+    }
 
     // Must be registered before runApp — FCM requires a top-level handler.
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
@@ -118,7 +137,10 @@ class TouchGrassApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    ref.watch(analyticsBootstrapProvider); // identity, retention, user properties
+    ref.watch(
+      analyticsBootstrapProvider,
+    ); // identity, retention, user properties
+    ref.watch(fcmTokenSyncProvider); // saves this device's FCM token on sign-in
     final router = ref.watch(appRouterProvider);
     final themeMode = ref.watch(themeModeProvider);
     final textScale = ref.watch(textScaleProvider);
@@ -140,10 +162,12 @@ class TouchGrassApp extends ConsumerWidget {
         final ambient = MediaQuery.of(context);
         return MediaQuery(
           data: ambient.copyWith(
-            textScaler: TextScaler.linear(combinedTextScale(
-              systemTextScale: ambient.textScaler.scale(1.0),
-              appTextScale: textScale,
-            )),
+            textScaler: TextScaler.linear(
+              combinedTextScale(
+                systemTextScale: ambient.textScaler.scale(1.0),
+                appTextScale: textScale,
+              ),
+            ),
             disableAnimations: combinedReducedMotion(
               systemReducedMotion: ambient.disableAnimations,
               appReducedMotion: reducedMotion,

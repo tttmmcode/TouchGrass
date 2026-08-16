@@ -50,3 +50,16 @@ key.properties
 *.jks
 *.keystore
 android/local.properties
+
+# Cloud Functions (functions/) — Node build artifacts and local env files.
+# The Gemini secret itself is never stored in a file at all — see
+# functions/README.md, it's set via `firebase functions:secrets:set`.
+functions/node_modules/
+functions/lib/
+functions/.env
+functions/.env.*
+functions/*.log
+
+# Firebase CLI's local deploy cache (hosting hash cache, per-machine,
+# regenerated automatically) — no reason to version it.
+.firebase/

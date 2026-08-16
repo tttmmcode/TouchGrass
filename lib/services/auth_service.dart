@@ -11,11 +11,9 @@ import '../core/errors/app_exception.dart';
 /// [AppException] hierarchy so the repository layer never sees raw
 /// [FirebaseAuthException] or SDK-specific types.
 class AuthService {
-  AuthService({
-    FirebaseAuth? auth,
-    GoogleSignIn? googleSignIn,
-  })  : _auth = auth ?? FirebaseAuth.instance,
-        _googleSignIn = googleSignIn ?? GoogleSignIn();
+  AuthService({FirebaseAuth? auth, GoogleSignIn? googleSignIn})
+    : _auth = auth ?? FirebaseAuth.instance,
+      _googleSignIn = googleSignIn ?? GoogleSignIn();
 
   final FirebaseAuth _auth;
   final GoogleSignIn _googleSignIn;
@@ -54,6 +52,16 @@ class AuthService {
   }
 
   Future<UserCredential> signInWithApple() async {
+    // sign_in_with_apple's web flow requires a registered Service ID +
+    // redirect URI (Apple Developer config this project doesn't have set
+    // up) — fail with a clear message instead of an opaque platform error.
+    if (kIsWeb) {
+      throw const AuthException(
+        message:
+            'Sign in with Apple is not available on web yet. '
+            'Please continue with Google or email, or use the TouchGrass app.',
+      );
+    }
     try {
       final appleCredential = await SignInWithApple.getAppleIDCredential(
         scopes: [
@@ -130,10 +138,11 @@ class AuthService {
   }
 
   Future<void> signOut() async {
-    await Future.wait([
-      _auth.signOut(),
-      _googleSignIn.signOut(),
-    ]);
+    // Web never signs in through _googleSignIn (see signInWithGoogle above —
+    // it uses a Firebase popup instead), and the package has no web client
+    // ID configured here, so skip it rather than risk an unconfigured-client
+    // exception on an unrelated sign-out call.
+    await Future.wait([_auth.signOut(), if (!kIsWeb) _googleSignIn.signOut()]);
   }
 
   // ── Reauthentication (required before sensitive operations) ───────────────
@@ -186,6 +195,13 @@ class AuthService {
   /// Reauthenticates an Apple user.
   /// Must be called before [deleteAccount] for Apple users.
   Future<void> reauthenticateWithApple() async {
+    if (kIsWeb) {
+      throw const AuthException(
+        message:
+            'Sign in with Apple is not available on web yet. '
+            'Please use the TouchGrass app to manage an Apple-linked account.',
+      );
+    }
     try {
       final appleCredential = await SignInWithApple.getAppleIDCredential(
         scopes: [
@@ -226,22 +242,22 @@ class AuthService {
   AppException _mapFirebaseException(FirebaseAuthException e) {
     return switch (e.code) {
       'user-disabled' => AuthException.accountDisabled(),
-      'user-not-found' ||
-      'wrong-password' ||
-      'invalid-credential' =>
+      'user-not-found' || 'wrong-password' || 'invalid-credential' =>
         const DataException(message: 'Email or password is incorrect.'),
-      'email-already-in-use' =>
-        const DataException(
-            message: 'An account with this email already exists.'),
-      'weak-password' =>
-        const DataException(
-            message: 'Password must be at least 6 characters.'),
-      'invalid-email' =>
-        const DataException(message: 'Please enter a valid email address.'),
+      'email-already-in-use' => const DataException(
+        message: 'An account with this email already exists.',
+      ),
+      'weak-password' => const DataException(
+        message: 'Password must be at least 6 characters.',
+      ),
+      'invalid-email' => const DataException(
+        message: 'Please enter a valid email address.',
+      ),
       'network-request-failed' => NetworkException.noConnection(),
       'popup-closed-by-user' ||
-      'cancelled-popup-request' =>
-        AuthException.cancelled(),
+      'cancelled-popup-request' => AuthException.cancelled(),
+      'unauthorized-domain' => AuthException.unauthorizedDomain(),
+      'operation-not-allowed' => AuthException.providerDisabled(),
       _ => AuthException.providerError(e),
     };
   }

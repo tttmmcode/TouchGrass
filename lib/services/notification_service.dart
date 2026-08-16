@@ -6,6 +6,32 @@ import '../core/constants/app_constants.dart';
 class NotificationService {
   static final _messaging = FirebaseMessaging.instance;
 
+  /// This device's FCM registration token, for storing on the user's
+  /// Firestore document so a future backend can send targeted (not just
+  /// topic-broadcast) notifications. Never throws — a missing token just
+  /// means this device won't receive targeted pushes, not a fatal error.
+  ///
+  /// Web needs a VAPID key (`getToken(vapidKey:)`) — see
+  /// `AppConstants.fcmVapidKey` (KNOWN_BUGS.md B4). Until one is supplied
+  /// via `--dart-define=FCM_VAPID_KEY=...`, this intentionally returns null
+  /// on web rather than guessing one; once it is, this starts working with
+  /// no other code changes.
+  Future<String?> getToken() async {
+    if (kIsWeb && !AppConstants.fcmVapidConfigured) return null;
+    try {
+      return await _messaging.getToken(
+        vapidKey: kIsWeb ? AppConstants.fcmVapidKey : null,
+      );
+    } catch (e) {
+      debugPrint('[NotificationService] getToken failed: $e');
+      return null;
+    }
+  }
+
+  /// Fires whenever the OS rotates this device's FCM token (happens
+  /// periodically, independent of sign-in/out) — callers should re-save it.
+  Stream<String> get onTokenRefresh => _messaging.onTokenRefresh;
+
   Future<void> initialize() async {
     final settings = await _messaging.requestPermission(
       alert: true,
@@ -37,6 +63,5 @@ class NotificationService {
 
   /// Returns the notification that launched the app from terminated state,
   /// or null when the app was opened normally.
-  Future<RemoteMessage?> getInitialMessage() =>
-      _messaging.getInitialMessage();
+  Future<RemoteMessage?> getInitialMessage() => _messaging.getInitialMessage();
 }

@@ -10,7 +10,6 @@ import '../../features/challenges/screens/challenge_detail_screen.dart';
 import '../../features/companions/screens/companion_select_screen.dart';
 import '../../features/home/screens/home_screen.dart';
 import '../../features/leaderboard/screens/leaderboard_screen.dart';
-import '../../features/leagues/screens/leagues_screen.dart';
 import '../../features/map/screens/map_screen.dart';
 import '../../features/onboarding/screens/onboarding_screen.dart';
 import '../../features/profile/screens/profile_screen.dart';
@@ -144,15 +143,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                     builder: (context, state) => const SettingsScreen(),
                   ),
                   GoRoute(
-                    path: 'leagues',
-                    name: 'leagues',
-                    builder: (context, state) => const LeaguesScreen(),
-                  ),
-                  GoRoute(
                     path: 'streak',
                     name: 'streakCalendar',
-                    builder: (context, state) =>
-                        const StreakCalendarScreen(),
+                    builder: (context, state) => const StreakCalendarScreen(),
                   ),
                 ],
               ),
@@ -170,8 +163,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   GoRoute(
                     path: 'companion',
                     name: 'companionSelect',
-                    builder: (context, state) =>
-                        const CompanionSelectScreen(),
+                    builder: (context, state) => const CompanionSelectScreen(),
                   ),
                 ],
               ),
