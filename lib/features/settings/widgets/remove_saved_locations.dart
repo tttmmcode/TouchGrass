@@ -54,7 +54,11 @@ Future<void> _runRemoval(
   required LocationHistoryRepository repository,
   VoidCallback? onChanged,
 }) async {
-  final navigator = Navigator.of(context);
+  // The ROOT navigator: showDialog puts the progress dialog there. Settings
+  // lives in the Profile tab's nested navigator, so the nearest navigator
+  // would pop the Settings page instead and leave the undismissable
+  // progress dialog up for good (Phase 8, found in the browser run).
+  final navigator = Navigator.of(context, rootNavigator: true);
   // Non-dismissible while running, so the operation can't be started twice.
   unawaited(
     showDialog<void>(

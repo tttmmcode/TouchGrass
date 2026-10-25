@@ -173,7 +173,8 @@ export const verifyChallengeCompletion = onCall<VerifyRequestData, Promise<Verif
     const existingCompletion = await completionRef.get();
     if (existingCompletion.exists) {
       const existing = existingCompletion.data()!;
-      logger.info(`Completion ${completionId} already exists — returning cached result, not re-awarding.`);
+      // No ids in logs (Phase 8): a completion id contains the uid.
+      logger.info("Completion already exists — returning cached result, not re-awarding.");
       return {
         matches: true,
         confidence: existing.verificationResult?.confidence ?? 1,
@@ -223,7 +224,8 @@ export const verifyChallengeCompletion = onCall<VerifyRequestData, Promise<Verif
       const [bytes] = await storage.bucket().file(storagePath).download();
       imageBytes = bytes;
     } catch (e) {
-      logger.error("Failed to download completion photo from Storage", e);
+      // The error class only: its message can contain the object path.
+      logger.error("Failed to download completion photo from Storage", {error: (e as Error)?.name ?? "error"});
       throw new HttpsError("not-found", "Could not retrieve the uploaded photo.");
     }
 
@@ -409,7 +411,7 @@ export const verifyChallengeCompletion = onCall<VerifyRequestData, Promise<Verif
       return {newXp, newLevel, newStreak, newLeague, xpAwarded};
     });
 
-    logger.info(`Completion ${completionId} verified and awarded for uid ${uid}.`);
+    logger.info("Completion verified and awarded.");
 
     return {
       matches: true,

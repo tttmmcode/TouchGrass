@@ -4,6 +4,7 @@ import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 
+import '../core/config/firebase_environment.dart';
 import '../core/utils/secret_redaction.dart';
 
 // ── Analytics ─────────────────────────────────────────────────────────────────
@@ -185,6 +186,9 @@ abstract final class AnalyticsService {
   // ── Internal ──────────────────────────────────────────────────────────────────
 
   static Future<void> _safe(Future<void> Function() fn) async {
+    // Production only: development and emulator builds never send events
+    // to the production Analytics property (Phase 8).
+    if (!FirebaseEnvironment.telemetryEnabled) return;
     try {
       await fn();
     } catch (e) {
@@ -199,7 +203,7 @@ abstract final class CrashReporter {
   static final _crashlytics = FirebaseCrashlytics.instance;
 
   static void setUserId(String uid) {
-    if (kIsWeb) return;
+    if (kIsWeb || !FirebaseEnvironment.telemetryEnabled) return;
     try {
       _crashlytics.setUserIdentifier(uid).ignore();
     } catch (_) {} // Firebase not initialised (tests)
@@ -209,7 +213,7 @@ abstract final class CrashReporter {
   static void clearUserId() => setUserId('');
 
   static void log(String message) {
-    if (!kIsWeb) {
+    if (!kIsWeb && FirebaseEnvironment.telemetryEnabled) {
       _crashlytics.log(redactDownloadTokens(message));
     }
   }
@@ -226,7 +230,7 @@ abstract final class CrashReporter {
   }) {
     final safeError = redactErrorForReport(error);
     final safeReason = reason == null ? null : redactDownloadTokens(reason);
-    if (kIsWeb) {
+    if (kIsWeb || !FirebaseEnvironment.telemetryEnabled) {
       debugPrint('[CrashReporter] ${safeReason ?? ''} $safeError');
       return;
     }

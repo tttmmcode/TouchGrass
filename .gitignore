@@ -77,3 +77,9 @@ functions/*.log
 
 # Phase 7A: the iOS Maps key (copy ios/Flutter/MapsApiKey.xcconfig.example).
 ios/Flutter/MapsApiKey.xcconfig
+
+# Phase 8: generated non-production rules and the dev Hosting build
+deploy/dev/generated/
+deploy/dev/public/
+e2e/node_modules/
+e2e/artifacts/

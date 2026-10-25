@@ -4,7 +4,7 @@
   "scripts": {
     "build": "tsc",
     "build:watch": "tsc --watch",
-    "test": "npm run build && node ../tool/strict_node_test.mjs lib/rewards.test.js lib/accountDeletion.test.js lib/orphanPhotoCleanup.test.js lib/ops/ops.test.js lib/ops/ops7c.test.js lib/entryPoint.test.js lib/ops/readOnlyGuarantee.test.js",
+    "test": "npm run build && node ../tool/strict_node_test.mjs lib/rewards.test.js lib/accountDeletion.test.js lib/orphanPhotoCleanup.test.js lib/ops/ops.test.js lib/ops/ops7c.test.js lib/entryPoint.test.js lib/ops/readOnlyGuarantee.test.js lib/logPrivacy.test.js",
     "test:emulator": "npm run build && firebase emulators:exec --config ../firestore-tests/firebase.json --only firestore,storage,auth --project demo-touchgrass-fn \"node ../tool/strict_node_test.mjs --test-concurrency=1 lib/accountDeletion.emulator.test.js lib/orphanPhotoCleanup.emulator.test.js lib/ops/ops.emulator.test.js lib/ops/ops7c.emulator.test.js\"",
     "lint": "eslint src --ext .ts",
     "serve": "npm run build && firebase emulators:start --only functions,firestore,storage,auth --project demo-touchgrass-dev",

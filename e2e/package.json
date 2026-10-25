@@ -1,0 +1,12 @@
+{
+  "name": "touchgrass-e2e",
+  "private": true,
+  "description": "Real-browser end-to-end tests of the web build against the local Firebase Emulator Suite (demo- project). Never production.",
+  "type": "module",
+  "scripts": {
+    "test": "node ../tool/strict_node_test.mjs --test-concurrency=1 journeys.test.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.48.2"
+  }
+}

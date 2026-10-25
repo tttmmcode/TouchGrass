@@ -696,6 +696,64 @@ Now:
 - the read-only rotation file keeps only aggregates and hashed per-photo outcomes;
 - errors show the class and a short code only.
 
+### B25. "Remove saved locations" locked the app — FIXED LOCALLY (Phase 8, found in the browser run)
+The progress dialog opens on the root navigator, but the code closed "the nearest navigator". Settings lives in the
+Profile tab's nested navigator, so the Settings page closed instead. The undismissable "Removing saved locations…"
+dialog stayed up until a reload. Now the root navigator is popped.
+
+Regression test: `remove_saved_locations_test.dart` (nested navigator). It fails on the old code.
+
+### B26. Feedback "Send" never enabled on desktop web — FIXED LOCALLY (Phase 8, found in the browser run)
+The dialog wasn't rebuilt while typing. On phones the keyboard happened to force a rebuild; on desktop web nothing did.
+
+### B27. Email sign-up dropped the typed name — FIXED LOCALLY (Phase 8, found in the browser run)
+The credential's user object predates `updateDisplayName`, so every email account started as "Explorer".
+
+### B28. Reminders: permission prompt and settings with no sender — DISABLED HONESTLY (Phase 8)
+Nothing sends push messages: no Cloud Function or scheduler exists, and web can't receive topic messages.
+`AppConstants.remindersAvailable = false` hides the prompt and toggles and stops storing tokens until a sender exists.
+
+### B29. Debug runs wrote to production and sent Analytics there — FIXED LOCALLY (Phase 8)
+There is now an explicit `TG_FIREBASE_ENV`, with emulators by default in debug and telemetry only in production
+(`DEVELOPMENT_ENVIRONMENT.md`).
+
+### B30. Smaller Phase 8 fixes — FIXED LOCALLY
+- "Weather unavailable" placeholder.
+- Desktop: stretched cards (phone-width column).
+- Trail: pale locked pads, unreadable labels, pale bands at the bottom.
+- Unbounded leaderboard read.
+- uids in Functions logs.
+- Unverified support address shown as a contact.
+- Terms "never share" promise; Terms not readable at sign-in.
+- Unused iOS `fetch` background mode.
+
+### B31. Settings switches had no accessible name — FIXED LOCALLY (Phase 8, found in the browser run)
+- **Symptom:** a screen reader announced every Settings switch (Show on Leaderboard, Save location, sound, haptics…) as "switch, on" with no name. The title was in a separate node.
+- **Fix:** each row is one accessibility node (`MergeSemantics`), so the switch carries its title and subtitle.
+- **Test:** `test/features/settings/settings_toggle_tile_test.dart`. It was verified to fail without the fix (empty label). The browser journey finds the switch by role and name.
+
+### B32. Emulator web builds sent Auth requests to the real Auth service after a reload — FIXED LOCALLY (Phase 8, found in the browser run)
+- **Symptom:** after a reload with a saved sign-in, FlutterFire restored the session while Firebase started, before `main.dart` could connect the Auth emulator. The restore went to the real Auth service, and FlutterFire then silently ignored the emulator connection (`auth/emulator-config-failed`), so later sign-ins went there too. Firestore and Storage stayed on the emulators.
+- **Impact:**
+  - **Test machine:** the harness blocked those requests, so nothing left it.
+  - **Elsewhere:** the requests would have carried emulator-only test credentials, with the placeholder API key that the real service rejects.
+  - **Production builds:** not affected.
+  - **The earlier "session survives a reload" pass:** it was not valid evidence. The session survived only because the blocked request looked like a network error.
+- **Fix:**
+  - Any failure to connect the emulators now stops startup on the configuration screen (`FirebaseEnvironmentError`); before, it was swallowed.
+  - On web, the Auth SDK is asked whether it really uses the emulator (`auth_emulator_probe_web.dart`). If it doesn't, the restored sign-in is cleared locally and startup stops.
+  - Emulator web builds never save the sign-in, so a reload signs out.
+- **Tests:**
+  - `test/core/firebase_environment_test.dart`.
+  - The browser journey asserts that the reload sends nothing to a real service.
+
+### B33. Challenge text said "Go outside and go outside and…" — FIXED LOCALLY (Phase 8, found in the browser screenshots)
+- **Symptom:** the template always started with "Go outside and", but some seed actions already go out ("go outside and look for…", "go outdoors and photograph", "stand outside and photograph").
+- **Fix:** the prefix is added only when the action doesn't already take you out. Challenges created before the fix keep their old text.
+- **Test:** `test/services/challenge_text_test.dart` checks every seed in the library. It was verified to fail without the fix.
+
+**Observation, not verified as a defect:** in one headless-Chrome screenshot the 🧘 category emoji showed as a box. The 🌿 emoji rendered fine. This is most likely Flutter web's on-demand emoji font download not finishing before the screenshot. Check on real browsers and devices.
+
 ## FIRESTORE SECURITY — field-by-field audit (analysis only, no rules changed this pass)
 
 Full re-read of `firestore.rules` this pass. This is the field-by-field breakdown the master

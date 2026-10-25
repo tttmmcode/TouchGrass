@@ -19,7 +19,7 @@ New challenges every day. Snap a photo, earn XP, climb the league. Your streak i
 
 TouchGrass gives you a fresh outdoor challenge every single day — from spotting wildlife to discovering a hidden street, practicing mindfulness in a park to photographing something beautiful near you.
 
-Complete your challenge, snap a photo, and add it to your Journal. Earn XP, build streaks, and climb through 8 leagues alongside thousands of other explorers.
+Complete your challenge, snap a photo, and add it to your Journal. Earn XP, build streaks, and climb through 8 leagues.
 
 **WHY TOUCHGRASS?**
 
@@ -29,7 +29,7 @@ Research shows that spending just 20 minutes outside in nature meaningfully redu
 
 • Daily Challenge Path — A beautifully designed trail of today's challenge and your recent history
 • Photo Journal — Every completed challenge is saved with your photo in your own Journal
-• 8 Adventure Leagues — Seedling → Sprout → Explorer → Pathfinder → Trailblazer → Wanderer → Voyager → Aurora
+• 8 Adventure Leagues — Seedling → Sprout → Wildflower → Forest → Mountain → Summit → Sky Trail → Aurora
 • XP & Leveling — Earn points for every completion and watch your level climb
 • Streaks & Rainy Days — Build daily streaks; Rainy Days protect your streak on busy days
 • Adventure Map — See every place you've been, filtered by challenge category
@@ -71,7 +71,10 @@ Secondary: Lifestyle
 https://touchgrass.app/privacy  (⚠️ HOST THIS PAGE BEFORE SUBMISSION)
 
 ### Support URL
-https://touchgrass.app/support  (⚠️ HOST THIS PAGE BEFORE SUBMISSION)
+https://touchgrass.app/support  (⚠️ HOST THIS PAGE BEFORE SUBMISSION; `touchgrass.app` ownership is unverified)
+
+### Support email
+toughpiprojects@gmail.com (confirmed by the owner, 2026-10-25; the same address the app shows)
 
 ### Copyright
 © 2025 TouchGrass. All rights reserved.

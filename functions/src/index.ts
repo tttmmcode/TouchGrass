@@ -56,10 +56,17 @@ export const deleteAccount = onCall(
         {db, bucket: storage.bucket(), auth: getAuth()},
         uid
       );
-      logger.info("Account deleted", {uid, ...report});
+      // Counts only (Phase 8): no uid survives in logs after the user
+      // asked for deletion.
+      logger.info("Account deleted", {...report});
       return {deleted: true};
     } catch (e) {
-      logger.error("Account deletion incomplete — safe to retry", {uid, error: String(e)});
+      // The error class and code only: messages can name object paths.
+      const code = (e as {code?: unknown})?.code;
+      logger.error("Account deletion incomplete — safe to retry", {
+        error: (e as Error)?.name ?? "error",
+        code: typeof code === "string" || typeof code === "number" ? String(code) : undefined,
+      });
       throw new HttpsError(
         "internal",
         "We couldn't finish deleting your account. Please try again — " +

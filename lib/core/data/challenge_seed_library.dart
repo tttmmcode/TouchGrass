@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../models/challenge_model.dart';
 
 /// A single parameterizable seed passed to [ChallengeGenerationService].
@@ -1418,4 +1420,8 @@ abstract final class ChallengeSeedLibrary {
 
   /// Total number of seeds in the library.
   static int get count => _allSeeds.length;
+
+  /// Every seed, for tests that check the whole library.
+  @visibleForTesting
+  static List<ChallengeSeed> get all => _allSeeds;
 }

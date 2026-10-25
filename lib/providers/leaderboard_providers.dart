@@ -19,21 +19,12 @@ final leaderboardServiceProvider = Provider<LeaderboardService>(
 
 // ── League leaderboard (primary) ──────────────────────────────────────────────
 
-/// Real-time leaderboard for a specific league, ranked by weekly XP.
-///
-/// Sorting is done client-side to avoid requiring a deployed composite index
-/// (a matching `currentLeague ASC, weeklyXp DESC` index is already defined
-/// in firestore.indexes.json but its deployment status can't be verified
-/// from the client — see the pending-deployment note in the final report).
-/// Once confirmed deployed, this can add `orderByField: 'weeklyXp'` /
-/// `descending: true` directly to the query for server-side ordering.
-///
-/// Deliberately does NOT pass `limit` to the Firestore query itself —
-/// Firestore would apply that limit BEFORE the client-side sort below,
-/// returning an arbitrary (roughly doc-ID-ordered) 30 members rather than
-/// the true top 30 by weekly XP whenever a league has more than
-/// [AppConstants.leaderboardPageSize] members. The page-size cap is applied
-/// after sorting instead.
+/// Real-time leaderboard for a specific league: the top
+/// [AppConstants.leaderboardPageSize] members by weekly XP, ordered and
+/// capped by the server (Phase 8). Requires the composite index
+/// `currentLeague ASC, weeklyXp DESC` (firestore.indexes.json) to be
+/// deployed — production gets it with the Firestore deploy that precedes
+/// this build. The client re-sorts the page so ties render consistently.
 final leagueBoardProvider = StreamProvider.autoDispose
     .family<List<LeaderboardEntryModel>, String>((ref, leagueId) {
       final firestore = ref.watch(firestoreServiceProvider);
@@ -44,6 +35,14 @@ final leagueBoardProvider = StreamProvider.autoDispose
             // another user's private fields (e.g. email) via this query.
             collection: AppConstants.colLeaderboardPublic,
             filters: [QueryFilter(field: 'currentLeague', isEqualTo: leagueId)],
+            // Phase 8: the server orders and caps, so a view reads at most
+            // one page instead of every member of the league (cost and
+            // latency grew with the league). Needs the composite index
+            // (currentLeague ASC, weeklyXp DESC) in firestore.indexes.json,
+            // deployed before this build (cutover plan).
+            orderByField: 'weeklyXp',
+            descending: true,
+            limit: AppConstants.leaderboardPageSize,
           )
           .map((snap) {
             final users = snap.docs.map(UserModel.fromFirestore).toList()

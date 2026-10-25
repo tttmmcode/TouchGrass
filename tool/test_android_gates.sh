@@ -81,8 +81,18 @@ KS="$WORK/test-upload.jks"
 KSP=$(cd "$WORK" && pwd -W 2>/dev/null || pwd)/test-upload.jks
 keyprops() { printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=testupload\nkeyPassword=%s\n' "$KSP" "$TG_TEST_PW" "$TG_TEST_PW" > "$A/key.properties"; }
 
-grep -rqE "use(Firestore|Storage|Auth|Functions|Database)Emulator|connect[A-Za-z]*Emulator|10\.0\.2\.2" "$P/lib" \
-  && bad "app code points at Firebase emulators" || ok "app code has no emulator endpoints (release talks to production only)"
+# Phase 8: emulator connections exist only in main.dart's emulator branch,
+# and a release build refuses that environment (firebase_environment.dart;
+# unit-tested), so release talks to production only.
+EMU_RE="use(Firestore|Storage|Auth|Functions|Database)Emulator|connect[A-Za-z]*Emulator|10\.0\.2\.2"
+grep -rnE "$EMU_RE" "$P/lib" | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' \
+  | grep -v '/lib/main\.dart:' | grep -q . \
+  && bad "emulator endpoints outside main.dart's emulator branch" \
+  || ok "emulator endpoints only in main.dart"
+grep -q "if (env == FirebaseEnv.emulator) await _connectEmulators();" "$P/lib/main.dart" \
+  && grep -q "A release build cannot use the emulators" "$P/lib/core/config/firebase_environment.dart" \
+  && ok "emulators only in the emulator environment, which release builds refuse" \
+  || bad "emulator connection is not limited to the emulator environment"
 
 echo "Gate cases (Gradle dry-runs; first one configures the build and is slow)…"
 props "$FAKE_MAPS"; rm -f "$A/key.properties"

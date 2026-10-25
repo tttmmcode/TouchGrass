@@ -1,0 +1,17 @@
+{
+  "auth": {
+    "providers": {
+      "emailPassword": true
+    }
+  },
+  "firestore": {
+    "rules": "generated/firestore.development.rules",
+    "indexes": "generated/firestore.indexes.json"
+  },
+  "hosting": {
+    "public": "public",
+    "ignore": ["firebase.json", "**/.*"],
+    "rewrites": [{ "source": "**", "destination": "/index.html" }],
+    "headers": [{ "source": "**", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] }]
+  }
+}

@@ -104,7 +104,12 @@ void main() {
       'lib/features/settings/screens/settings_screen.dart',
     ).readAsStringSync();
     expect(settings, contains('PrivacyCopy.locationSettingTitle'));
-    expect(settings, contains('PrivacyCopy.privacyPolicyText'));
+    // Phase 8: Settings and sign-in share one policy dialog.
+    expect(settings, contains('showPrivacyPolicyDialog(context)'));
+    expect(
+      File('lib/widgets/legal_dialogs.dart').readAsStringSync(),
+      contains('PrivacyCopy.privacyPolicyText'),
+    );
     expect(settings, isNot(contains("'Store Location Data'")));
     // Phase 5: the historical-data control sits next to the setting.
     expect(settings, contains('PrivacyCopy.removeLocationsTitle'));

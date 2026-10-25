@@ -1363,6 +1363,33 @@ Report: `PHASE_7I_FINAL_RELEASE_REPORT.md`.
 | P7I-2 | Both Hosting sites were always deployed together (`--only hosting`); the candidate needs `--only hosting:today` | Hosting release history (read-only) | Documented |
 | P7I-3 | The deleted-account marker's 2 h expiry reviewed: safe for completed deletions; an abandoned failed deletion resumes normally after 2 h | Analysis + existing tests | Kept |
 
+## Phase 8 — Isolated dev environment, real-browser testing, web readiness (2026-10-25)
+Report: `PHASE_8_FINAL_REPORT.md`. Plans: `RELEASE_PLAN.md`, `DEVELOPMENT_ENVIRONMENT.md`,
+`PRIVACY_INCIDENT_ASSESSMENT.md`, `e2e/README.md`.
+
+**Production:** nothing changed. AC-1 is still blocked (no ADC).
+**Dev project:** `touchgrass-dev-n7j3f` created (Spark), with Auth email/password, Firestore and the rules and
+indexes from `tool/rules_for_env.mjs`.
+
+| # | Finding | Evidence | Status |
+|---|---|---|---|
+| P8-1 | Debug runs used production and sent Analytics there; there was no environment switch | Code | **Fixed locally**: `TG_FIREBASE_ENV`, fail-closed, emulators by default in debug, telemetry in production only |
+| P8-2 | Email sign-up dropped the typed name ("Explorer") | Browser run | **Fixed locally**; repository test |
+| P8-3 | Reminder prompt, toggles and token collection, but no sender exists (and web can't receive topics) | Browser run + code | **Disabled honestly** (`AppConstants.remindersAvailable = false`) |
+| P8-4 | Feedback "Send" never enabled on desktop web (dialog not rebuilt while typing) | Browser run | **Fixed locally** |
+| P8-5 | "Weather unavailable" placeholder chip | Browser run | **Fixed locally** |
+| P8-6 | Desktop: stretched grids with tall, empty cards | Browser run | **Fixed locally**: phone-width column on wide windows |
+| P8-7 | Trail: pale locked pads, unreadable day labels, pale bands at the bottom | Browser run | **Fixed locally** |
+| P8-8 | `support@touchgrass.app` presented as working; Terms #3 "never share" promise; Terms unreadable at sign-in | Code | **Fixed locally**. The owner confirmed `toughpiprojects@gmail.com` as the support address (2026-10-25). The wording still needs owner/legal approval |
+| P8-9 | The leaderboard streamed the whole league per view | Code | **Fixed locally** (server-ordered page; needs the index deploy) |
+| P8-10 | `deleteAccount` / AI function logs held uids and raw errors | Code | **Fixed locally**; `logPrivacy.test.ts` |
+| P8-11 | Store listing: user-count claim (D15) and wrong league names | Review | **Fixed** |
+| P8-12 | iOS declared an unused `fetch` background mode | Review | **Fixed** (unvalidated on a device) |
+| P8-13 | Real-browser journeys on the emulators (sign-up → completion → deletion) | `e2e/` | New suite |
+| P8-14 | Settings switches had no accessible name (B31) | Browser run | **Fixed locally**; `settings_toggle_tile_test.dart` |
+| P8-15 | Emulator web builds sent Auth requests to the real Auth service after a reload (B32) | Browser run | **Fixed locally** (fail closed; no saved session in emulator builds) |
+| P8-16 | Challenge text "Go outside and go outside and…" (B33) | Browser screenshots | **Fixed locally**; `challenge_text_test.dart` |
+
 ## External actions (only you can do these)
 | # | Action | Status |
 |---|---|---|

@@ -74,6 +74,10 @@ class UserRepository {
         password: password,
         displayName: displayName,
       ),
+      // The credential's user object predates updateDisplayName, so the
+      // name typed at sign-up is passed on directly (Phase 8: it used to be
+      // dropped and every email account started as "Explorer").
+      preferredDisplayName: displayName,
     ),
   );
 
@@ -479,7 +483,10 @@ class UserRepository {
     );
   }
 
-  Future<UserModel> _resolveUser(UserCredential credential) async {
+  Future<UserModel> _resolveUser(
+    UserCredential credential, {
+    String? preferredDisplayName,
+  }) async {
     final firebaseUser = credential.user;
     if (firebaseUser == null) throw AuthException.noUser();
 
@@ -500,7 +507,10 @@ class UserRepository {
     // New user — create the Firestore document.
     var newUser = UserModel.initial(
       uid: firebaseUser.uid,
-      displayName: firebaseUser.displayName ?? 'Explorer',
+      displayName:
+          signUpDisplayName(preferredDisplayName) ??
+          firebaseUser.displayName ??
+          'Explorer',
       photoUrl: await signInProviderPhoto(firebaseUser),
       email: firebaseUser.email ?? '',
     );
@@ -838,4 +848,13 @@ class CompletionCommit {
 
   /// The Journal entry committed with [completion], if one was requested.
   final AdventureMemoryModel? journalEntry;
+}
+
+/// The display name typed at sign-up, trimmed and capped at the 100
+/// characters firestore.rules allow; null when blank.
+@visibleForTesting
+String? signUpDisplayName(String? typed) {
+  final name = typed?.trim() ?? '';
+  if (name.isEmpty) return null;
+  return name.length <= 100 ? name : name.substring(0, 100);
 }

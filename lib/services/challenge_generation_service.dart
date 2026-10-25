@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../core/constants/app_constants.dart';
 import '../core/data/challenge_seed_library.dart';
 import '../models/challenge_model.dart';
@@ -26,9 +28,7 @@ class ChallengeGenerationService {
       userId: userId,
       dayNumber: dayNumber,
       title: title,
-      description:
-          'Go outside and ${seed.action} ${seed.subject}. '
-          'Take a photo to complete your Day $dayNumber challenge.',
+      description: describe(seed, dayNumber),
       objective: '${_capitalize(seed.action)} ${seed.subject}.',
       successCriteria: seed.successHint,
       difficulty: seed.difficulty,
@@ -47,6 +47,20 @@ class ChallengeGenerationService {
     );
   }
 
+  /// The challenge text. "Go outside and" is added only when the action
+  /// doesn't already take you out (Phase 8: "Go outside and go outside
+  /// and look for…" was shown).
+  @visibleForTesting
+  static String describe(ChallengeSeed seed, int dayNumber) {
+    final goesOut = _goesOut.hasMatch(seed.action);
+    final what = goesOut
+        ? '${_capitalize(seed.action)} ${seed.subject}'
+        : 'Go outside and ${seed.action} ${seed.subject}';
+    return '$what. Take a photo to complete your Day $dayNumber challenge.';
+  }
+
+  static final RegExp _goesOut = RegExp(r'^go\b|\boutside\b|\boutdoors\b');
+
   String _templateTitle(ChallengeSeed seed) {
     // Use theme (already a short noun phrase) rather than truncating subject.
     final words = seed.theme
@@ -59,6 +73,6 @@ class ChallengeGenerationService {
         (words.length > 1 ? ' ${words.skip(1).join(' ')}' : '');
   }
 
-  String _capitalize(String s) =>
+  static String _capitalize(String s) =>
       s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 }

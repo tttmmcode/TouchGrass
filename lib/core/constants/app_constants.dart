@@ -167,6 +167,16 @@ abstract final class AppConstants {
   static const String storageUserAvatars = 'user_avatars';
 
   // ── FCM topics & channels ─────────────────────────────────────────────────
+
+  /// Whether reminders exist (Phase 8: they don't). Nothing in this
+  /// project sends a push message — no Cloud Function or scheduler
+  /// publishes to these topics — and web can't receive topic messages at
+  /// all. Until a sender exists, the app doesn't ask for notification
+  /// permission, show reminder settings, or store a notification token.
+  /// Turning this on needs a server-side sender (Cloud Functions, Blaze)
+  /// and, for web, a VAPID key with per-device sends.
+  static const bool remindersAvailable = false;
+
   static const String fcmTopicDaily = 'daily_challenge';
   static const String fcmTopicStreakWarning = 'streak_warning';
   static const String fcmTopicLeague = 'league_ending';

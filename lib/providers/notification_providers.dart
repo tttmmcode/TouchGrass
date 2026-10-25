@@ -1,6 +1,7 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/constants/app_constants.dart';
 import '../services/notification_service.dart';
 import 'auth_providers.dart';
 import 'user_providers.dart';
@@ -24,6 +25,9 @@ final foregroundMessageProvider = StreamProvider<RemoteMessage>((ref) {
 /// Watch this once from the app root (alongside [analyticsBootstrapProvider]
 /// in user_providers.dart) so it stays alive for the whole session.
 final fcmTokenSyncProvider = Provider<void>((ref) {
+  // No token is stored while no reminders exist (Phase 8, data
+  // minimisation).
+  if (!AppConstants.remindersAvailable) return;
   final uid = ref.watch(authStateProvider).valueOrNull?.uid;
   if (uid == null) return;
 

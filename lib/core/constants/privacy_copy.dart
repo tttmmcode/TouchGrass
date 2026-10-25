@@ -92,6 +92,32 @@ abstract final class PrivacyCopy {
 
   static const privacyPolicyTitle = 'Privacy Policy';
 
+  static const termsTitle = 'Terms of Service';
+
+  /// Point 3 describes photo access exactly as the privacy policy does
+  /// (Phase 8; it used to promise photos would "never" be shared publicly,
+  /// which bearer download links don't guarantee). PROPOSED wording: the
+  /// owner must approve it before it ships (open decision D19).
+  static const termsText =
+      'By using TouchGrass you agree to the following terms:\n\n'
+      '1. Use the app for lawful purposes only. Do not submit photos that '
+      'depict illegal activity, harassment, or content inappropriate for all '
+      'ages.\n\n'
+      '2. Your account is personal and non-transferable. You are responsible '
+      'for maintaining the security of your credentials.\n\n'
+      '3. Challenge photos you submit are stored to show in your Journal. '
+      "Other TouchGrass users can't browse or open them in the app. Each "
+      "photo is shown through a private web link, so anyone you share a "
+      "photo's link with can see that photo. Photos are not sent to any AI "
+      'service and are not used to train AI.\n\n'
+      '4. We reserve the right to suspend accounts that violate these terms '
+      'or abuse the challenge system.\n\n'
+      '5. The app is provided "as is" without warranty of any kind. We are '
+      'not liable for any loss of data or service interruptions.\n\n'
+      '6. These terms may be updated at any time. Continued use of the app '
+      'after changes constitutes acceptance.\n\n'
+      'Last updated: October 2026';
+
   static const privacyPolicyText =
       'What TouchGrass stores (in Google Firebase):\n'
       '• Your account: email address, display name, username and profile photo.\n'
@@ -104,7 +130,9 @@ abstract final class PrivacyCopy {
       'photo is shown to other signed-in users, and anyone they share its '
       'link with can see it.\n'
       '• Feedback and bug reports you send from Settings.\n'
-      '• A notification token, if you allow notifications.\n\n'
+      '• A notification token, if an earlier version of the app asked to '
+      'send you notifications. This version sends no notifications and '
+      "doesn't collect one.\n\n"
       'Location — only if "Save location with adventures" is on:\n'
       '• Where you completed a challenge is saved with that completion and '
       'Journal entry, with its place name and weather.\n'

@@ -1,6 +1,7 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 
+import '../core/constants/support_contact.dart';
 import '../core/errors/app_exception.dart';
 
 /// Deletes the signed-in user's account server-side (audit D-04).
@@ -76,14 +77,14 @@ AppException mapAccountDeletionError(String code, [Object? cause]) {
     'not-found' => DataException(
       message:
           "Account deletion isn't available right now, so your account was "
-          'not deleted. Please try again later or email support@touchgrass.app.',
+          'not deleted. Please try again later, or ${SupportContact.reachUs}.',
       cause: cause,
     ),
     _ => DataException(
       message:
           "We couldn't finish deleting your account. Please try again — "
           'anything already removed stays removed. If this keeps happening, '
-          'email support@touchgrass.app.',
+          '${SupportContact.reachUs}.',
       cause: cause,
     ),
   };

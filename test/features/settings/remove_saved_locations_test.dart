@@ -174,4 +174,49 @@ void main() {
     expect(repo.calls, 1);
     expect(find.byType(AlertDialog), findsNothing);
   });
+
+  testWidgets(
+    'inside a nested navigator (Settings is in the Profile tab): the progress '
+    'dialog closes and the Settings page stays (found in the browser run)',
+    (tester) async {
+      final repo = _ScriptedRepo([_r(LocationRemovalStatus.complete, 1, 1)]);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Navigator(
+              onGenerateRoute: (_) => MaterialPageRoute<void>(
+                builder: (context) => Scaffold(
+                  body: Column(
+                    children: [
+                      const Text('settings page'),
+                      TextButton(
+                        onPressed: () => confirmAndRemoveSavedLocations(
+                          context,
+                          uid: 'alice',
+                          locationSettingOn: false,
+                          repository: repo,
+                        ),
+                        child: const Text('open'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Remove'));
+      await tester.pumpAndSettle();
+      expect(find.text(PrivacyCopy.removeLocationsProgress), findsNothing);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text('settings page'), findsOneWidget);
+      expect(
+        find.text(PrivacyCopy.removeLocationsDone(anyRemoved: true)),
+        findsOneWidget,
+      );
+    },
+  );
 }

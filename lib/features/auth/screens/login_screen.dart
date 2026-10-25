@@ -9,6 +9,7 @@ import '../../../services/analytics_service.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_motion.dart';
 import '../../../theme/app_spacing.dart';
+import '../../../widgets/legal_dialogs.dart';
 import '../../../widgets/pressable_scale.dart';
 import '../widgets/social_sign_in_button.dart';
 
@@ -962,16 +963,37 @@ class _TermsText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      'By continuing, you agree to our Terms of Service\nand Privacy Policy.',
-      textAlign: TextAlign.center,
-      style: TextStyle(
-        fontFamily: 'Nunito',
-        fontSize: 11,
-        fontWeight: FontWeight.w500,
-        color: Colors.white.withValues(alpha: 0.45),
-        height: 1.5,
+    final muted = TextStyle(
+      fontFamily: 'Nunito',
+      fontSize: 11,
+      fontWeight: FontWeight.w500,
+      color: Colors.white.withValues(alpha: 0.6),
+      height: 1.5,
+    );
+    final link = muted.copyWith(
+      color: Colors.white.withValues(alpha: 0.9),
+      fontWeight: FontWeight.w700,
+      decoration: TextDecoration.underline,
+      decorationColor: Colors.white.withValues(alpha: 0.9),
+    );
+    // Both documents can be read before agreeing (Phase 8).
+    Widget linkButton(String label, VoidCallback onTap) => TextButton(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        minimumSize: const Size(48, 40),
       ),
+      child: Text(label, style: link),
+    );
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text('By continuing, you agree to our', style: muted),
+        linkButton('Terms of Service', () => showTermsDialog(context)),
+        Text('and', style: muted),
+        linkButton('Privacy Policy', () => showPrivacyPolicyDialog(context)),
+      ],
     );
   }
 }

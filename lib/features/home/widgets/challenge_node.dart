@@ -39,8 +39,10 @@ const Color _lilyActiveDark = Color(0xFF185F36);
 const Color _lilyGold = Color(0xFFFFCE2C);
 const Color _lilyCompleted = Color(0xFF237A44);
 const Color _lilyCompletedLight = Color(0xFF40C26A);
-const Color _lilyLocked = Color(0xFF4E8862);
-const Color _lilyLockedLight = Color(0xFF78AC8A);
+// Locked pads are a deep green too (design direction: deep-green lily pads,
+// no washed-out "fogged" look); the golden lock marks them as locked.
+const Color _lilyLocked = Color(0xFF1F5E38);
+const Color _lilyLockedLight = Color(0xFF2F7A4B);
 
 // ── Organic lily pad path ─────────────────────────────────────────────────────
 
@@ -1192,14 +1194,32 @@ class _NodeLabel extends StatelessWidget {
       );
     }
 
-    return Text(
-      dayLabel,
-      textAlign: TextAlign.center,
-      style: TextStyle(
-        fontFamily: 'Nunito',
-        fontSize: 10,
-        fontWeight: FontWeight.w700,
-        color: isCompleted ? _lilyCompletedLight : muted,
+    // On a pill so it stays legible over every part of the landscape (sky,
+    // hills, dark treeline) — the bare label disappeared over the dark
+    // bands (Phase 8, found in the browser run).
+    return Center(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: isDark
+              ? Colors.black.withValues(alpha: 0.55)
+              : Colors.white.withValues(alpha: 0.85),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          child: Text(
+            dayLabel,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: 'Nunito',
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              color: isCompleted
+                  ? (isDark ? _lilyCompletedLight : _lilyCompleted)
+                  : muted,
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -1,6 +1,8 @@
 import 'package:firebase_performance/firebase_performance.dart';
 import 'package:flutter/foundation.dart';
 
+import '../core/config/firebase_environment.dart';
+
 /// Thin wrapper around Firebase Performance Monitoring.
 ///
 /// Usage — wrap an async operation:
@@ -26,7 +28,8 @@ abstract final class PerfService {
 
   /// Returns a started [Trace]. Call [Trace.stop] when the operation finishes.
   static Trace? startTrace(String name) {
-    if (kIsWeb) return null;
+    // Production only (Phase 8).
+    if (kIsWeb || !FirebaseEnvironment.telemetryEnabled) return null;
     try {
       final t = FirebasePerformance.instance.newTrace(name);
       t.start();

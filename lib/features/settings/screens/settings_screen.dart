@@ -11,6 +11,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/privacy_copy.dart';
+import '../../../core/constants/support_contact.dart';
 import '../../../core/services/error_service.dart';
 import '../../../models/app_theme_mode.dart';
 import '../../../models/challenge_model.dart';
@@ -26,6 +27,7 @@ import '../../../theme/app_motion.dart';
 import '../../../theme/app_spacing.dart';
 import '../../../widgets/error_retry_view.dart';
 import '../../../widgets/initials_avatar.dart';
+import '../../../widgets/legal_dialogs.dart';
 import '../../../widgets/loading_widgets.dart';
 import '../../../widgets/permission_primer.dart';
 import '../widgets/account_deletion_progress.dart';
@@ -195,61 +197,65 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   const SizedBox(height: AppSpacing.xxl),
 
                   // ── Notifications ──────────────────────────────────────────────
-                  _SectionLabel('Notifications', isDark: isDark),
-                  const SizedBox(height: AppSpacing.sm),
-                  _SettingsCard(
-                    isDark: isDark,
-                    children: [
-                      _ToggleTile(
-                        icon: Icons.wb_sunny_outlined,
-                        iconColor: AppColors.grassGreen,
-                        title: 'Daily Challenge',
-                        subtitle: 'Remind me to complete today\'s challenge',
-                        value: settings.dailyNotifications,
-                        isDark: isDark,
-                        onChanged: (_) => ref
-                            .read(settingsProvider.notifier)
-                            .toggleDailyNotifications(),
-                      ),
-                      _Divider(isDark: isDark),
-                      _ToggleTile(
-                        icon: Icons.local_fire_department_outlined,
-                        iconColor: Colors.deepOrange,
-                        title: 'Streak Alert',
-                        subtitle: 'Warn me before my streak breaks',
-                        value: settings.streakNotifications,
-                        isDark: isDark,
-                        onChanged: (_) => ref
-                            .read(settingsProvider.notifier)
-                            .toggleStreakNotifications(),
-                      ),
-                      _Divider(isDark: isDark),
-                      _ToggleTile(
-                        icon: Icons.emoji_events_outlined,
-                        iconColor: const Color(0xFFFFB800),
-                        title: 'League Ending Soon',
-                        subtitle: 'Alert me when the weekly league resets',
-                        value: settings.leagueNotifications,
-                        isDark: isDark,
-                        onChanged: (_) => ref
-                            .read(settingsProvider.notifier)
-                            .toggleLeagueNotifications(),
-                      ),
-                      _Divider(isDark: isDark),
-                      _ToggleTile(
-                        icon: Icons.stars_rounded,
-                        iconColor: const Color(0xFF7B68EE),
-                        title: 'Achievement Unlocked',
-                        subtitle: 'Celebrate when I earn a new achievement',
-                        value: settings.achievementNotifications,
-                        isDark: isDark,
-                        onChanged: (_) => ref
-                            .read(settingsProvider.notifier)
-                            .toggleAchievementNotifications(),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.xxl),
+                  // Hidden while no reminders exist (Phase 8): these
+                  // toggles controlled messages nothing sends.
+                  if (AppConstants.remindersAvailable) ...[
+                    _SectionLabel('Notifications', isDark: isDark),
+                    const SizedBox(height: AppSpacing.sm),
+                    _SettingsCard(
+                      isDark: isDark,
+                      children: [
+                        SettingsToggleTile(
+                          icon: Icons.wb_sunny_outlined,
+                          iconColor: AppColors.grassGreen,
+                          title: 'Daily Challenge',
+                          subtitle: 'Remind me to complete today\'s challenge',
+                          value: settings.dailyNotifications,
+                          isDark: isDark,
+                          onChanged: (_) => ref
+                              .read(settingsProvider.notifier)
+                              .toggleDailyNotifications(),
+                        ),
+                        _Divider(isDark: isDark),
+                        SettingsToggleTile(
+                          icon: Icons.local_fire_department_outlined,
+                          iconColor: Colors.deepOrange,
+                          title: 'Streak Alert',
+                          subtitle: 'Warn me before my streak breaks',
+                          value: settings.streakNotifications,
+                          isDark: isDark,
+                          onChanged: (_) => ref
+                              .read(settingsProvider.notifier)
+                              .toggleStreakNotifications(),
+                        ),
+                        _Divider(isDark: isDark),
+                        SettingsToggleTile(
+                          icon: Icons.emoji_events_outlined,
+                          iconColor: const Color(0xFFFFB800),
+                          title: 'League Ending Soon',
+                          subtitle: 'Alert me when the weekly league resets',
+                          value: settings.leagueNotifications,
+                          isDark: isDark,
+                          onChanged: (_) => ref
+                              .read(settingsProvider.notifier)
+                              .toggleLeagueNotifications(),
+                        ),
+                        _Divider(isDark: isDark),
+                        SettingsToggleTile(
+                          icon: Icons.stars_rounded,
+                          iconColor: const Color(0xFF7B68EE),
+                          title: 'Achievement Unlocked',
+                          subtitle: 'Celebrate when I earn a new achievement',
+                          value: settings.achievementNotifications,
+                          isDark: isDark,
+                          onChanged: (_) => ref
+                              .read(settingsProvider.notifier)
+                              .toggleAchievementNotifications(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.xxl),
+                  ],
 
                   // ── Streak Protection ──────────────────────────────────────────
                   _SectionLabel('Streak Protection', isDark: isDark),
@@ -289,7 +295,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             _showTextSizeDialog(context, settings.textScale),
                       ),
                       _Divider(isDark: isDark),
-                      _ToggleTile(
+                      SettingsToggleTile(
                         icon: Icons.animation_rounded,
                         iconColor: AppColors.forestGreen,
                         title: 'Reduce Motion',
@@ -301,7 +307,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             .toggleReducedMotion(),
                       ),
                       _Divider(isDark: isDark),
-                      _ToggleTile(
+                      SettingsToggleTile(
                         icon: Icons.contrast_rounded,
                         iconColor: AppColors.forestGreen,
                         title: 'High Contrast',
@@ -368,7 +374,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   _SettingsCard(
                     isDark: isDark,
                     children: [
-                      _ToggleTile(
+                      SettingsToggleTile(
                         icon: Icons.location_on_outlined,
                         iconColor: AppColors.forestGreen,
                         title: PrivacyCopy.locationSettingTitle,
@@ -408,7 +414,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             : null,
                       ),
                       _Divider(isDark: isDark),
-                      _ToggleTile(
+                      SettingsToggleTile(
                         icon: Icons.leaderboard_outlined,
                         iconColor: AppColors.forestGreen,
                         title: 'Show on Leaderboard',
@@ -503,7 +509,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         iconColor: AppColors.forestGreen,
                         title: 'Privacy Policy',
                         isDark: isDark,
-                        onTap: () => _showPrivacyDialog(context, isDark),
+                        onTap: () => showPrivacyPolicyDialog(context),
                       ),
                       _Divider(isDark: isDark),
                       _NavTile(
@@ -511,7 +517,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         iconColor: AppColors.forestGreen,
                         title: 'Terms of Service',
                         isDark: isDark,
-                        onTap: () => _showTermsDialog(context, isDark),
+                        onTap: () => showTermsDialog(context),
                       ),
                       _Divider(isDark: isDark),
                       _NavTile(
@@ -1083,60 +1089,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  Future<void> _showPrivacyDialog(BuildContext context, bool isDark) async {
-    final surface = isDark
-        ? AppColors.surfaceVariantDark
-        : AppColors.surfaceLight;
-    final textStrong = isDark
-        ? AppColors.onSurfaceDark
-        : AppColors.onSurfaceLight;
-    final textMuted = isDark
-        ? AppColors.onSurfaceVariantDark
-        : AppColors.onSurfaceVariantLight;
-
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        scrollable: true,
-        backgroundColor: surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
-        ),
-        title: Text(
-          PrivacyCopy.privacyPolicyTitle,
-          style: TextStyle(
-            fontFamily: 'Nunito',
-            fontWeight: FontWeight.w900,
-            color: textStrong,
-          ),
-        ),
-        content: Text(
-          PrivacyCopy.privacyPolicyText,
-          style: TextStyle(
-            fontFamily: 'Nunito',
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            height: 1.5,
-            color: textMuted,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text(
-              'Got it',
-              style: TextStyle(
-                fontFamily: 'Nunito',
-                fontWeight: FontWeight.w700,
-                color: AppColors.forestGreenLight,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _confirmDeleteAccount(BuildContext context, bool isDark) async {
     final surface = isDark
         ? AppColors.surfaceVariantDark
@@ -1351,7 +1303,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             const SizedBox(height: 14),
             _HelpItem(
               title: 'Contact us',
-              body: 'support@touchgrass.app',
+              body: SupportContact.contactLine,
               isDark: isDark,
             ),
           ],
@@ -1431,6 +1383,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           content: TextField(
             controller: ctrl,
             autofocus: true,
+            // Rebuild so "Send" enables as soon as there's text (Phase 8:
+            // without this it stayed disabled on desktop web, where no
+            // keyboard inset change happens to rebuild the dialog).
+            onChanged: (_) => setS(() {}),
             minLines: 4,
             maxLines: 8,
             maxLength: 1000,
@@ -1525,68 +1481,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
     );
     ctrl.dispose();
-  }
-
-  Future<void> _showTermsDialog(BuildContext context, bool isDark) async {
-    final surface = isDark
-        ? AppColors.surfaceVariantDark
-        : AppColors.surfaceLight;
-    final textStrong = isDark
-        ? AppColors.onSurfaceDark
-        : AppColors.onSurfaceLight;
-    final textMuted = isDark
-        ? AppColors.onSurfaceVariantDark
-        : AppColors.onSurfaceVariantLight;
-
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
-        ),
-        title: Text(
-          'Terms of Service',
-          style: TextStyle(
-            fontFamily: 'Nunito',
-            fontWeight: FontWeight.w900,
-            color: textStrong,
-          ),
-        ),
-        content: SingleChildScrollView(
-          child: Text(
-            'By using TouchGrass you agree to the following terms:\n\n'
-            '1. Use the app for lawful purposes only. Do not submit photos that depict illegal activity, harassment, or content inappropriate for all ages.\n\n'
-            '2. Your account is personal and non-transferable. You are responsible for maintaining the security of your credentials.\n\n'
-            '3. Challenge photos you submit are stored to show in your Journal. They are not used to train or improve AI, and we will never share identifiable photos publicly without your consent.\n\n'
-            '4. We reserve the right to suspend accounts that violate these terms or abuse the challenge system.\n\n'
-            '5. The app is provided "as is" without warranty of any kind. We are not liable for any loss of data or service interruptions.\n\n'
-            '6. These terms may be updated at any time. Continued use of the app after changes constitutes acceptance.\n\n'
-            'Last updated: January 2026',
-            style: TextStyle(
-              fontFamily: 'Nunito',
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              height: 1.5,
-              color: textMuted,
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text(
-              'Got it',
-              style: TextStyle(
-                fontFamily: 'Nunito',
-                fontWeight: FontWeight.w700,
-                color: AppColors.forestGreenLight,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   /// `openAppSettings()` has no web implementation — there's no OS-level
@@ -2293,8 +2187,13 @@ class _CategoryChip extends StatelessWidget {
   }
 }
 
-class _ToggleTile extends StatelessWidget {
-  const _ToggleTile({
+/// A Settings row with a switch. The row is one accessibility node, so a
+/// screen reader announces the switch with its title and subtitle (Phase 8:
+/// the switch used to be announced with no name).
+@visibleForTesting
+class SettingsToggleTile extends StatelessWidget {
+  const SettingsToggleTile({
+    super.key,
     required this.icon,
     required this.iconColor,
     required this.title,
@@ -2319,56 +2218,58 @@ class _ToggleTile extends StatelessWidget {
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.lg,
-        vertical: AppSpacing.md,
-      ),
-      child: Row(
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+    return MergeSemantics(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.md,
+        ),
+        child: Row(
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(7),
+                child: Icon(icon, size: 18, color: iconColor),
+              ),
             ),
-            child: Padding(
-              padding: const EdgeInsets.all(7),
-              child: Icon(icon, size: 18, color: iconColor),
-            ),
-          ),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontFamily: 'Nunito',
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: strong,
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontFamily: 'Nunito',
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: strong,
+                    ),
                   ),
-                ),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontFamily: 'Nunito',
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: muted,
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontFamily: 'Nunito',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: muted,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          Switch.adaptive(
-            value: value,
-            onChanged: onChanged,
-            activeThumbColor: AppColors.forestGreen,
-            activeTrackColor: AppColors.forestGreen.withValues(alpha: 0.4),
-          ),
-        ],
+            Switch.adaptive(
+              value: value,
+              onChanged: onChanged,
+              activeThumbColor: AppColors.forestGreen,
+              activeTrackColor: AppColors.forestGreen.withValues(alpha: 0.4),
+            ),
+          ],
+        ),
       ),
     );
   }

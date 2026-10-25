@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/constants/app_constants.dart';
 import '../core/constants/route_names.dart';
 import '../providers/connectivity_providers.dart';
 import '../providers/location_privacy_providers.dart';
@@ -61,12 +62,15 @@ class _AppShellState extends ConsumerState<AppShell> {
   /// in); doing it here instead means it fires once, contextually, inside
   /// the real app.
   Future<void> _primePermissions() async {
-    await maybeShowPermissionPrimer(
-      context,
-      PermissionPrimerKind.notifications,
-    );
-    if (!mounted) return;
-    unawaited(NotificationService().initialize());
+    // No permission is asked for reminders nobody sends (Phase 8).
+    if (AppConstants.remindersAvailable) {
+      await maybeShowPermissionPrimer(
+        context,
+        PermissionPrimerKind.notifications,
+      );
+      if (!mounted) return;
+      unawaited(NotificationService().initialize());
+    }
 
     await maybeShowPermissionPrimer(context, PermissionPrimerKind.location);
     if (!mounted) return;

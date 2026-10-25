@@ -316,6 +316,9 @@ class _AdventureTrailState extends State<_AdventureTrail> {
 
 // ── Landscape background — layered painted scene ──────────────────────────────
 
+/// How far (logical pixels) a landscape layer slides up while scrolling.
+const double _maxParallaxShift = 130;
+
 class _LandscapeBackground extends ConsumerStatefulWidget {
   const _LandscapeBackground({this.scrollOffset = 0});
   final double scrollOffset;
@@ -488,7 +491,7 @@ class _LandscapePainter extends CustomPainter {
 
   void _withShift(Canvas canvas, double dy, VoidCallback paint) {
     canvas.save();
-    canvas.translate(0, -dy.clamp(0.0, 130.0));
+    canvas.translate(0, -dy.clamp(0.0, _maxParallaxShift));
     paint();
     canvas.restore();
   }
@@ -766,9 +769,17 @@ class _LandscapePainter extends CustomPainter {
       phase2: 1.7,
       color: isDark ? const Color(0xFF122C1D) : const Color(0xFF48AC7C),
     );
-    // Rich dark strip at bottom
+    // Rich dark strip at bottom. It reaches [_maxParallaxShift] below the
+    // screen, because this layer slides up by up to that much while
+    // scrolling; otherwise pale sky bands showed at the bottom of a long
+    // trail (Phase 8, found in the browser run).
     canvas.drawRect(
-      Rect.fromLTWH(0, size.height * 0.925, size.width, size.height * 0.075),
+      Rect.fromLTWH(
+        0,
+        size.height * 0.925,
+        size.width,
+        size.height * 0.075 + _maxParallaxShift,
+      ),
       Paint()
         ..color = isDark ? const Color(0xFF0D201A) : const Color(0xFF2A6347),
     );
@@ -1652,6 +1663,14 @@ String weatherChipSemanticsLabel({
       '${weather.tempFahrenheitRounded} degrees Fahrenheit. Tap for details.';
 }
 
+/// Whether the header shows a weather chip: a real reading, or the
+/// "Location off" explanation — never an empty "unavailable" placeholder.
+@visibleForTesting
+bool showHeaderWeather({
+  required bool locationOff,
+  required WeatherModel? weather,
+}) => locationOff || weather != null;
+
 class _HeaderWeather extends ConsumerWidget {
   const _HeaderWeather();
 
@@ -1663,6 +1682,12 @@ class _HeaderWeather extends ConsumerWidget {
     final locationOff =
         ref.watch(currentUserProvider).valueOrNull?.settings.locationEnabled ==
         false;
+    // Only a real reading is shown (Phase 8 design direction): no
+    // placeholder cloud while weather is loading, denied or failed. The
+    // "Location off" chip stays, because it explains a privacy setting.
+    if (!showHeaderWeather(locationOff: locationOff, weather: weather)) {
+      return const SizedBox.shrink();
+    }
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textColor = isDark ? Colors.white : AppColors.forestGreen;
 

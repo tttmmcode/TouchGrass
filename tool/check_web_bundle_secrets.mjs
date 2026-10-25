@@ -44,7 +44,7 @@ if (fs.existsSync(secretsFile)) {
 
 // 3. Public Google API keys already committed to the repo (allowed).
 const publicKeys = new Set();
-for (const rel of ['lib/firebase_options.dart', 'web/index.html', 'web/firebase-messaging-sw.js']) {
+for (const rel of ['lib/firebase_options.dart', 'lib/firebase_options_dev.dart', 'web/index.html', 'web/firebase-messaging-sw.js']) {
   const f = path.join(repoRoot, rel);
   if (!fs.existsSync(f)) continue;
   for (const m of fs.readFileSync(f, 'utf8').matchAll(/AIza[0-9A-Za-z_-]{35}/g)) publicKeys.add(m[0]);

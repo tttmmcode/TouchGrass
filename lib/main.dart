@@ -1,18 +1,23 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'core/config/auth_emulator_probe_stub.dart'
+    if (dart.library.js_interop) 'core/config/auth_emulator_probe_web.dart';
+import 'core/config/firebase_environment.dart';
 import 'core/router/app_router.dart';
 import 'core/utils/accessibility_prefs.dart';
 import 'core/utils/secret_redaction.dart';
-import 'firebase_options.dart';
 import 'providers/auth_providers.dart';
 import 'providers/notification_providers.dart';
 import 'providers/settings_providers.dart';
@@ -31,7 +36,26 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await _initFirebase();
+  // Phase 8: the backend is chosen explicitly and checked; a missing,
+  // unknown or unsafe setting stops here instead of guessing a project.
+  final FirebaseEnv env;
+  try {
+    env = FirebaseEnvironment.current;
+    FirebaseEnvironment.optionsFor(env);
+  } on FirebaseEnvironmentError catch (e) {
+    runApp(_ConfigurationErrorApp(message: e.message));
+    return;
+  } on UnsupportedError catch (e) {
+    runApp(_ConfigurationErrorApp(message: '${e.message}'));
+    return;
+  }
+
+  try {
+    await _initFirebase(env);
+  } on FirebaseEnvironmentError catch (e) {
+    runApp(_ConfigurationErrorApp(message: e.message));
+    return;
+  }
 
   // Started only once Firebase Performance is actually available — starting
   // it earlier would throw internally (Performance isn't initialized until
@@ -83,17 +107,29 @@ Future<bool> _resolveOnboardingStatus() async {
   return prefs.getBool(kOnboardingCompleteKey) ?? false;
 }
 
-Future<void> _initFirebase() async {
+Future<void> _initFirebase(FirebaseEnv env) async {
   try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+    await Firebase.initializeApp(options: FirebaseEnvironment.optionsFor(env));
+
+    if (env == FirebaseEnv.emulator) await _connectEmulators();
+
+    if (!FirebaseEnvironment.telemetryEnabled && !kIsWeb) {
+      // Development and emulator activity never reaches production
+      // dashboards (Phase 8). AnalyticsService, PerfService and
+      // CrashReporter also no-op outside production; on mobile the native
+      // SDK would otherwise auto-collect screen views. (On web nothing
+      // touches Analytics outside AnalyticsService.)
+      try {
+        await FirebaseAnalytics.instance.setAnalyticsCollectionEnabled(false);
+      } catch (_) {} // no Analytics configured for this project
+    }
 
     // Firestore offline persistence is on by default on Android/iOS, but
     // web needs it enabled explicitly (IndexedDB-backed) — without this,
     // previously loaded data (home, journal, leaderboard, etc.) simply
-    // isn't there anymore the moment the web build goes offline.
-    if (kIsWeb) {
+    // isn't there anymore the moment the web build goes offline. Not for
+    // the emulators: a cache surviving an emulator reset shows stale data.
+    if (kIsWeb && env != FirebaseEnv.emulator) {
       try {
         FirebaseFirestore.instance.settings = const Settings(
           persistenceEnabled: true,
@@ -130,13 +166,54 @@ Future<void> _initFirebase() async {
       };
 
       await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(
-        !kDebugMode,
+        !kDebugMode && FirebaseEnvironment.telemetryEnabled,
       );
     }
+  } on FirebaseEnvironmentError {
+    rethrow;
   } catch (e) {
     debugPrint('⚠️  Firebase not configured: $e');
     debugPrint('   Run: flutterfire configure --project=<your-project-id>');
   }
+}
+
+/// Points every service at the local emulators, before any other use.
+/// Any failure stops startup: a half-connected emulator build would send
+/// requests to real services.
+Future<void> _connectEmulators() async {
+  const host = FirebaseEnvironment.emulatorHost;
+  try {
+    await FirebaseAuth.instance.useAuthEmulator(
+      host,
+      FirebaseEnvironment.authPort,
+    );
+    FirebaseFirestore.instance.useFirestoreEmulator(
+      host,
+      FirebaseEnvironment.firestorePort,
+    );
+    await FirebaseStorage.instance.useStorageEmulator(
+      host,
+      FirebaseEnvironment.storagePort,
+    );
+    FirebaseFunctions.instanceFor(
+      region: 'us-central1',
+    ).useFunctionsEmulator(host, FirebaseEnvironment.functionsPort);
+  } catch (e) {
+    throw FirebaseEnvironmentError(
+      "Couldn't connect to the emulators (${e.runtimeType}).",
+    );
+  }
+  if (!kIsWeb) return;
+  // FlutterFire swallows a failed Auth emulator connection on web; check
+  // the SDK itself (see checkAuthEmulatorConnected).
+  final usesEmulator = authUsesEmulator();
+  if (usesEmulator == false) {
+    await FirebaseAuth.instance.signOut(); // local only: clears the restore
+  }
+  FirebaseEnvironment.checkAuthEmulatorConnected(usesEmulator: usesEmulator);
+  // Never save the session, so the next load has nothing to restore before
+  // the emulator is connected. Emulator builds sign out on reload.
+  await FirebaseAuth.instance.setPersistence(Persistence.NONE);
 }
 
 class TouchGrassApp extends ConsumerWidget {
@@ -184,10 +261,77 @@ class TouchGrassApp extends ConsumerWidget {
               appHighContrast: highContrast,
             ),
           ),
-          child: child!,
+          child: _environmentBanner(wideScreenFrame(context, child!)),
         );
       },
       routerConfig: router,
+    );
+  }
+}
+
+/// The widest the app lays itself out (a large phone). TouchGrass is
+/// mobile-first: on a wider window (desktop web) its screens are shown in a
+/// centered column this wide instead of being stretched — stretched grids
+/// turned into tall, mostly empty cards (Phase 8, found in the browser run).
+const double maxAppWidth = 600;
+
+/// Centers the app in a [maxAppWidth] column on wide windows, and tells
+/// every screen its real (column) width.
+@visibleForTesting
+Widget wideScreenFrame(BuildContext context, Widget child) {
+  final media = MediaQuery.of(context);
+  if (media.size.width <= maxAppWidth) return child;
+  final dark = Theme.of(context).brightness == Brightness.dark;
+  return ColoredBox(
+    color: dark ? const Color(0xFF0E1A12) : const Color(0xFFDCEFD8),
+    child: Center(
+      child: SizedBox(
+        width: maxAppWidth,
+        child: MediaQuery(
+          data: media.copyWith(size: Size(maxAppWidth, media.size.height)),
+          child: ClipRect(child: child),
+        ),
+      ),
+    ),
+  );
+}
+
+/// Marks development and emulator builds unmistakably (Phase 8); a
+/// production build is unchanged.
+Widget _environmentBanner(Widget child) {
+  final label = FirebaseEnvironment.label;
+  if (label == null) return child;
+  return Banner(
+    message: label,
+    location: BannerLocation.topEnd,
+    color: Colors.deepOrange,
+    child: child,
+  );
+}
+
+/// Shown instead of the app when the build's Firebase environment is
+/// missing, unknown or unsafe (Phase 8). It contacts nothing.
+class _ConfigurationErrorApp extends StatelessWidget {
+  const _ConfigurationErrorApp({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              "TouchGrass can't start: this build's configuration is "
+              'invalid.\n\n$message',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
