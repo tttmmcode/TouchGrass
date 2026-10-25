@@ -43,16 +43,18 @@ abstract final class AppConstants {
   static const String defaultCaptionPrompt =
       'What did you discover on your adventure today?';
 
-  // Injected at build time: flutter run --dart-define=GEMINI_API_KEY=AIza...
-  // Do NOT hardcode a real key here — use a Cloud Function proxy in production.
-  static const String geminiApiKey = EnvironmentConfig.geminiApiKey;
-
   // ── Web push ──────────────────────────────────────────────────────────────
   // Injected at build time: flutter build web --dart-define=FCM_VAPID_KEY=...
   static const String fcmVapidKey = EnvironmentConfig.fcmVapidKey;
   static bool get fcmVapidConfigured => EnvironmentConfig.fcmVapidConfigured;
 
   // ── Challenge System ──────────────────────────────────────────────────────
+  /// Rerolls allowed per challenge document, i.e. per user per local calendar
+  /// day (the document ID is the local `yyyy-MM-dd`). Resets when the next
+  /// day's challenge document is created. Enforced server-side by
+  /// firestore.rules (`maxRerolls()`) — keep the two in sync.
+  static const int maxRerollsPerDay = 3;
+
   /// Days back we look when avoiding duplicate challenge assignments.
   static const int challengeDedupeWindowDays = 14;
 

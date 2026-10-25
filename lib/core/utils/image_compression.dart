@@ -22,11 +22,11 @@ Uint8List _compressJpeg(Uint8List bytes) {
   final rawDecoded = img.decodeImage(bytes);
   if (rawDecoded == null) return bytes;
 
-  // Physically rotate pixels to match the EXIF orientation tag before
-  // re-encoding — encodeJpg below doesn't carry the original EXIF forward,
-  // so without this a photo taken sideways/upside-down (common for the
-  // front camera) would silently lose its correct orientation.
-  final decoded = img.bakeOrientation(rawDecoded);
+  // Physically rotate pixels to match the EXIF orientation tag, then drop
+  // all EXIF: encodeJpg *does* write an image's EXIF back out, which would
+  // carry GPS coordinates into the upload (audit N-2). Uploads are also
+  // stripped centrally in StorageService.uploadCompletionPhoto.
+  final decoded = img.bakeOrientation(rawDecoded)..exif = img.ExifData();
 
   final scale = [
     1.0,

@@ -8,40 +8,40 @@ enum AchievementRarity { common, rare, epic, legendary, mythic }
 
 extension AchievementRarityX on AchievementRarity {
   String get label => switch (this) {
-        AchievementRarity.common    => 'Common',
-        AchievementRarity.rare      => 'Rare',
-        AchievementRarity.epic      => 'Epic',
-        AchievementRarity.legendary => 'Legendary',
-        AchievementRarity.mythic    => 'Mythic',
-      };
+    AchievementRarity.common => 'Common',
+    AchievementRarity.rare => 'Rare',
+    AchievementRarity.epic => 'Epic',
+    AchievementRarity.legendary => 'Legendary',
+    AchievementRarity.mythic => 'Mythic',
+  };
 
   Color get color => switch (this) {
-        AchievementRarity.common    => AppColors.rarityCommon,
-        AchievementRarity.rare      => AppColors.rarityRare,
-        AchievementRarity.epic      => AppColors.rarityEpic,
-        AchievementRarity.legendary => AppColors.rarityLegendary,
-        AchievementRarity.mythic    => AppColors.rarityMythic,
-      };
+    AchievementRarity.common => AppColors.rarityCommon,
+    AchievementRarity.rare => AppColors.rarityRare,
+    AchievementRarity.epic => AppColors.rarityEpic,
+    AchievementRarity.legendary => AppColors.rarityLegendary,
+    AchievementRarity.mythic => AppColors.rarityMythic,
+  };
 
   /// Unlocked-card glow opacity — escalates with rarity so a Common unlock
   /// stays understated while a Mythic one reads as genuinely special. Never
   /// use the same glow strength for every rarity (Part B4).
   double get glowAlpha => switch (this) {
-        AchievementRarity.common    => 0.10,
-        AchievementRarity.rare      => 0.16,
-        AchievementRarity.epic      => 0.24,
-        AchievementRarity.legendary => 0.32,
-        AchievementRarity.mythic    => 0.42,
-      };
+    AchievementRarity.common => 0.10,
+    AchievementRarity.rare => 0.16,
+    AchievementRarity.epic => 0.24,
+    AchievementRarity.legendary => 0.32,
+    AchievementRarity.mythic => 0.42,
+  };
 
   /// Unlocked-card glow blur radius, paired with [glowAlpha].
   double get glowBlurRadius => switch (this) {
-        AchievementRarity.common    => 6,
-        AchievementRarity.rare      => 8,
-        AchievementRarity.epic      => 12,
-        AchievementRarity.legendary => 16,
-        AchievementRarity.mythic    => 22,
-      };
+    AchievementRarity.common => 6,
+    AchievementRarity.rare => 8,
+    AchievementRarity.epic => 12,
+    AchievementRarity.legendary => 16,
+    AchievementRarity.mythic => 22,
+  };
 }
 
 // ── Category ──────────────────────────────────────────────────────────────────
@@ -50,18 +50,18 @@ enum AchievementCategory { explorer, consistency, progression, milestones }
 
 extension AchievementCategoryX on AchievementCategory {
   String get label => switch (this) {
-        AchievementCategory.explorer    => 'Explorer',
-        AchievementCategory.consistency => 'Consistency',
-        AchievementCategory.progression => 'Progression',
-        AchievementCategory.milestones  => 'Milestones',
-      };
+    AchievementCategory.explorer => 'Explorer',
+    AchievementCategory.consistency => 'Consistency',
+    AchievementCategory.progression => 'Progression',
+    AchievementCategory.milestones => 'Milestones',
+  };
 
   String get emoji => switch (this) {
-        AchievementCategory.explorer    => '🗺️',
-        AchievementCategory.consistency => '🔥',
-        AchievementCategory.progression => '⭐',
-        AchievementCategory.milestones  => '🏔️',
-      };
+    AchievementCategory.explorer => '🗺️',
+    AchievementCategory.consistency => '🔥',
+    AchievementCategory.progression => '⭐',
+    AchievementCategory.milestones => '🏔️',
+  };
 }
 
 // ── Definition ────────────────────────────────────────────────────────────────
@@ -245,23 +245,23 @@ class AchievementDefinition {
     required int level,
   }) {
     final double v = switch (id) {
-      'first_touch'    => totalCompletions / 1,
-      'challenges_5'   => totalCompletions / 5,
-      'challenges_10'  => totalCompletions / 10,
-      'challenges_25'  => totalCompletions / 25,
-      'challenges_50'  => totalCompletions / 50,
+      'first_touch' => totalCompletions / 1,
+      'challenges_5' => totalCompletions / 5,
+      'challenges_10' => totalCompletions / 10,
+      'challenges_25' => totalCompletions / 25,
+      'challenges_50' => totalCompletions / 50,
       'challenges_100' => totalCompletions / 100,
-      'streak_3'       => streak / 3,
-      'streak_7'       => streak / 7,
-      'streak_30'      => streak / 30,
-      'streak_100'     => streak / 100,
-      'xp_100'         => xp / 100,
-      'xp_500'         => xp / 500,
-      'xp_1000'        => xp / 1000,
-      'xp_2500'        => xp / 2500,
-      'level_5'        => level / 5,
-      'level_10'       => level / 10,
-      _                => 0.0,
+      'streak_3' => streak / 3,
+      'streak_7' => streak / 7,
+      'streak_30' => streak / 30,
+      'streak_100' => streak / 100,
+      'xp_100' => xp / 100,
+      'xp_500' => xp / 500,
+      'xp_1000' => xp / 1000,
+      'xp_2500' => xp / 2500,
+      'level_5' => level / 5,
+      'level_10' => level / 10,
+      _ => 0.0,
     };
     return v.clamp(0.0, 1.0);
   }
@@ -274,23 +274,23 @@ class AchievementDefinition {
     required int level,
   }) {
     return switch (id) {
-      'first_touch'    => '$totalCompletions / 1 challenge',
-      'challenges_5'   => '$totalCompletions / 5 challenges',
-      'challenges_10'  => '$totalCompletions / 10 challenges',
-      'challenges_25'  => '$totalCompletions / 25 challenges',
-      'challenges_50'  => '$totalCompletions / 50 challenges',
+      'first_touch' => '$totalCompletions / 1 challenge',
+      'challenges_5' => '$totalCompletions / 5 challenges',
+      'challenges_10' => '$totalCompletions / 10 challenges',
+      'challenges_25' => '$totalCompletions / 25 challenges',
+      'challenges_50' => '$totalCompletions / 50 challenges',
       'challenges_100' => '$totalCompletions / 100 challenges',
-      'streak_3'       => '$streak / 3 days',
-      'streak_7'       => '$streak / 7 days',
-      'streak_30'      => '$streak / 30 days',
-      'streak_100'     => '$streak / 100 days',
-      'xp_100'         => '$xp / 100 XP',
-      'xp_500'         => '$xp / 500 XP',
-      'xp_1000'        => '$xp / 1,000 XP',
-      'xp_2500'        => '$xp / 2,500 XP',
-      'level_5'        => 'Level $level / 5',
-      'level_10'       => 'Level $level / 10',
-      _                => '',
+      'streak_3' => '$streak / 3 days',
+      'streak_7' => '$streak / 7 days',
+      'streak_30' => '$streak / 30 days',
+      'streak_100' => '$streak / 100 days',
+      'xp_100' => '$xp / 100 XP',
+      'xp_500' => '$xp / 500 XP',
+      'xp_1000' => '$xp / 1,000 XP',
+      'xp_2500' => '$xp / 2,500 XP',
+      'level_5' => 'Level $level / 5',
+      'level_10' => 'Level $level / 10',
+      _ => '',
     };
   }
 
@@ -311,21 +311,21 @@ class AchievementDefinition {
       if (!alreadyEarned.contains(id) && condition) result.add(id);
     }
 
-    check('first_touch',    newTotalCompletions >= 1);
-    check('challenges_5',   newTotalCompletions >= 5);
-    check('challenges_10',  newTotalCompletions >= 10);
-    check('challenges_25',  newTotalCompletions >= 25);
-    check('challenges_50',  newTotalCompletions >= 50);
-    check('streak_3',       newStreak >= 3);
-    check('streak_7',       newStreak >= 7);
-    check('streak_30',      newStreak >= 30);
-    check('xp_100',         newXp >= 100);
-    check('xp_500',         newXp >= 500);
-    check('xp_1000',        newXp >= 1000);
-    check('level_5',        newLevel >= 5);
-    check('level_10',       newLevel >= 10);
-    check('xp_2500',        newXp >= 2500);
-    check('streak_100',     newStreak >= 100);
+    check('first_touch', newTotalCompletions >= 1);
+    check('challenges_5', newTotalCompletions >= 5);
+    check('challenges_10', newTotalCompletions >= 10);
+    check('challenges_25', newTotalCompletions >= 25);
+    check('challenges_50', newTotalCompletions >= 50);
+    check('streak_3', newStreak >= 3);
+    check('streak_7', newStreak >= 7);
+    check('streak_30', newStreak >= 30);
+    check('xp_100', newXp >= 100);
+    check('xp_500', newXp >= 500);
+    check('xp_1000', newXp >= 1000);
+    check('level_5', newLevel >= 5);
+    check('level_10', newLevel >= 10);
+    check('xp_2500', newXp >= 2500);
+    check('streak_100', newStreak >= 100);
     check('challenges_100', newTotalCompletions >= 100);
 
     return result;
@@ -334,7 +334,7 @@ class AchievementDefinition {
   /// Sum of [xpReward] across [ids] — the total XP a set of newly-earned
   /// achievements should credit to the user.
   static int totalXpReward(Iterable<String> ids) => ids.fold(
-        0,
-        (sum, id) => sum + catalog.firstWhere((a) => a.id == id).xpReward,
-      );
+    0,
+    (sum, id) => sum + catalog.firstWhere((a) => a.id == id).xpReward,
+  );
 }

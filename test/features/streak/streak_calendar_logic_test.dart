@@ -32,15 +32,18 @@ void main() {
       expect(state, CalendarDayState.today);
     });
 
-    test('today with a completion is completed, taking priority over today', () {
-      final state = resolveCalendarDayState(
-        day: now,
-        now: now,
-        completedDates: {dateKeyForDay(now)},
-        frozenDates: const {},
-      );
-      expect(state, CalendarDayState.completed);
-    });
+    test(
+      'today with a completion is completed, taking priority over today',
+      () {
+        final state = resolveCalendarDayState(
+          day: now,
+          now: now,
+          completedDates: {dateKeyForDay(now)},
+          frozenDates: const {},
+        );
+        expect(state, CalendarDayState.completed);
+      },
+    );
 
     test('a day after today is future', () {
       final state = resolveCalendarDayState(
@@ -53,28 +56,31 @@ void main() {
     });
 
     test(
-        'a past day with neither a completion nor a frozen-date entry is missed',
-        () {
-      final state = resolveCalendarDayState(
-        day: DateTime(2026, 3, 12),
-        now: now,
-        completedDates: const {},
-        frozenDates: const {},
-      );
-      expect(state, CalendarDayState.missed);
-    });
+      'a past day with neither a completion nor a frozen-date entry is missed',
+      () {
+        final state = resolveCalendarDayState(
+          day: DateTime(2026, 3, 12),
+          now: now,
+          completedDates: const {},
+          frozenDates: const {},
+        );
+        expect(state, CalendarDayState.missed);
+      },
+    );
 
-    test('a past day recorded in frozenDates renders as rainyDay, not missed',
-        () {
-      final frozenDay = DateTime(2026, 3, 12);
-      final state = resolveCalendarDayState(
-        day: frozenDay,
-        now: now,
-        completedDates: const {},
-        frozenDates: {dateKeyForDay(frozenDay)},
-      );
-      expect(state, CalendarDayState.rainyDay);
-    });
+    test(
+      'a past day recorded in frozenDates renders as rainyDay, not missed',
+      () {
+        final frozenDay = DateTime(2026, 3, 12);
+        final state = resolveCalendarDayState(
+          day: frozenDay,
+          now: now,
+          completedDates: const {},
+          frozenDates: {dateKeyForDay(frozenDay)},
+        );
+        expect(state, CalendarDayState.rainyDay);
+      },
+    );
 
     test('a completion takes priority over a stale frozen-date entry for the '
         'same day', () {

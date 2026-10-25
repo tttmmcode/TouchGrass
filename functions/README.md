@@ -2,6 +2,12 @@
 
 ## Status: code complete, unit-tested, NOT deployed, NOT tested against live Firebase
 
+> **Update 2026-10-17 (remediation Phases 1–2):**
+> - The Flutter client **no longer calls Gemini at all**, and AI verification is off (audit D-06). Statements below that say the app "still calls Gemini directly" are historical.
+> - `verifyChallengeCompletion` now decides the day using `lastCompletionDate` (audit D-01).
+> - A second callable, `deleteAccount`, was added; see its section below.
+> - Nothing has been deployed.
+
 This directory did not exist before this pass. `src/index.ts` is a real,
 complete implementation of `verifyChallengeCompletion` — not a stub — but it
 has never been built, deployed, or run against a live Firestore/Storage/
@@ -17,6 +23,65 @@ see "Cutting the client over" below — not done as part of this pass, because
 it would mean rewiring the core camera/verification flow without any way to
 verify it actually works, which is a bad trade against a currently-working
 system.
+
+## `deleteAccount` — server-side account deletion (audit D-04, remediation Phase 2)
+
+**Status:** the code is complete and tested, and it is **not deployed**. Deploying needs the Blaze plan and your explicit approval (see `REMEDIATION_CHECKLIST.md`, D-04).
+
+**What it does:** a callable that deletes the **caller's** account. The uid always comes from the verified ID token, never from request data. The function refuses to run unless the caller signed in within the last 5 minutes; the app re-authenticates first. It then deletes, in this order:
+1. Completion photos (`completion_photos/{uid}/…`; the trailing slash means `alice` never matches `alice2`) and the avatar.
+2. Completions, username claims, the leaderboard mirror, and feedback.
+3. `users/{uid}`, recursively, including challenges, memories and aiUsage.
+4. Finally, the Firebase Auth user.
+
+**How failures and retries behave:**
+- Every step is idempotent. After a failure, a retry resumes cleanly, and the Auth account is deleted last so the user can still sign in to retry.
+- The function returns `{deleted: true}` only after every step has succeeded. Otherwise it returns an error.
+- The app (`lib/services/account_deletion_service.dart`) shows success only after that confirmation. Until the function is deployed, the app's delete button fails closed with an honest "not deleted" message.
+
+**Tests:**
+- `npm test` runs the unit tests (request guard, sign-in freshness boundaries, Auth-step idempotency).
+- `npm run test:emulator` runs against the real Firestore, Storage and Auth emulators on a `demo-` project. It covers full cleanup, cross-user and uid-prefix isolation, idempotency, pagination past 400 docs, and partial failure followed by a retry. It needs Java 21 or newer; see `firestore-tests/README.md`.
+
+**Deploying it later (only with approval):**
+
+```
+firebase deploy --only functions:deleteAccount
+```
+
+Deploy it **by name**.
+
+**Phase 7E:** `verifyChallengeCompletion` (AI, disabled) now lives in `src/aiVerification.ts` and is **not exported** from `src/index.ts`.
+- **Why:** firebase-tools resolves every param the loaded code declares **before** applying `--only`. While the AI callable was in `index.ts`, its `GEMINI_API_KEY` secret meant even a by-name `deleteAccount` deploy would prompt for, and create, that secret, or fail.
+- **Guard:** `src/entryPoint.test.ts` fails if the entry point exports anything but `deleteAccount` or declares any param.
+- **Re-enabling AI** means re-exporting that module in a reviewed change, with its own approval.
+
+**Phase 7F:**
+- **What a deploy discovers.** The local manifest (`firebase-functions` serving `/__/functions.yaml` from this directory) lists exactly one endpoint, `deleteAccount`, with no params and no required APIs.
+- **Operator tools (`src/ops/`, never deployed).** Dry-runs take no lease and write nothing (`leaseFor`). `revocationExperiment.ts` is the scripted production experiment that proves whether removing a download token revokes its URL (`PHASE_7F_TOKEN_ROTATION_RESULTS.md`).
+
+**Phase 7G:**
+- **Operation mode.** `--mode read-only` is the default. Writes need `--execute` plus `--mode test-object-mutation` (rotation scoped with `--uid`) or `--mode production-mutation`.
+- **Exact production allowlist:** `touchgrass-today` with the `touchgrass-today.firebasestorage.app` bucket. Emulator runs must use a `demo-` project id. Half-set emulator variables and a conflicting `GCLOUD_PROJECT` are refused.
+- **Output:** a new file under `ops-out/`, never overwritten.
+- **Proof:** `src/ops/readOnlyGuarantee.test.ts` and the emulator snapshot test (`PHASE_7G_DRY_RUN_SAFETY_AUDIT.md`).
+- **Deletion marker.** `deleteAccount` writes `deletedAccounts/{uid}` (timestamps only) before deleting the profile, so `firestore.rules` can refuse a re-created profile (`PHASE_7G_ACCOUNT_DELETION_VALIDATION.md`).
+
+**Phase 7H:**
+- **Deletion marker first.** It is now written right after session revocation, before any data is deleted. `firestore.rules` refuse every client create for that uid until the marker's `expiresAt` (2 h).
+- **Local development never reaches production.** `npm run serve` and `npm run shell` use `--project demo-touchgrass-dev`, and `serve` also starts the Firestore, Storage and Auth emulators. Before 7H, `serve` ran this code against the real database.
+- **Strict test runs.** `npm test` and `npm run test:emulator` run through `../tool/strict_node_test.mjs`, because Node 22 reports a suite whose `describe()` throws as passing.
+- **Operator CLI, real-project runs:**
+  - refused before anything is contacted when no Application Default Credentials file exists;
+  - `--out` must be inside this repository's `ops-out/`, and its folder is created before any read;
+  - a read-only `photo-token-rotate` file holds no object names or uids (hashed per-photo outcomes);
+  - errors print the class and a short code only.
+
+  AC-1 steps: `PHASE_7H_AC1_RUNBOOK.md`.
+
+**Services it uses:** Cloud Functions 2nd gen, which runs on Cloud Run and is built with Cloud Build and Artifact Registry. It also uses Firestore, Cloud Storage and Firebase Auth, which the project already uses.
+
+**Estimated cost:** see `REMEDIATION_CHECKLIST.md`, D-04. At expected volumes it should fall within Blaze's no-cost quotas.
 
 ## Entitlement enforcement (Phase 12)
 
@@ -212,7 +277,7 @@ no rollback to perform yet — but for whoever does eventually flip the switch:
   client. This is exactly why step 5 is sequenced last and only after the
   server path is proven — don't reach this point without being confident.
 
-## Testing this locally (once you have Node 20 + Java 21 for the emulator)
+## Testing this locally (once you have Node 22 + Java 21 for the emulator)
 
 ```
 cd functions

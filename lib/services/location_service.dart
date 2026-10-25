@@ -35,8 +35,7 @@ LocationAccessStatus mapLocationAccessStatus({
     LocationPermission.deniedForever => LocationAccessStatus.deniedForever,
     LocationPermission.denied => LocationAccessStatus.denied,
     LocationPermission.whileInUse ||
-    LocationPermission.always =>
-      LocationAccessStatus.granted,
+    LocationPermission.always => LocationAccessStatus.granted,
     LocationPermission.unableToDetermine => LocationAccessStatus.denied,
   };
 }
@@ -98,8 +97,10 @@ class LocationService {
     required double longitude,
   }) async {
     try {
-      final placemarks = await placemarkFromCoordinates(latitude, longitude)
-          .timeout(const Duration(seconds: 8));
+      final placemarks = await placemarkFromCoordinates(
+        latitude,
+        longitude,
+      ).timeout(const Duration(seconds: 8));
       if (placemarks.isEmpty) return null;
       final p = placemarks.first;
 

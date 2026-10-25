@@ -1,29 +1,40 @@
 import 'dart:developer' as dev;
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+import '../core/constants/app_constants.dart';
 import '../core/data/challenge_seed_library.dart';
+import '../core/errors/app_exception.dart';
+import '../core/result.dart';
 import '../models/challenge_model.dart';
-import '../models/weather_model.dart';
 import '../repositories/challenge_repository.dart';
 import 'analytics_service.dart';
 import 'challenge_generation_service.dart';
-import 'location_service.dart';
-import 'weather_service.dart';
+
+/// The error [AssignmentService.rerollChallenge] throws once today's reroll
+/// budget ([AppConstants.maxRerollsPerDay]) is spent. firestore.rules
+/// enforces the same cap server-side, so the client check is only the
+/// friendly fast path, never the guard.
+const rerollLimitReachedError = DataException(
+  message:
+      "You've used all ${AppConstants.maxRerollsPerDay} rerolls for today. "
+      'A fresh challenge arrives tomorrow!',
+);
+
+/// Whether [challenge] can still be rerolled today.
+bool canReroll(ChallengeModel challenge) =>
+    !challenge.isCompleted &&
+    challenge.rerollCount < AppConstants.maxRerollsPerDay;
 
 class AssignmentService {
   const AssignmentService({
     required ChallengeRepository challengeRepository,
     required ChallengeGenerationService challengeGenerationService,
-    required WeatherService weatherService,
-    required LocationService locationService,
   }) : _repo = challengeRepository,
-       _generator = challengeGenerationService,
-       _weather = weatherService,
-       _location = locationService;
+       _generator = challengeGenerationService;
 
   final ChallengeRepository _repo;
   final ChallengeGenerationService _generator;
-  final WeatherService _weather;
-  final LocationService _location;
 
   // ── Daily challenge ────────────────────────────────────────────────────────
 
@@ -38,7 +49,7 @@ class AssignmentService {
     try {
       if (await _repo.todaysChallengeExists(userId)) return;
 
-      final challenge = await _buildChallenge(
+      final challenge = _buildChallenge(
         userId: userId,
         dayNumber: dayNumber,
         rerollCount: 0,
@@ -55,17 +66,21 @@ class AssignmentService {
     }
   }
 
-  // ── Reroll (unlimited) ─────────────────────────────────────────────────────
+  // ── Reroll (capped) ────────────────────────────────────────────────────────
 
   /// Generates a new challenge for today, replacing the existing one.
   ///
-  /// Tracks [rerollCount] and avoids repeating today's theme.
-  /// Unlimited rerolls — no cap enforced.
+  /// Tracks [rerollCount] and avoids repeating today's theme. Capped at
+  /// [AppConstants.maxRerollsPerDay] per challenge document (= per local
+  /// day); throws [rerollLimitReachedError] once the budget is spent.
   Future<void> rerollChallenge(
     String userId,
     ChallengeModel currentChallenge, {
     Set<ChallengeCategory> preferredCategories = const {},
   }) async {
+    if (!canReroll(currentChallenge)) {
+      throw rerollLimitReachedError;
+    }
     try {
       final excludedTheme = ChallengeSeedLibrary.selectSeed(
         dayNumber: currentChallenge.dayNumber,
@@ -74,7 +89,7 @@ class AssignmentService {
         preferredCategories: preferredCategories,
       ).theme;
 
-      final challenge = await _buildChallenge(
+      final challenge = _buildChallenge(
         userId: userId,
         dayNumber: currentChallenge.dayNumber,
         rerollCount: currentChallenge.rerollCount + 1,
@@ -105,8 +120,15 @@ class AssignmentService {
         challengeSeed: challenge.challengeSeed,
       );
 
-      (await _repo.saveChallenge(updated)).valueOrThrow;
+      final saved = await _repo.saveChallenge(updated);
+      if (saved case Err(:final exception)) {
+        // The rules deny a reroll past the cap (e.g. the budget was spent on
+        // another device since this screen loaded) — say so plainly.
+        if (_isPermissionDenied(exception)) throw rerollLimitReachedError;
+        throw exception;
+      }
     } catch (e, st) {
+      if (identical(e, rerollLimitReachedError)) rethrow;
       dev.log('rerollChallenge error: $e', name: 'AssignmentService');
       CrashReporter.recordError(e, st, reason: 'rerollChallenge failed');
       // RerollNotifier.reroll() has its own try/catch that surfaces this to
@@ -118,13 +140,13 @@ class AssignmentService {
 
   // ── Build ──────────────────────────────────────────────────────────────────
 
-  Future<ChallengeModel> _buildChallenge({
+  ChallengeModel _buildChallenge({
     required String userId,
     required int dayNumber,
     required int rerollCount,
     required String? excludedTheme,
     Set<ChallengeCategory> preferredCategories = const {},
-  }) async {
+  }) {
     // Pick difficulty based on day number: increases every 7 days, max hard.
     final difficulty = _difficultyForDay(dayNumber);
 
@@ -145,24 +167,19 @@ class AssignmentService {
             preferredCategories: preferredCategories,
           );
 
-    // Fetch exclusion list and weather in parallel; both are best-effort.
-    final futures = await Future.wait([
-      _repo.fetchRecentChallengeTitles(userId),
-      _fetchWeather(),
-    ]);
-    final excludedTitles = futures[0] as List<String>;
-    final weather = futures[1] as WeatherModel?;
-
     return _generator.generate(
       seed: seed,
       userId: userId,
       dayNumber: dayNumber,
-      excludedTitles: excludedTitles,
-      weather: weather,
     );
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
+
+  static bool _isPermissionDenied(AppException e) {
+    final cause = e.cause;
+    return cause is FirebaseException && cause.code == 'permission-denied';
+  }
 
   ChallengeDifficulty _difficultyForDay(int dayNumber) {
     if (dayNumber <= 7) return ChallengeDifficulty.easy;
@@ -171,22 +188,5 @@ class AssignmentService {
     return dayNumber.isEven
         ? ChallengeDifficulty.hard
         : ChallengeDifficulty.medium;
-  }
-
-  Future<WeatherModel?> _fetchWeather() async {
-    try {
-      final position = await _location.getCurrentLocation();
-      if (position == null) return null;
-      return _weather.fetchWeather(
-        latitude: position.latitude,
-        longitude: position.longitude,
-      );
-    } catch (e) {
-      dev.log(
-        'Weather fetch failed (non-critical): $e',
-        name: 'AssignmentService',
-      );
-      return null;
-    }
   }
 }

@@ -1,0 +1,219 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isValidUserWrite() {
+      let allowed = ['displayName', 'photoUrl', 'xp', 'weeklyXp', 'weeklyXpResetDate',
+                     'level', 'streak', 'longestStreak', 'totalCompletions',
+                     'totalPhotosUploaded', 'rainyDayCount', 'currentLeague',
+                     'email', 'username', 'lastActiveDate', 'achievements',
+                     'achievementTimestamps', 'settings', 'frozenDates',
+                     'fcmToken'];
+      return request.resource.data.keys().hasOnly(allowed.concat(['uid', 'createdAt']));
+    }
+
+    // ── Reward-write bounds (KNOWN_BUGS.md A1) ───────────────────────────────
+    // A direct Firestore write from any client can otherwise set xp/level/
+    // streak/currentLeague to anything, bypassing the app entirely. These
+    // bound every reward field to what a single legitimate write from
+    // UserRepository.awardCompletionRewards/buyStreakFreeze could actually
+    // produce. This is a stopgap, not a full fix — see B1 in KNOWN_BUGS.md
+    // for why the real fix (server-computed rewards) needs a backend this
+    // project doesn't have yet.
+
+    // level = floor(xp / 100) + 1 — must match
+    // AppConstants.levelForXp exactly (lib/core/constants/app_constants.dart).
+    function levelForXp(xp) {
+      return int(xp / 100) + 1;
+    }
+
+    // Must match LeagueDef.idForXp's threshold table exactly
+    // (lib/models/league_definition.dart) — 8 leagues, checked top-down.
+    function leagueForXp(xp) {
+      return xp >= 20000 ? 'aurora'
+        : xp >= 10000 ? 'sky_trail'
+        : xp >= 6000 ? 'summit'
+        : xp >= 3000 ? 'mountain'
+        : xp >= 1500 ? 'forest'
+        : xp >= 700 ? 'wildflower'
+        : xp >= 300 ? 'sprout'
+        : 'seedling';
+    }
+
+    // ── Users ─────────────────────────────────────────────────────────────────
+    // Full user documents contain private fields (email, etc.) and are only
+    // readable by their owner. Leaderboard/league queries read the
+    // `leaderboard_public` mirror below instead of this collection.
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+
+      // Allow initial document creation (new sign-up).
+      allow create: if isOwner(userId)
+        && request.resource.data.uid == userId
+        && isValidUserWrite();
+
+      // Allow limited field updates from the client, bounded so a direct
+      // Firestore write can never grant more than a single legitimate
+      // challenge completion could (see the reward-write-bounds block
+      // above and KNOWN_BUGS.md A1). XP may shrink freely — spending it
+      // (buyStreakFreeze) is a legitimate decrease — but may only grow by
+      // at most one hard-challenge reward (100) plus every achievement's
+      // xpReward unlocking at once in the worst case (the full achievement
+      // pool totals 3475 as of the 16 defined in AchievementDefinition);
+      // 4000 leaves headroom for new achievements while making "set xp to
+      // anything" impossible.
+      allow update: if isOwner(userId)
+        && isValidUserWrite()
+        && request.resource.data.xp >= 0
+        && request.resource.data.xp <= resource.data.xp + 4000
+        // level/currentLeague are only cross-checked when XP increases —
+        // that's the one path (awardCompletionRewards) that reliably
+        // computes both correctly. buyStreakFreeze decreases xp without
+        // touching level, so this must not fire on decreases.
+        && (request.resource.data.xp <= resource.data.xp
+            || (request.resource.data.level == levelForXp(request.resource.data.xp)
+                && request.resource.data.currentLeague == leagueForXp(request.resource.data.xp)))
+        && request.resource.data.weeklyXp >= 0
+        && request.resource.data.weeklyXp <= resource.data.weeklyXp + 4000
+        // Legitimate streak transitions: unchanged, +1 (consecutive day or
+        // a freeze absorbing one missed day), or reset to exactly 1.
+        && (request.resource.data.streak == resource.data.streak
+            || request.resource.data.streak == resource.data.streak + 1
+            || request.resource.data.streak == 1)
+        && (request.resource.data.longestStreak == resource.data.longestStreak
+            || request.resource.data.longestStreak == resource.data.longestStreak + 1)
+        && (request.resource.data.totalCompletions == resource.data.totalCompletions
+            || request.resource.data.totalCompletions == resource.data.totalCompletions + 1)
+        && (request.resource.data.rainyDayCount == resource.data.rainyDayCount
+            || request.resource.data.rainyDayCount == resource.data.rainyDayCount + 1)
+        // Achievement/frozen-day history may only grow, never be cleared.
+        && request.resource.data.achievements.hasAll(resource.data.achievements)
+        && request.resource.data.frozenDates.hasAll(resource.data.frozenDates);
+
+      allow delete: if false;
+    }
+
+    // ── Public leaderboard mirror ────────────────────────────────────────────
+    // Contains only the safe-to-share subset of a user's document. Any
+    // signed-in user may read it (required for leaderboard/league queries);
+    // only the owner may write, and only the allow-listed fields. Absence of
+    // a document here means that user has opted out of public leaderboards.
+    match /leaderboard_public/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId)
+        && request.resource.data.keys().hasOnly(['displayName', 'username',
+           'photoUrl', 'xp', 'weeklyXp', 'streak', 'currentLeague']);
+      allow delete: if isOwner(userId);
+    }
+
+    // ── Username registry ─────────────────────────────────────────────────────
+    // usernames/{username} — doc ID is the lowercase username, data is just
+    // {uid: <owner>}. Enforces uniqueness: a client can only claim a doc for
+    // its own uid, and only release (delete) a claim it owns. Read is open
+    // to any signed-in user since availability must be checkable before a
+    // claim exists.
+    match /usernames/{username} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid']);
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // ── Per-user challenges (subcollection) ──────────────────────────────────
+    // users/{userId}/challenges/{date} — read/write by owner only.
+    match /users/{userId}/challenges/{challengeId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // ── AI verification usage (subcollection) ────────────────────────────────
+    // users/{userId}/aiUsage/{periodKey} — server-authoritative usage
+    // counters for entitlement quota enforcement (see lib/models/entitlement.dart).
+    // Read-only to the owner (so the client can show "X of 30 used this
+    // month"); never client-writable — only a Cloud Function's Admin SDK
+    // (which bypasses these rules) may write it, so reinstalling the app or
+    // editing local state can never reset a quota.
+    match /users/{userId}/aiUsage/{periodKey} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+
+    // ── Per-user memories (subcollection) ────────────────────────────────────
+    // users/{userId}/memories/{memoryId} — owner read/write/delete only.
+    match /users/{userId}/memories/{memoryId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && request.resource.data.keys().hasAll(['userId', 'challengeId',
+           'challengeTitle', 'photoUrl', 'createdAt']);
+      // Captions may be edited after creation.
+      allow update: if isOwner(userId)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['caption', 'captionUpdatedAt']);
+      // Needed for account deletion to remove memory records.
+      allow delete: if isOwner(userId);
+    }
+
+    // ── Challenges ────────────────────────────────────────────────────────────
+    // Challenge catalogue is read-only to authenticated users.
+    // Writes only via Cloud Functions (admin SDK bypasses these rules).
+    match /challenges/{challengeId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // ── Completions ───────────────────────────────────────────────────────────
+    // Users can create their own completions; no editing or deletion.
+    match /completions/{completionId} {
+      // `resource` is null for a document that doesn't exist yet, so
+      // `resource.data.userId` must be reached only when a document is
+      // actually there — otherwise this denies the exists-check read that
+      // CompletionRepository.createCompletion's transaction does before
+      // every create (tx.get(ref)), which blocks every completion attempt,
+      // override or not, with a permission-denied that surfaces client-side
+      // as a generic "unexpected error" (KNOWN_BUGS.md A1 follow-up).
+      // Allowing the null case leaks nothing: there's no data on a
+      // nonexistent document, only "a completion doc doesn't exist at this
+      // id" — necessary for the uniqueness check to run at all.
+      allow read: if isSignedIn()
+        && (resource == null || resource.data.userId == request.auth.uid);
+
+      // The document ID must be the canonical `${uid}_${challengeId}` key
+      // (see CompletionRepository.createCompletion) — since Firestore only
+      // classifies a write as `create` when nothing exists yet at that ID,
+      // and `update`/`delete` are blocked below, this makes duplicate
+      // completions for the same day impossible to write even via a direct
+      // SDK/REST call that bypasses the app's own client-side transaction
+      // guard, not just from the app's own UI.
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && completionId == request.auth.uid + '_' + request.resource.data.challengeId
+        && request.resource.data.keys().hasAll(['userId', 'challengeId',
+           'photoUrl', 'verificationResult', 'completedAt', 'xpAwarded']);
+
+      allow update, delete: if false;
+    }
+
+    // ── Achievements ──────────────────────────────────────────────────────────
+    // Achievement catalogue is read-only; unlocked achievements are stored
+    // on the user document, not here.
+    match /achievements/{achievementId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // Deny everything else by default.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

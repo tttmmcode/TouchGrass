@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/router/app_router.dart';
 import 'core/utils/accessibility_prefs.dart';
+import 'core/utils/secret_redaction.dart';
 import 'firebase_options.dart';
 import 'providers/auth_providers.dart';
 import 'providers/notification_providers.dart';
@@ -114,11 +115,17 @@ Future<void> _initFirebase() async {
 
     // Crashlytics is unsupported on web.
     if (!kIsWeb) {
-      FlutterError.onError =
-          FirebaseCrashlytics.instance.recordFlutterFatalError;
+      // Download tokens are removed first: an image-load error names the
+      // photo's full URL, which opens the photo for anyone (Phase 7C).
+      FlutterError.onError = (details) => FirebaseCrashlytics.instance
+          .recordFlutterFatalError(redactFlutterErrorDetails(details));
 
       PlatformDispatcher.instance.onError = (error, stack) {
-        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+        FirebaseCrashlytics.instance.recordError(
+          redactErrorForReport(error),
+          stack,
+          fatal: true,
+        );
         return true;
       };
 

@@ -45,7 +45,10 @@ class ErrorRetryView extends StatelessWidget {
               const SizedBox(height: AppSpacing.lg),
               FilledButton.icon(
                 onPressed: onRetry,
-                icon: const Icon(Icons.refresh_rounded, size: AppSpacing.iconSm),
+                icon: const Icon(
+                  Icons.refresh_rounded,
+                  size: AppSpacing.iconSm,
+                ),
                 label: Text(retryLabel),
               ),
             ],

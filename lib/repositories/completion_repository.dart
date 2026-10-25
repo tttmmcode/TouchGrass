@@ -1,14 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
 
 import '../core/constants/app_constants.dart';
-import '../core/errors/app_exception.dart';
-import '../core/result.dart';
 import '../models/challenge_model.dart';
 import '../models/completion_model.dart';
 
 class CompletionRepository {
-  const CompletionRepository();
+  CompletionRepository({FirebaseFirestore? db})
+    : _db = db ?? FirebaseFirestore.instance;
+
+  final FirebaseFirestore _db;
 
   /// The canonical completion document ID for a user's challenge:
   /// `${userId}_${challengeId}` (challengeId is itself the `yyyy-MM-dd`
@@ -16,42 +16,23 @@ class CompletionRepository {
   /// across rerolls).
   ///
   /// This exact format is also encoded in `firestore.rules`'s `completions`
-  /// `allow create` rule (`completionId == request.auth.uid + '_' +
-  /// request.resource.data.challengeId`) — the two must stay in sync, since
-  /// together they're what makes duplicate completions for the same day
-  /// impossible to write, even via a direct SDK/REST call that bypasses this
-  /// repository entirely. Extracted as its own method (rather than inlined)
-  /// specifically so that contract is unit-testable.
-  @visibleForTesting
+  /// create rule (`completionId == uid + '_' + challengeId`, with
+  /// challengeId a date within ±1 day of server time) — the two must stay in
+  /// sync, since together they make duplicate completions for the same day
+  /// impossible to write, even via a direct SDK/REST call. Extracted as its
+  /// own method (rather than inlined) specifically so that contract is
+  /// unit-testable.
   static String completionDocId(String userId, String challengeId) =>
       '${userId}_$challengeId';
 
-  /// Creates a completion for [userId]/[challengeId].
+  /// Builds the completion for [userId]/[challengeId] without writing it.
   ///
-  /// Uses [completionDocId] so two concurrent submissions for the same
-  /// day's challenge can never both succeed — the second always fails with
-  /// a friendly [DataException] instead of creating a duplicate completion
-  /// (and therefore duplicate XP/streak/achievement awards downstream).
-  ///
-  /// Deliberately does a plain `.set()` rather than a `runTransaction`
-  /// read-then-write. Firestore itself already atomically classifies a
-  /// `.set()` on a path with no existing document as a `create` and one on
-  /// an existing document as an `update` — `firestore.rules`'s `completions`
-  /// match block allows the former (for the doc's own future owner) and
-  /// denies the latter outright, so the server enforces "only once" without
-  /// any client-side read-check-write race window needed.
-  ///
-  /// A prior version of this method used `runTransaction` for the same
-  /// exists-check — on Flutter Web, `cloud_firestore_web`'s `runTransaction`
-  /// has a known js_interop gap where an exception thrown inside the
-  /// transaction closure doesn't cross back into Dart as a typed exception,
-  /// surfacing instead as a generic, opaque JS error ("Dart exception
-  /// thrown from converted Future...") that made every completion attempt
-  /// fail with no diagnosable cause. See KNOWN_BUGS.md A1 for the full
-  /// trace. Mobile builds never hit that bug, but this plain-`.set()` form
-  /// works identically and correctly everywhere, so there's no reason to
-  /// keep two code paths.
-  Future<Result<CompletionModel>> createCompletion({
+  /// The write happens in [UserRepository.commitCompletion], in the same
+  /// atomic batch as the reward update: firestore.rules only accept an XP
+  /// increase when it is committed together with a brand-new completion
+  /// document (audit D-02), and completions are create-only, so a retried or
+  /// duplicated submission can never be rewarded twice.
+  CompletionModel buildCompletion({
     required String userId,
     required String challengeId,
     required String challengeTitle,
@@ -64,46 +45,47 @@ class CompletionRepository {
     DateTime? assignmentDate,
     GeoPoint? location,
     String? caption,
-  }) => guardAsync(() async {
-    final now = DateTime.now();
-    final docId = completionDocId(userId, challengeId);
+  }) => CompletionModel(
+    id: completionDocId(userId, challengeId),
+    userId: userId,
+    challengeId: challengeId,
+    challengeTitle: challengeTitle,
+    challengeEmoji: challengeEmoji,
+    challengeCategory: challengeCategory,
+    photoUrl: photoUrl,
+    verificationResult: verificationResult,
+    completedAt: DateTime.now(),
+    xpAwarded: xpAwarded,
+    overrideUsed: overrideUsed,
+    assignmentDate: assignmentDate,
+    location: location,
+    caption: caption,
+  );
 
-    final completion = CompletionModel(
-      id: docId,
-      userId: userId,
-      challengeId: challengeId,
-      challengeTitle: challengeTitle,
-      challengeEmoji: challengeEmoji,
-      challengeCategory: challengeCategory,
-      photoUrl: photoUrl,
-      verificationResult: verificationResult,
-      completedAt: now,
-      xpAwarded: xpAwarded,
-      overrideUsed: overrideUsed,
-      assignmentDate: assignmentDate,
-      location: location,
-      caption: caption,
-    );
-
-    final ref = FirebaseFirestore.instance
+  /// Whether the completion document already exists — used to explain a
+  /// rejected commit as "already completed" rather than a generic error.
+  /// Reading a nonexistent completion is allowed by the rules.
+  Future<bool> exists(String completionId) async {
+    final snap = await _db
         .collection(AppConstants.colCompletions)
-        .doc(docId);
+        .doc(completionId)
+        .get();
+    return snap.exists;
+  }
 
-    try {
-      await ref.set(completion.toFirestore());
-    } on FirebaseException catch (e) {
-      // The only way this specific, correctly-shaped, self-owned write
-      // hits `permission-denied` is the doc already existing (`allow
-      // update: if false`) — every other `allow create` condition is
-      // satisfied by construction above.
-      if (e.code == 'permission-denied') {
-        throw const DataException(
-          message: "You've already completed today's challenge.",
-        );
-      }
-      rethrow;
-    }
-
-    return completion;
-  });
+  /// `completedAt` of [userId]'s most recent completion, or null if they
+  /// have none. Used once per legacy account (no `lastCompletionDate` yet)
+  /// to recover the real last-completion day without a data migration.
+  /// Served by the existing (userId ASC, completedAt DESC) index.
+  Future<DateTime?> latestCompletedAt(String userId) async {
+    final snap = await _db
+        .collection(AppConstants.colCompletions)
+        .where('userId', isEqualTo: userId)
+        .orderBy('completedAt', descending: true)
+        .limit(1)
+        .get();
+    if (snap.docs.isEmpty) return null;
+    final ts = snap.docs.first.data()['completedAt'];
+    return ts is Timestamp ? ts.toDate().toUtc() : null;
+  }
 }

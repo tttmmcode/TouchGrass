@@ -31,8 +31,7 @@ void main() {
       expect(AppConstants.levelForXp(500), 6);
     });
 
-    test('large XP values scale linearly with no overflow/rounding drift',
-        () {
+    test('large XP values scale linearly with no overflow/rounding drift', () {
       expect(AppConstants.levelForXp(999999), 10000);
     });
   });
@@ -46,8 +45,7 @@ void main() {
       expect(AppConstants.levelProgress(99), closeTo(0.99, 0.0001));
     });
 
-    test('100 XP resets to 0% — the start of level 2, not 100% of level 1',
-        () {
+    test('100 XP resets to 0% — the start of level 2, not 100% of level 1', () {
       expect(AppConstants.levelProgress(100), 0.0);
     });
 
@@ -65,8 +63,7 @@ void main() {
       expect(AppConstants.xpThresholdForLevel(2), 100);
     });
 
-    test('level 6 requires 500 XP — consistent with levelForXp(500) == 6',
-        () {
+    test('level 6 requires 500 XP — consistent with levelForXp(500) == 6', () {
       expect(AppConstants.xpThresholdForLevel(6), 500);
       expect(AppConstants.levelForXp(500), 6);
     });

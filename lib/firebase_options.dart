@@ -64,7 +64,8 @@ class DefaultFirebaseOptions {
     messagingSenderId: '760620662222',
     projectId: 'touchgrass-today',
     storageBucket: 'touchgrass-today.firebasestorage.app',
-    iosClientId: '760620662222-tk26k1ak9an2qpnq13au080sfihj66dq.apps.googleusercontent.com',
+    iosClientId:
+        '760620662222-tk26k1ak9an2qpnq13au080sfihj66dq.apps.googleusercontent.com',
     iosBundleId: 'com.example.touchgrass',
   );
 
@@ -74,7 +75,8 @@ class DefaultFirebaseOptions {
     messagingSenderId: '760620662222',
     projectId: 'touchgrass-today',
     storageBucket: 'touchgrass-today.firebasestorage.app',
-    iosClientId: '760620662222-tk26k1ak9an2qpnq13au080sfihj66dq.apps.googleusercontent.com',
+    iosClientId:
+        '760620662222-tk26k1ak9an2qpnq13au080sfihj66dq.apps.googleusercontent.com',
     iosBundleId: 'com.example.touchgrass',
   );
 

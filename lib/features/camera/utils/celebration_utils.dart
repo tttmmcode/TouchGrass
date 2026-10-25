@@ -26,8 +26,9 @@ CelebrationTier resolveCelebrationTier({
   required List<String> newAchievements,
   required bool leagueChanged,
 }) {
-  final hasMajorMilestone =
-      newAchievements.any(majorMilestoneAchievementIds.contains);
+  final hasMajorMilestone = newAchievements.any(
+    majorMilestoneAchievementIds.contains,
+  );
   if (hasMajorMilestone) return CelebrationTier.epic;
   if (leveledUp || leagueChanged) return CelebrationTier.strong;
   if (newAchievements.isNotEmpty) return CelebrationTier.standard;
@@ -38,19 +39,19 @@ CelebrationTier resolveCelebrationTier({
 /// completions get a subtle burst" rule (Part C11) can't silently drift into
 /// "same big burst as everything else" as the widget evolves.
 int confettiParticleCountFor(CelebrationTier tier) => switch (tier) {
-      CelebrationTier.subtle => 14,
-      CelebrationTier.standard => 26,
-      CelebrationTier.strong => 42,
-      CelebrationTier.epic => 60,
-    };
+  CelebrationTier.subtle => 14,
+  CelebrationTier.standard => 26,
+  CelebrationTier.strong => 42,
+  CelebrationTier.epic => 60,
+};
 
 /// Confetti burst duration for [tier], in seconds.
 int confettiDurationSecondsFor(CelebrationTier tier) => switch (tier) {
-      CelebrationTier.subtle => 2,
-      CelebrationTier.standard => 3,
-      CelebrationTier.strong => 4,
-      CelebrationTier.epic => 6,
-    };
+  CelebrationTier.subtle => 2,
+  CelebrationTier.standard => 3,
+  CelebrationTier.strong => 4,
+  CelebrationTier.epic => 6,
+};
 
 /// The streak line shown on the celebration screen. Never claims the streak
 /// "extended" unless it actually grew versus the last known value, and

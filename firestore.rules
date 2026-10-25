@@ -1,5 +1,15 @@
 rules_version = '2';
 
+// TouchGrass Firestore security rules.
+//
+// Without a deployed backend (no Cloud Functions — see functions/README.md),
+// these rules are the only trusted enforcement layer, so every client write
+// to a reward-bearing document must be a provably legitimate transition.
+// Each rule below is covered by allow + deny cases in firestore-tests/
+// (run: cd firestore-tests && npm test). Formulas here must stay in sync
+// with lib/core/constants/app_constants.dart, lib/models/league_definition.dart,
+// lib/models/achievement_definition.dart and functions/src/rewards.ts.
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -12,33 +22,66 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
-    function isValidUserWrite() {
-      let allowed = ['displayName', 'photoUrl', 'xp', 'weeklyXp', 'weeklyXpResetDate',
-                     'level', 'streak', 'longestStreak', 'totalCompletions',
-                     'totalPhotosUploaded', 'rainyDayCount', 'currentLeague',
-                     'email', 'username', 'lastActiveDate', 'achievements',
-                     'achievementTimestamps', 'settings', 'frozenDates',
-                     'fcmToken'];
-      return request.resource.data.keys().hasOnly(allowed.concat(['uid', 'createdAt']));
+    function docPath(collection, id) {
+      return /databases/$(database)/documents/$(collection)/$(id);
     }
 
-    // ── Reward-write bounds (KNOWN_BUGS.md A1) ───────────────────────────────
-    // A direct Firestore write from any client can otherwise set xp/level/
-    // streak/currentLeague to anything, bypassing the app entirely. These
-    // bound every reward field to what a single legitimate write from
-    // UserRepository.awardCompletionRewards/buyStreakFreeze could actually
-    // produce. This is a stopgap, not a full fix — see B1 in KNOWN_BUGS.md
-    // for why the real fix (server-computed rewards) needs a backend this
-    // project doesn't have yet.
+    // The caller's account has not been deleted (Phase 7H). deleteAccount
+    // writes deletedAccounts/{uid} (server-only) before it deletes anything,
+    // and another device can keep the deleted account's ID token for up to
+    // an hour; without this check that device could still create daily
+    // challenges, Journal entries, completions, feedback or a username
+    // claim that nothing would ever delete. One extra read per create.
+    // The marker counts only until its expiresAt (2 h — longer than any ID
+    // token lives), so an account whose deletion failed and was never
+    // retried isn't blocked forever if the marker is never cleaned up.
+    function accountNotDeleted() {
+      let marker = docPath('deletedAccounts', request.auth.uid);
+      return !exists(marker) || get(marker).data.expiresAt <= request.time;
+    }
 
-    // level = floor(xp / 100) + 1 — must match
-    // AppConstants.levelForXp exactly (lib/core/constants/app_constants.dart).
+    // Keys this write actually changes (added, removed or modified).
+    function changed() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    // An update that only DELETES fields named in [keys]: at least one is
+    // removed, nothing else changes, and none of [keys] remains afterwards —
+    // so no value can be added or rewritten this way.
+    function removesOnly(keys) {
+      return changed().size() > 0
+        && changed().hasOnly(keys)
+        && !request.resource.data.keys().hasAny(keys);
+    }
+
+    // ── Calendar dates ───────────────────────────────────────────────────────
+    // Challenge and completion IDs are the user's local calendar date
+    // (`yyyy-MM-dd`). Rules only know UTC, so a key is accepted when it is
+    // the UTC date of yesterday, today or tomorrow — which covers every real
+    // UTC offset (−12h … +14h) while making back/forward-dated completions
+    // impossible. One date key = one completion, ever.
+    function pad2(n) {
+      return n < 10 ? '0' + string(n) : string(n);
+    }
+
+    function dateKeyOf(t) {
+      return string(t.year()) + '-' + pad2(t.month()) + '-' + pad2(t.day());
+    }
+
+    function isNearToday(key) {
+      return key is string
+        && (key == dateKeyOf(request.time)
+          || key == dateKeyOf(request.time - duration.value(1, 'd'))
+          || key == dateKeyOf(request.time + duration.value(1, 'd')));
+    }
+
+    // ── Game formulas ────────────────────────────────────────────────────────
+    // level = floor(xp / 100) + 1 — AppConstants.levelForXp.
     function levelForXp(xp) {
       return int(xp / 100) + 1;
     }
 
-    // Must match LeagueDef.idForXp's threshold table exactly
-    // (lib/models/league_definition.dart) — 8 leagues, checked top-down.
+    // LeagueDef.idForXp — 8 leagues, checked top-down.
     function leagueForXp(xp) {
       return xp >= 20000 ? 'aurora'
         : xp >= 10000 ? 'sky_trail'
@@ -50,165 +93,566 @@ service cloud.firestore {
         : 'seedling';
     }
 
-    // ── Users ─────────────────────────────────────────────────────────────────
-    // Full user documents contain private fields (email, etc.) and are only
-    // readable by their owner. Leaderboard/league queries read the
-    // `leaderboard_public` mirror below instead of this collection.
+    // ChallengeDifficulty.xpReward.
+    function xpForDifficulty(difficulty) {
+      return difficulty == 'easy' ? 25
+        : difficulty == 'medium' ? 50
+        : difficulty == 'hard' ? 100
+        : -1;
+    }
+
+    // Initial Rainy Day (streak freeze) balance — AppConstants.rainyDaysInitial.
+    function initialFreezes() {
+      return 3;
+    }
+
+    // XP cost of one streak freeze — AppConstants.streakFreezeCostXp.
+    function freezeCostXp() {
+      return 200;
+    }
+
+    // Max rerolls per challenge document (= per user per local day).
+    // AppConstants.maxRerollsPerDay.
+    function maxRerolls() {
+      return 3;
+    }
+
+    // ── Achievements (AchievementDefinition.catalog) ─────────────────────────
+    function achievementIds() {
+      return ['first_touch', 'challenges_5', 'challenges_10', 'challenges_25',
+              'challenges_50', 'challenges_100', 'streak_3', 'streak_7',
+              'streak_30', 'streak_100', 'xp_100', 'xp_500', 'xp_1000',
+              'xp_2500', 'level_5', 'level_10'];
+    }
+
+    // Sum of xpReward for the newly added achievement IDs in [a].
+    function achievementBonus(a) {
+      return (a.hasAny(['first_touch']) ? 25 : 0)
+        + (a.hasAny(['challenges_5']) ? 50 : 0)
+        + (a.hasAny(['challenges_10']) ? 100 : 0)
+        + (a.hasAny(['challenges_25']) ? 150 : 0)
+        + (a.hasAny(['challenges_50']) ? 200 : 0)
+        + (a.hasAny(['challenges_100']) ? 500 : 0)
+        + (a.hasAny(['streak_3']) ? 50 : 0)
+        + (a.hasAny(['streak_7']) ? 100 : 0)
+        + (a.hasAny(['streak_30']) ? 300 : 0)
+        + (a.hasAny(['streak_100']) ? 1000 : 0)
+        + (a.hasAny(['xp_100']) ? 25 : 0)
+        + (a.hasAny(['xp_500']) ? 75 : 0)
+        + (a.hasAny(['xp_1000']) ? 150 : 0)
+        + (a.hasAny(['xp_2500']) ? 400 : 0)
+        + (a.hasAny(['level_5']) ? 100 : 0)
+        + (a.hasAny(['level_10']) ? 250 : 0);
+    }
+
+    // Every newly added achievement must actually be earned, evaluated
+    // exactly as AchievementDefinition.computeNewlyEarned does: against the
+    // pre-bonus XP/level and the post-completion streak/total.
+    function achievementsEarned(a, baseXp, streak, total) {
+      let lvl = levelForXp(baseXp);
+      return a.hasOnly(achievementIds())
+        && (!a.hasAny(['first_touch']) || total >= 1)
+        && (!a.hasAny(['challenges_5']) || total >= 5)
+        && (!a.hasAny(['challenges_10']) || total >= 10)
+        && (!a.hasAny(['challenges_25']) || total >= 25)
+        && (!a.hasAny(['challenges_50']) || total >= 50)
+        && (!a.hasAny(['challenges_100']) || total >= 100)
+        && (!a.hasAny(['streak_3']) || streak >= 3)
+        && (!a.hasAny(['streak_7']) || streak >= 7)
+        && (!a.hasAny(['streak_30']) || streak >= 30)
+        && (!a.hasAny(['streak_100']) || streak >= 100)
+        && (!a.hasAny(['xp_100']) || baseXp >= 100)
+        && (!a.hasAny(['xp_500']) || baseXp >= 500)
+        && (!a.hasAny(['xp_1000']) || baseXp >= 1000)
+        && (!a.hasAny(['xp_2500']) || baseXp >= 2500)
+        && (!a.hasAny(['level_5']) || lvl >= 5)
+        && (!a.hasAny(['level_10']) || lvl >= 10);
+    }
+
+    // ── Users ────────────────────────────────────────────────────────────────
+    // Private: readable by the owner only. Leaderboards read the
+    // `leaderboard_public` mirror instead.
+    //
+    // Every update must be exactly ONE of three shapes — a profile edit, a
+    // streak-freeze purchase, or a completion reward — and none of them may
+    // touch server-owned fields. A write that fits no shape is denied.
     match /users/{userId} {
       allow read: if isOwner(userId);
-
-      // Allow initial document creation (new sign-up).
-      allow create: if isOwner(userId)
-        && request.resource.data.uid == userId
-        && isValidUserWrite();
-
-      // Allow limited field updates from the client, bounded so a direct
-      // Firestore write can never grant more than a single legitimate
-      // challenge completion could (see the reward-write-bounds block
-      // above and KNOWN_BUGS.md A1). XP may shrink freely — spending it
-      // (buyStreakFreeze) is a legitimate decrease — but may only grow by
-      // at most one hard-challenge reward (100) plus every achievement's
-      // xpReward unlocking at once in the worst case (the full achievement
-      // pool totals 3475 as of the 16 defined in AchievementDefinition);
-      // 4000 leaves headroom for new achievements while making "set xp to
-      // anything" impossible.
+      // Never re-create a deleted account's profile (Phase 7G): another
+      // device can hold the deleted account's ID token for up to an hour,
+      // and storage.rules let a uid upload only while its profile exists.
+      // deleteAccount writes deletedAccounts/{uid} (server-only) before it
+      // deletes the profile. One extra read, at sign-up only.
+      allow create: if isOwner(userId) && isValidNewProfile(userId)
+        && accountNotDeleted();
       allow update: if isOwner(userId)
-        && isValidUserWrite()
-        && request.resource.data.xp >= 0
-        && request.resource.data.xp <= resource.data.xp + 4000
-        // level/currentLeague are only cross-checked when XP increases —
-        // that's the one path (awardCompletionRewards) that reliably
-        // computes both correctly. buyStreakFreeze decreases xp without
-        // touching level, so this must not fire on decreases.
-        && (request.resource.data.xp <= resource.data.xp
-            || (request.resource.data.level == levelForXp(request.resource.data.xp)
-                && request.resource.data.currentLeague == leagueForXp(request.resource.data.xp)))
-        && request.resource.data.weeklyXp >= 0
-        && request.resource.data.weeklyXp <= resource.data.weeklyXp + 4000
-        // Legitimate streak transitions: unchanged, +1 (consecutive day or
-        // a freeze absorbing one missed day), or reset to exactly 1.
-        && (request.resource.data.streak == resource.data.streak
-            || request.resource.data.streak == resource.data.streak + 1
-            || request.resource.data.streak == 1)
-        && (request.resource.data.longestStreak == resource.data.longestStreak
-            || request.resource.data.longestStreak == resource.data.longestStreak + 1)
-        && (request.resource.data.totalCompletions == resource.data.totalCompletions
-            || request.resource.data.totalCompletions == resource.data.totalCompletions + 1)
-        && (request.resource.data.rainyDayCount == resource.data.rainyDayCount
-            || request.resource.data.rainyDayCount == resource.data.rainyDayCount + 1)
-        // Achievement/frozen-day history may only grow, never be cleared.
-        && request.resource.data.achievements.hasAll(resource.data.achievements)
-        && request.resource.data.frozenDates.hasAll(resource.data.frozenDates);
-
+        && !changed().hasAny(['uid', 'email', 'createdAt', 'entitlementTier'])
+        && (isProfileEdit(userId) || isFreezePurchase() || isCompletionReward(userId));
+      // Account deletion (KNOWN_BUGS / audit D-04) is redesigned in Phase 2.
       allow delete: if false;
     }
 
+    function settingsKeys() {
+      return ['notificationsEnabled', 'streakFreezesOwned', 'locationEnabled',
+              'profilePublic', 'companionType', 'preferredCategories'];
+    }
+
+    function validEditableSettings(s) {
+      return s.keys().hasOnly(settingsKeys())
+        && (!('notificationsEnabled' in s) || s.notificationsEnabled is bool)
+        && (!('locationEnabled' in s) || s.locationEnabled is bool)
+        && (!('profilePublic' in s) || s.profilePublic is bool)
+        && (!('companionType' in s) || s.companionType in ['leafy', 'pebble', 'sunny', 'sprout'])
+        && (!('preferredCategories' in s)
+            || (s.preferredCategories is list && s.preferredCategories.size() <= 20));
+    }
+
+    function settingsChanged() {
+      return request.resource.data.get('settings', {})
+        .diff(resource.data.get('settings', {})).affectedKeys();
+    }
+
+    // A profile photo (shown to every signed-in user on the leaderboard) may
+    // only be (audit N-6): none; the caller's own avatar in this app's
+    // Storage bucket (Settings → change photo); or the photo their sign-in
+    // provider put in their verified ID token (`picture`, Google sign-in).
+    // Arbitrary URLs would make every viewer's device fetch from a server
+    // the author controls. The bucket name must match firebase_options.dart
+    // (`storageBucket`); change it here for another Firebase project.
+    function isAllowedProfilePhoto(url, uid) {
+      return url == null
+        || (url is string && url.size() > 0 && url.size() <= 2048
+            && (url.matches('https://firebasestorage[.]googleapis[.]com/v0/b/'
+                  + 'touchgrass-today[.]firebasestorage[.]app/o/user_avatars%2F'
+                  + uid + '[.]png([?][^/]*)?')
+                || url == request.auth.token.get('picture', null)));
+    }
+
+    // The caller holds the username claim (see `usernames` below).
+    function ownsUsername(name, uid) {
+      return name is string
+        && name.matches('[a-z0-9_]{1,100}')
+        && existsAfter(docPath('usernames', name))
+        && getAfter(docPath('usernames', name)).data.uid == uid;
+    }
+
+    // A brand-new account: every progress field starts at its default and
+    // both timestamps are the server's clock (no backdated Member Since).
+    function isValidNewProfile(userId) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['uid', 'email', 'username', 'displayName', 'photoUrl',
+             'xp', 'weeklyXp', 'weeklyXpResetDate', 'level', 'streak', 'longestStreak',
+             'totalCompletions', 'totalPhotosUploaded', 'rainyDayCount', 'currentLeague',
+             'createdAt', 'lastActiveDate', 'achievements', 'settings', 'frozenDates'])
+        && d.uid == userId
+        && d.email == request.auth.token.get('email', '')
+        && ownsUsername(d.username, userId)
+        && d.displayName is string && d.displayName.size() <= 100
+        && isAllowedProfilePhoto(d.get('photoUrl', null), userId)
+        && d.xp == 0 && d.weeklyXp == 0 && d.level == 1
+        && d.streak == 0 && d.longestStreak == 0
+        && d.totalCompletions == 0 && d.totalPhotosUploaded == 0 && d.rainyDayCount == 0
+        && d.currentLeague == 'seedling'
+        && d.achievements == [] && d.frozenDates == []
+        && d.weeklyXpResetDate is timestamp
+        && d.createdAt == request.time && d.lastActiveDate == request.time
+        && validEditableSettings(d.settings)
+        && d.settings.get('streakFreezesOwned', -1) == initialFreezes();
+    }
+
+    // Profile/settings edits — no progress or reward fields.
+    function isProfileEdit(userId) {
+      let d = request.resource.data;
+      let c = changed();
+      return c.hasOnly(['displayName', 'photoUrl', 'totalPhotosUploaded', 'username',
+                        'lastActiveDate', 'fcmToken', 'settings'])
+        && (!c.hasAny(['displayName'])
+            || (d.displayName is string && d.displayName.size() > 0 && d.displayName.size() <= 100))
+        && (!c.hasAny(['photoUrl']) || isAllowedProfilePhoto(d.get('photoUrl', null), userId))
+        && (!c.hasAny(['totalPhotosUploaded'])
+            || d.totalPhotosUploaded == resource.data.get('totalPhotosUploaded', 0) + 1)
+        && (!c.hasAny(['username']) || ownsUsername(d.username, userId))
+        && (!c.hasAny(['lastActiveDate']) || d.lastActiveDate == request.time)
+        && (!c.hasAny(['fcmToken']) || (d.fcmToken is string && d.fcmToken.size() <= 4096))
+        && (!c.hasAny(['settings'])
+            || (!settingsChanged().hasAny(['streakFreezesOwned'])
+                && validEditableSettings(d.settings)));
+    }
+
+    // UserRepository.buyStreakFreeze: exactly one freeze for exactly
+    // freezeCostXp() XP, with level/league recomputed.
+    function isFreezePurchase() {
+      let d = request.resource.data;
+      let oldXp = resource.data.get('xp', 0);
+      let oldFreezes = resource.data.get('settings', {}).get('streakFreezesOwned', 0);
+      return changed().hasOnly(['xp', 'level', 'currentLeague', 'settings'])
+        && settingsChanged().hasOnly(['streakFreezesOwned'])
+        && oldXp >= freezeCostXp()
+        && d.xp == oldXp - freezeCostXp()
+        && d.settings.streakFreezesOwned == oldFreezes + 1
+        && d.level == levelForXp(d.xp)
+        && d.currentLeague == leagueForXp(d.xp);
+    }
+
+    // A completion reward must be committed in the SAME batch that creates a
+    // brand-new completion document (named by `lastCompletionId`), and every
+    // reward field must be the transition UserRepository computes for it:
+    //   XP      = old + the completion's xpAwarded (the XP actually granted:
+    //             0 for a same-day resubmission) + exact achievement bonus
+    //   streak  = +1, reset to 1, or held by consuming exactly one Rainy Day
+    //   freezes = old − consumed + milestone bonus (7-day: +1, 30-day: +2)
+    // Because completions are create-only and one-per-date-key (see
+    // `completions`), XP can only ever grow at the legitimate daily rate.
+    function isCompletionReward(userId) {
+      let c = changed();
+      let cid = request.resource.data.get('lastCompletionId', '');
+      return c.hasOnly(['xp', 'weeklyXp', 'weeklyXpResetDate', 'level', 'streak',
+                        'longestStreak', 'totalCompletions', 'rainyDayCount',
+                        'currentLeague', 'lastActiveDate', 'achievements',
+                        'achievementTimestamps', 'settings', 'frozenDates',
+                        'lastCompletionId', 'lastCompletionDate'])
+        && c.hasAny(['lastCompletionId'])
+        // Always stamped: the sole input to "already completed today?" (D-01).
+        && c.hasAny(['lastCompletionDate'])
+        && cid is string && cid.matches('[A-Za-z0-9_-]{1,200}')
+        && !exists(docPath('completions', cid))
+        && existsAfter(docPath('completions', cid))
+        && getAfter(docPath('completions', cid)).data.userId == userId
+        && isValidRewardTransition(getAfter(docPath('completions', cid)).data.xpAwarded);
+    }
+
+    // (Split into small helpers: the rules language allows at most 10
+    // local bindings per function.)
+    function isValidRewardTransition(award) {
+      let d = request.resource.data;
+      let o = resource.data;
+      let added = d.get('achievements', []).toSet().difference(o.get('achievements', []).toSet());
+      let bonus = achievementBonus(added);
+      let baseDelta = d.xp - o.get('xp', 0) - bonus;
+      return baseDelta == award
+        && isValidAchievementChange(d, o, added, bonus)
+        // Level/league always derived from total XP.
+        && d.level == levelForXp(d.xp)
+        && d.currentLeague == leagueForXp(d.xp)
+        // Completion count moves with the XP award.
+        && d.get('totalCompletions', 0) == o.get('totalCompletions', 0) + (baseDelta > 0 ? 1 : 0)
+        && isValidStreakChange(d, o, baseDelta > 0)
+        && isValidWeeklyXp(d, o, baseDelta, bonus)
+        // Timestamps are always the server's clock.
+        && d.lastActiveDate == request.time
+        && d.lastCompletionDate == request.time;
+    }
+
+    // Achievements only grow, are genuinely earned, and their timestamps
+    // only cover the newly added IDs.
+    function isValidAchievementChange(d, o, added, bonus) {
+      return d.get('achievements', []).toSet().hasAll(o.get('achievements', []))
+        && achievementsEarned(added, d.xp - bonus, d.get('streak', 0), d.get('totalCompletions', 0))
+        && (!changed().hasAny(['achievementTimestamps'])
+            || d.achievementTimestamps.diff(o.get('achievementTimestamps', {}))
+                 .affectedKeys().difference(added).size() == 0);
+    }
+
+    // resolveStreakOutcome: a new day either extends the streak (+1), resets
+    // it to 1, or holds it by consuming exactly one Rainy Day; a same-day
+    // resubmission changes nothing.
+    function isValidStreakChange(d, o, isNewDay) {
+      let oldStreak = o.get('streak', 0);
+      let newStreak = d.get('streak', 0);
+      let oldLongest = o.get('longestStreak', 0);
+      let consumed = d.get('rainyDayCount', 0) - o.get('rainyDayCount', 0);
+      return (consumed == 0 || consumed == 1)
+        && (isNewDay
+            ? ((consumed == 1 && newStreak == oldStreak)
+               || (consumed == 0 && (newStreak == oldStreak + 1 || newStreak == 1)))
+            : (newStreak == oldStreak && consumed == 0))
+        && d.get('longestStreak', 0) == (newStreak > oldLongest ? newStreak : oldLongest)
+        && isValidFreezeChange(d, o, consumed, newStreak != oldStreak, newStreak);
+    }
+
+    // Rainy Days: old − consumed + milestone bonus (7-day: +1, 30-day: +2),
+    // and a consumed day is recorded in frozenDates.
+    function isValidFreezeChange(d, o, consumed, streakChanged, newStreak) {
+      let earned = (streakChanged && newStreak == 7) ? 1 : ((streakChanged && newStreak == 30) ? 2 : 0);
+      let newFreezes = d.get('settings', {}).get('streakFreezesOwned', 0);
+      let oldFrozen = o.get('frozenDates', []);
+      let newFrozen = d.get('frozenDates', []);
+      return (!changed().hasAny(['settings']) || settingsChanged().hasOnly(['streakFreezesOwned']))
+        && newFreezes == o.get('settings', {}).get('streakFreezesOwned', 0) - consumed + earned
+        && newFreezes >= 0
+        && (consumed == 1
+            ? (newFrozen.toSet().hasAll(oldFrozen) && newFrozen.size() <= oldFrozen.size() + 1)
+            : newFrozen == oldFrozen);
+    }
+
+    // Weekly XP accumulates, or restarts on the award that crosses the
+    // weekly boundary (next Monday 00:00 UTC — at most 7 days ahead).
+    function isValidWeeklyXp(d, o, baseDelta, bonus) {
+      return changed().hasAny(['weeklyXpResetDate'])
+        ? (baseDelta > 0
+           && (!('weeklyXpResetDate' in o)
+               || o.weeklyXpResetDate <= request.time + duration.value(10, 'm'))
+           && d.weeklyXpResetDate is timestamp
+           && d.weeklyXpResetDate > request.time
+           && d.weeklyXpResetDate <= request.time + duration.value(8, 'd')
+           && d.get('weeklyXp', 0) == baseDelta + bonus)
+        : d.get('weeklyXp', 0) == o.get('weeklyXp', 0) + baseDelta + bonus;
+    }
+
     // ── Public leaderboard mirror ────────────────────────────────────────────
-    // Contains only the safe-to-share subset of a user's document. Any
-    // signed-in user may read it (required for leaderboard/league queries);
-    // only the owner may write, and only the allow-listed fields. Absence of
-    // a document here means that user has opted out of public leaderboards.
+    // Readable by any signed-in user. A user may write only their own mirror,
+    // and every field must equal the same field on their own (rules-validated)
+    // profile — so the leaderboard can never show values the profile rules
+    // would not have allowed. Absence of a document = opted out.
     match /leaderboard_public/{userId} {
       allow read: if isSignedIn();
-      allow write: if isOwner(userId)
-        && request.resource.data.keys().hasOnly(['displayName', 'username',
-           'photoUrl', 'xp', 'weeklyXp', 'streak', 'currentLeague']);
+      allow create, update: if isOwner(userId) && mirrorMatchesProfile(userId);
       allow delete: if isOwner(userId);
     }
 
-    // ── Username registry ─────────────────────────────────────────────────────
-    // usernames/{username} — doc ID is the lowercase username, data is just
-    // {uid: <owner>}. Enforces uniqueness: a client can only claim a doc for
-    // its own uid, and only release (delete) a claim it owns. Read is open
-    // to any signed-in user since availability must be checkable before a
-    // claim exists.
+    function mirrorMatchesProfile(userId) {
+      let m = request.resource.data;
+      let u = get(docPath('users', userId)).data;
+      return m.keys().hasOnly(['displayName', 'username', 'photoUrl', 'xp', 'weeklyXp',
+                               'streak', 'currentLeague'])
+        && m.get('displayName', null) == u.get('displayName', 'Explorer')
+        && m.get('username', null) == u.get('username', '')
+        && m.get('photoUrl', null) == u.get('photoUrl', null)
+        && m.get('xp', null) == u.get('xp', 0)
+        && m.get('weeklyXp', null) == u.get('weeklyXp', 0)
+        && m.get('streak', null) == u.get('streak', 0)
+        && m.get('currentLeague', null) == u.get('currentLeague', 'seedling');
+    }
+
+    // ── Username registry ────────────────────────────────────────────────────
+    // usernames/{username} = {uid}. Claims are CREATE-ONLY: Firestore treats
+    // a write to an existing document as an update, which is always denied,
+    // so an existing claim can never be taken over and two simultaneous
+    // claims for the same name can never both succeed. Owners may release.
     match /usernames/{username} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn()
-        && request.resource.data.uid == request.auth.uid
-        && request.resource.data.keys().hasOnly(['uid']);
+      allow create: if isSignedIn()
+        && accountNotDeleted()
+        && username.matches('[a-z0-9_]{1,100}')
+        && request.resource.data.keys().hasOnly(['uid'])
+        && request.resource.data.uid == request.auth.uid;
+      allow update: if false;
       allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
     }
 
-    // ── Per-user challenges (subcollection) ──────────────────────────────────
-    // users/{userId}/challenges/{date} — read/write by owner only.
+    // ── Per-user challenges ──────────────────────────────────────────────────
+    // users/{userId}/challenges/{yyyy-MM-dd}. One document per local day.
+    // Rerolls rewrite the document with rerollCount strictly +1, capped at
+    // maxRerolls(); because each write is checked against the stored value,
+    // concurrent rerolls from the same state cannot both succeed. Deleting
+    // (to reset the counter) is not allowed. xpReward must match difficulty,
+    // so a client can't inflate the reward the Cloud Function would read.
     match /users/{userId}/challenges/{challengeId} {
-      allow read, write: if isOwner(userId);
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && accountNotDeleted()
+        && isNearToday(challengeId)
+        && isValidChallengeContent(userId, challengeId)
+        && request.resource.data.rerollCount == 0
+        && request.resource.data.isCompleted == false;
+      allow update: if isOwner(userId)
+        && (isReroll(userId, challengeId) || isMarkCompleted());
+      allow delete: if false;
+    }
+
+    function isValidChallengeContent(userId, challengeId) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['challengeId', 'userId', 'dayNumber', 'title', 'description',
+             'objective', 'successCriteria', 'difficulty', 'estimatedMinutes', 'xpReward',
+             'challengeCategory', 'emoji', 'generatedAt', 'expiresAt', 'challengeVersion',
+             'isCompleted', 'completionDate', 'rerollCount', 'aiGenerated', 'challengeSeed'])
+        && d.challengeId == challengeId
+        && d.userId == userId
+        && d.difficulty in ['easy', 'medium', 'hard']
+        && d.xpReward == xpForDifficulty(d.difficulty)
+        && d.aiGenerated == false
+        && d.title is string && d.title.size() <= 200
+        && d.description is string && d.description.size() <= 2000
+        && d.rerollCount is int;
+    }
+
+    function isReroll(userId, challengeId) {
+      return isValidChallengeContent(userId, challengeId)
+        && resource.data.get('isCompleted', false) == false
+        && request.resource.data.isCompleted == false
+        && request.resource.data.rerollCount == resource.data.get('rerollCount', 0) + 1
+        && request.resource.data.rerollCount <= maxRerolls();
+    }
+
+    function isMarkCompleted() {
+      return changed().hasOnly(['isCompleted', 'completionDate'])
+        && request.resource.data.isCompleted == true;
     }
 
     // ── AI verification usage (subcollection) ────────────────────────────────
-    // users/{userId}/aiUsage/{periodKey} — server-authoritative usage
-    // counters for entitlement quota enforcement (see lib/models/entitlement.dart).
-    // Read-only to the owner (so the client can show "X of 30 used this
-    // month"); never client-writable — only a Cloud Function's Admin SDK
-    // (which bypasses these rules) may write it, so reinstalling the app or
-    // editing local state can never reset a quota.
+    // users/{userId}/aiUsage/{periodKey} — server-authoritative quota
+    // counters. Owner may read; only the Admin SDK may write.
     match /users/{userId}/aiUsage/{periodKey} {
       allow read: if isOwner(userId);
       allow write: if false;
     }
 
+    // ── Optional location data (audit D-09) ──────────────────────────────────
+    // Coordinates, place names and weather saved with a completion or Journal
+    // entry are optional. They may only be stored while the owner's
+    // "Save location with adventures" setting (settings.locationEnabled) is
+    // on; a missing setting means on, matching UserSettings.defaults().
+    function optionalLocationAllowed(uid) {
+      return get(docPath('users', uid)).data.get('settings', {}).get('locationEnabled', true) != false;
+    }
+
+    function locationDerivedKeys() {
+      return ['latitude', 'longitude', 'locationName', 'weatherCondition', 'weatherEmoji'];
+    }
+
     // ── Per-user memories (subcollection) ────────────────────────────────────
-    // users/{userId}/memories/{memoryId} — owner read/write/delete only.
+    // A memory is the journal view of exactly one of the owner's own
+    // completions: same ID, photo and XP, and honest about how it was
+    // verified (client-side AI verification is disabled). The app writes it
+    // in the same batch as the completion (getAfter sees that completion),
+    // or later to repair a missing entry. Create-only for everything but the
+    // caption, so a retried or repeated repair can't overwrite an entry.
+    //
+    // "Remove saved locations" (Settings) may also delete the optional
+    // location fields from an entry — only delete them, never set them.
     match /users/{userId}/memories/{memoryId} {
       allow read: if isOwner(userId);
-      allow create: if isOwner(userId)
-        && request.resource.data.keys().hasAll(['userId', 'challengeId',
-           'challengeTitle', 'photoUrl', 'createdAt']);
-      // Captions may be edited after creation.
+      allow create: if isOwner(userId) && isValidNewMemory(userId, memoryId)
+        && accountNotDeleted();
       allow update: if isOwner(userId)
-        && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['caption', 'captionUpdatedAt']);
-      // Needed for account deletion to remove memory records.
+        && (isCaptionEdit() || removesOnly(locationDerivedKeys()));
       allow delete: if isOwner(userId);
     }
 
-    // ── Challenges ────────────────────────────────────────────────────────────
-    // Challenge catalogue is read-only to authenticated users.
-    // Writes only via Cloud Functions (admin SDK bypasses these rules).
+    function isCaptionEdit() {
+      return changed().hasOnly(['caption', 'captionUpdatedAt'])
+        && request.resource.data.caption is string
+        && request.resource.data.caption.size() <= 1000
+        && request.resource.data.captionUpdatedAt == request.time;
+    }
+
+    function isValidNewMemory(userId, memoryId) {
+      let d = request.resource.data;
+      let c = getAfter(docPath('completions', memoryId)).data;
+      return d.keys().hasOnly(['userId', 'challengeId', 'challengeDay', 'challengeTitle',
+             'challengeCategory', 'photoUrl', 'xpEarned', 'verificationMethod',
+             'completionDate', 'createdAt', 'caption', 'captionPrompt', 'latitude',
+             'longitude', 'locationName', 'weatherCondition', 'weatherEmoji'])
+        && d.keys().hasAll(['userId', 'challengeId', 'challengeTitle', 'photoUrl', 'createdAt'])
+        && (!d.keys().hasAny(locationDerivedKeys()) || optionalLocationAllowed(userId))
+        && c.userId == userId
+        && d.userId == userId
+        && d.challengeId == c.challengeId
+        && d.photoUrl == c.photoUrl
+        && d.get('xpEarned', 0) == c.xpAwarded
+        && d.get('verificationMethod', '') == (c.get('overrideUsed', false) ? 'manual_override' : 'auto_approved')
+        && (!('caption' in d) || (d.caption is string && d.caption.size() <= 1000))
+        && d.createdAt == request.time;
+    }
+
+    // ── Challenge catalogue (read-only) ──────────────────────────────────────
     match /challenges/{challengeId} {
       allow read: if isSignedIn();
       allow write: if false;
     }
 
-    // ── Completions ───────────────────────────────────────────────────────────
-    // Users can create their own completions; no editing or deletion.
+    // ── Completions ──────────────────────────────────────────────────────────
+    // Create-only (apart from removing the saved location), one per user
+    // per date key: the ID must be
+    // `${uid}_${challengeId}` with challengeId a date within ±1 day of server
+    // time, so a completion can't be back/forward-dated or repeated. Fields
+    // are restricted to what the app writes; verificationResult may only
+    // carry the honor-system shape (client-side AI is disabled, so a client
+    // can never record a fabricated AI verdict). photoUrl must be the
+    // caller's own photo for this date, completion_photos/{uid}/{date}.jpg —
+    // one fixed object per completion, so a retried upload replaces itself
+    // instead of leaving orphans (audit D-13).
     match /completions/{completionId} {
-      // `resource` is null for a document that doesn't exist yet, so
-      // `resource.data.userId` must be reached only when a document is
-      // actually there — otherwise this denies the exists-check read that
-      // CompletionRepository.createCompletion's transaction does before
-      // every create (tx.get(ref)), which blocks every completion attempt,
-      // override or not, with a permission-denied that surfaces client-side
-      // as a generic "unexpected error" (KNOWN_BUGS.md A1 follow-up).
-      // Allowing the null case leaks nothing: there's no data on a
-      // nonexistent document, only "a completion doc doesn't exist at this
-      // id" — necessary for the uniqueness check to run at all.
+      // `resource == null` (nonexistent doc) is readable so the app can
+      // check "already completed today?" — there is no data to leak.
       allow read: if isSignedIn()
         && (resource == null || resource.data.userId == request.auth.uid);
-
-      // The document ID must be the canonical `${uid}_${challengeId}` key
-      // (see CompletionRepository.createCompletion) — since Firestore only
-      // classifies a write as `create` when nothing exists yet at that ID,
-      // and `update`/`delete` are blocked below, this makes duplicate
-      // completions for the same day impossible to write even via a direct
-      // SDK/REST call that bypasses the app's own client-side transaction
-      // guard, not just from the app's own UI.
-      allow create: if isSignedIn()
-        && request.resource.data.userId == request.auth.uid
-        && completionId == request.auth.uid + '_' + request.resource.data.challengeId
-        && request.resource.data.keys().hasAll(['userId', 'challengeId',
-           'photoUrl', 'verificationResult', 'completedAt', 'xpAwarded']);
-
-      allow update, delete: if false;
+      allow create: if isSignedIn() && isValidNewCompletion(completionId)
+        && accountNotDeleted();
+      // The only permitted change to a stored completion: its owner deleting
+      // the optional saved `location` ("Remove saved locations", audit
+      // D-09). XP, photo, dates and every other field stay immutable.
+      allow update: if isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && removesOnly(['location']);
+      allow delete: if false;
     }
 
-    // ── Achievements ──────────────────────────────────────────────────────────
-    // Achievement catalogue is read-only; unlocked achievements are stored
-    // on the user document, not here.
+    function isValidNewCompletion(completionId) {
+      let d = request.resource.data;
+      let uid = request.auth.uid;
+      return d.keys().hasOnly(['userId', 'challengeId', 'challengeTitle', 'challengeEmoji',
+             'challengeCategory', 'photoUrl', 'verificationResult', 'completedAt',
+             'xpAwarded', 'overrideUsed', 'assignmentDate', 'location', 'caption'])
+        && d.keys().hasAll(['userId', 'challengeId', 'photoUrl', 'verificationResult',
+             'completedAt', 'xpAwarded'])
+        && d.userId == uid
+        && isNearToday(d.challengeId)
+        && completionId == uid + '_' + d.challengeId
+        // The XP actually granted: a difficulty reward, or 0 when the user
+        // already completed a challenge earlier that local day.
+        && d.xpAwarded in [0, 25, 50, 100]
+        && d.completedAt == request.time
+        && d.photoUrl is string
+        && d.photoUrl.matches('https://firebasestorage[.]googleapis[.]com/v0/b/[^/]+/o/completion_photos%2F'
+             + uid + '%2F' + d.challengeId + '[.]jpg([?].*)?')
+        && d.verificationResult is map
+        && d.verificationResult.keys().hasOnly(['reason', 'aiLocked'])
+        && (!('overrideUsed' in d) || d.overrideUsed is bool)
+        && (!('location' in d) || (d.location is latlng && optionalLocationAllowed(uid)))
+        && (!('caption' in d) || (d.caption is string && d.caption.size() <= 1000));
+    }
+
+    // ── Achievement catalogue (read-only) ────────────────────────────────────
     match /achievements/{achievementId} {
       allow read: if isSignedIn();
       allow write: if false;
+    }
+
+    // ── Feedback / bug reports (audit N-1) ───────────────────────────────────
+    // Write-only from the client: a signed-in user may create feedback as
+    // themselves, with exactly the fields the app sends, a bounded message
+    // and the server's timestamp. The document ID is
+    // `{uid}_{yyyy-MM-dd}_{1..maxFeedbackPerDay()}` (date = UTC, ±1 day for
+    // clock skew) and each ID can be created only once, which caps every
+    // user at maxFeedbackPerDay() submissions per day without any counter.
+    // No client can read, edit or delete feedback — reviewed in the console.
+    match /feedback/{feedbackId} {
+      allow create: if isSignedIn() && isValidFeedback(feedbackId)
+        && accountNotDeleted();
+      allow read, update, delete: if false;
+    }
+
+    // FeedbackRepository.maxPerDay.
+    function maxFeedbackPerDay() {
+      return 5;
+    }
+
+    function isValidFeedback(feedbackId) {
+      let d = request.resource.data;
+      let uid = request.auth.uid;
+      let parts = feedbackId.split('_');
+      return feedbackId.matches(uid + '_[0-9]{4}-[0-9]{2}-[0-9]{2}_[1-9][0-9]*')
+        && int(parts[parts.size() - 1]) <= maxFeedbackPerDay()
+        && isNearToday(parts[parts.size() - 2])
+        && d.keys().hasOnly(['type', 'message', 'userId', 'createdAt', 'appVersion'])
+        && d.keys().hasAll(['type', 'message', 'userId', 'createdAt'])
+        && d.userId == uid
+        && d.type in ['feedback', 'bug']
+        && d.message is string
+        && d.message.size() > 0 && d.message.size() <= 1000
+        && d.createdAt == request.time
+        && (!('appVersion' in d) || (d.appVersion is string && d.appVersion.size() <= 32));
     }
 
     // Deny everything else by default.

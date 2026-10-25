@@ -9,11 +9,7 @@ import 'package:touchgrass/models/adventure_memory_model.dart';
 import 'package:touchgrass/models/challenge_model.dart';
 
 void main() {
-  AdventureMemoryModel memory(
-    String id, {
-    double? lat,
-    double? lng,
-  }) =>
+  AdventureMemoryModel memory(String id, {double? lat, double? lng}) =>
       AdventureMemoryModel(
         memoryId: id,
         userId: 'u1',

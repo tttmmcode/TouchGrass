@@ -425,6 +425,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final memoriesState = ref.watch(memoriesControllerProvider);
+    // Restores Journal entries missing for recent completions (audit D-13),
+    // once per session; a failure shows a retry banner in the Journal.
+    final journalSync = ref.watch(journalSyncProvider);
     final allMemories = memoriesState.memories;
     final filtered = _filter(allMemories);
     final markers = _buildMarkers(filtered);
@@ -579,6 +582,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     ref.read(memoriesControllerProvider.notifier).loadMore(),
                 onRetry: () =>
                     ref.read(memoriesControllerProvider.notifier).retry(),
+                syncFailed: journalSync.hasError && !journalSync.isLoading,
+                onRetrySync: () => ref.invalidate(journalSyncProvider),
               ),
             ],
           ),
@@ -1020,6 +1025,8 @@ class _JournalTab extends StatefulWidget {
     required this.reducedMotion,
     required this.onLoadMore,
     required this.onRetry,
+    this.syncFailed = false,
+    this.onRetrySync,
   });
 
   /// Full pagination state (loading/error/hasMore) from the controller.
@@ -1032,6 +1039,11 @@ class _JournalTab extends StatefulWidget {
   final bool reducedMotion;
   final VoidCallback onLoadMore;
   final VoidCallback onRetry;
+
+  /// The Journal repair (journalSyncProvider) didn't finish: some entries
+  /// may be missing until it's retried.
+  final bool syncFailed;
+  final VoidCallback? onRetrySync;
 
   @override
   State<_JournalTab> createState() => _JournalTabState();
@@ -1116,21 +1128,33 @@ class _JournalTabState extends State<_JournalTab> {
       );
     }
 
+    final syncBanner = widget.syncFailed
+        ? _JournalSyncBanner(onRetry: widget.onRetrySync, isDark: widget.isDark)
+        : null;
+
     if (widget.filtered.isEmpty) {
       return ColoredBox(
         color: surface,
         child: Padding(
           padding: const EdgeInsets.only(top: _headerClearance),
-          child: Center(
-            child: state.memories.isEmpty
-                ? const _EmptyJournal()
-                : _NoMatchesEmptyState(muted: muted),
+          child: Column(
+            children: [
+              ?syncBanner,
+              Expanded(
+                child: Center(
+                  child: state.memories.isEmpty
+                      ? const _EmptyJournal()
+                      : _NoMatchesEmptyState(muted: muted),
+                ),
+              ),
+            ],
           ),
         ),
       );
     }
 
     final grouped = _groupByMonth(widget.filtered);
+    final lead = syncBanner == null ? 0 : 1;
 
     return ColoredBox(
       color: surface,
@@ -1140,9 +1164,12 @@ class _JournalTabState extends State<_JournalTab> {
           top: _headerClearance,
           bottom: AppSpacing.xxl,
         ),
-        // +1 for the trailing load-more/end-of-history footer.
-        itemCount: grouped.length + 1,
-        itemBuilder: (context, i) {
+        // +1 for the trailing load-more/end-of-history footer, +1 for the
+        // repair banner when it's showing.
+        itemCount: lead + grouped.length + 1,
+        itemBuilder: (context, index) {
+          if (index < lead) return syncBanner!;
+          final i = index - lead;
           if (i == grouped.length) {
             return _JournalFooter(
               loadingMore: state.loadingMore,
@@ -1160,6 +1187,56 @@ class _JournalTabState extends State<_JournalTab> {
             reducedMotion: widget.reducedMotion,
           );
         },
+      ),
+    );
+  }
+}
+
+// ── Journal repair banner ────────────────────────────────────────────────────
+
+/// Shown when restoring missing Journal entries failed. Completions and XP
+/// are never affected by the repair, so the message says exactly that.
+class _JournalSyncBanner extends StatelessWidget {
+  const _JournalSyncBanner({required this.onRetry, required this.isDark});
+  final VoidCallback? onRetry;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.screenHorizontal,
+        0,
+        AppSpacing.screenHorizontal,
+        AppSpacing.md,
+      ),
+      child: Semantics(
+        liveRegion: true,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppColors.error.withValues(alpha: isDark ? 0.18 : 0.08),
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md,
+              AppSpacing.sm,
+              AppSpacing.xs,
+              AppSpacing.sm,
+            ),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    "Some Journal entries couldn't be restored yet. Your "
+                    'adventures and XP are safe.',
+                  ),
+                ),
+                TextButton(onPressed: onRetry, child: const Text('Retry')),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -2218,6 +2295,8 @@ class _DayBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 0 = unknown (an entry restored after its challenge was gone).
+    if (day <= 0) return const SizedBox.shrink();
     return DecoratedBox(
       decoration: BoxDecoration(
         color: AppColors.forestGreen.withValues(alpha: 0.15),

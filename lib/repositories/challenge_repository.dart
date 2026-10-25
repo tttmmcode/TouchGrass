@@ -16,7 +16,7 @@ import '../services/firestore_service.dart';
 /// operations use [FirebaseFirestore.instance] directly.
 class ChallengeRepository {
   ChallengeRepository({required FirestoreService firestoreService})
-      : _firestore = firestoreService;
+    : _firestore = firestoreService;
 
   final FirestoreService _firestore;
 
@@ -29,21 +29,28 @@ class ChallengeRepository {
           .collection(AppConstants.colUserChallenges);
 
   DocumentReference<Map<String, dynamic>> _challengeDoc(
-          String uid, String docId) =>
-      _challengesCol(uid).doc(docId);
+    String uid,
+    String docId,
+  ) => _challengesCol(uid).doc(docId);
 
   // ── Today's challenge ──────────────────────────────────────────────────────
 
   /// Live stream of today's challenge document. Emits `null` if not yet generated.
-  Stream<ChallengeModel?> watchTodaysChallenge(String uid) {
-    final docId = ChallengeModel.todayDocId();
+  Stream<ChallengeModel?> watchTodaysChallenge(String uid) =>
+      watchChallengeForDate(uid, DateTime.now());
+
+  /// Live stream of the challenge document for [date]'s local calendar day.
+  Stream<ChallengeModel?> watchChallengeForDate(String uid, DateTime date) {
+    final docId = ChallengeModel.docIdForDate(date);
     return _challengeDoc(uid, docId).snapshots().map((snap) {
       if (!snap.exists || snap.data() == null) return null;
       try {
         return ChallengeModel.fromFirestore(snap);
       } catch (e) {
-        dev.log('watchTodaysChallenge parse error: $e',
-            name: 'ChallengeRepository');
+        dev.log(
+          'watchTodaysChallenge parse error: $e',
+          name: 'ChallengeRepository',
+        );
         return null;
       }
     });
@@ -77,15 +84,14 @@ class ChallengeRepository {
   /// and for rerolls (same doc ID, incremented rerollCount).
   Future<Result<void>> saveChallenge(ChallengeModel challenge) =>
       guardAsync(() async {
-        await _challengeDoc(challenge.userId, challenge.challengeId)
-            .set(challenge.toFirestore(), SetOptions(merge: false));
+        await _challengeDoc(
+          challenge.userId,
+          challenge.challengeId,
+        ).set(challenge.toFirestore(), SetOptions(merge: false));
       });
 
   /// Updates only the completion fields; does not touch generation fields.
-  Future<Result<void>> markChallengeCompleted(
-    String uid,
-    String docId,
-  ) =>
+  Future<Result<void>> markChallengeCompleted(String uid, String docId) =>
       guardAsync(() async {
         await _challengeDoc(uid, docId).update({
           'isCompleted': true,
@@ -106,19 +112,23 @@ class ChallengeRepository {
     int limit = AppConstants.challengeDedupeWindowDays,
   }) async {
     try {
-      final snap = await _challengesCol(uid)
-          .orderBy('generatedAt', descending: true)
-          .limit(limit)
-          .get();
+      final snap = await _challengesCol(
+        uid,
+      ).orderBy('generatedAt', descending: true).limit(limit).get();
       return snap.docs
           .map((doc) => doc.data()['title'] as String? ?? '')
           .where((t) => t.isNotEmpty)
           .toList();
     } catch (e, st) {
-      dev.log('fetchRecentChallengeTitles error: $e',
-          name: 'ChallengeRepository');
-      CrashReporter.recordError(e, st,
-          reason: 'fetchRecentChallengeTitles failed — dedup degraded');
+      dev.log(
+        'fetchRecentChallengeTitles error: $e',
+        name: 'ChallengeRepository',
+      );
+      CrashReporter.recordError(
+        e,
+        st,
+        reason: 'fetchRecentChallengeTitles failed — dedup degraded',
+      );
       return const [];
     }
   }

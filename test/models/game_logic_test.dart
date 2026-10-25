@@ -44,16 +44,33 @@ void main() {
         newTotalCompletions: 100,
       );
       // Every catalog threshold at or below these values should fire at once.
-      expect(earned, containsAll(['first_touch', 'streak_3', 'streak_7', 'streak_30',
-          'streak_100', 'xp_100', 'xp_500', 'xp_1000', 'xp_2500', 'level_5',
-          'level_10', 'challenges_100']));
+      expect(
+        earned,
+        containsAll([
+          'first_touch',
+          'streak_3',
+          'streak_7',
+          'streak_30',
+          'streak_100',
+          'xp_100',
+          'xp_500',
+          'xp_1000',
+          'xp_2500',
+          'level_5',
+          'level_10',
+          'challenges_100',
+        ]),
+      );
     });
   });
 
   group('AchievementDefinition.totalXpReward', () {
     test('sums xpReward across the given achievement ids', () {
       final byId = {for (final a in AchievementDefinition.catalog) a.id: a};
-      final total = AchievementDefinition.totalXpReward(['first_touch', 'streak_7']);
+      final total = AchievementDefinition.totalXpReward([
+        'first_touch',
+        'streak_7',
+      ]);
       expect(total, byId['first_touch']!.xpReward + byId['streak_7']!.xpReward);
     });
 

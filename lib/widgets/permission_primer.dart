@@ -21,8 +21,9 @@ enum PermissionPrimerKind {
     emoji: '📍',
     title: 'Local weather & memories',
     body:
-        'TouchGrass uses your location to show local weather and save '
-        'where your adventures happen.',
+        'TouchGrass uses your location to show you on the map, show local '
+        'weather and save where your adventures happen. You can stop saving '
+        'and sharing it any time in Settings → Privacy.',
   ),
   notifications(
     prefsKey: 'permission_primer_shown_notifications',

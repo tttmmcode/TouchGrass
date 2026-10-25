@@ -10,25 +10,25 @@ import 'package:touchgrass/models/user_model.dart';
 
 void main() {
   UserModel baseUser({List<String> frozenDates = const []}) => UserModel(
-        uid: 'u1',
-        email: 'a@b.com',
-        username: 'explorer_ab12',
-        displayName: 'Explorer',
-        xp: 100,
-        weeklyXp: 20,
-        weeklyXpResetDate: DateTime.utc(2026, 3, 16),
-        streak: 5,
-        longestStreak: 10,
-        totalCompletions: 20,
-        totalPhotosUploaded: 20,
-        rainyDayCount: 1,
-        currentLeague: 'sprout',
-        createdAt: DateTime.utc(2026, 1, 1),
-        lastActiveDate: DateTime.utc(2026, 3, 10),
-        achievements: const [],
-        settings: UserSettings.defaults(),
-        frozenDates: frozenDates,
-      );
+    uid: 'u1',
+    email: 'a@b.com',
+    username: 'explorer_ab12',
+    displayName: 'Explorer',
+    xp: 100,
+    weeklyXp: 20,
+    weeklyXpResetDate: DateTime.utc(2026, 3, 16),
+    streak: 5,
+    longestStreak: 10,
+    totalCompletions: 20,
+    totalPhotosUploaded: 20,
+    rainyDayCount: 1,
+    currentLeague: 'sprout',
+    createdAt: DateTime.utc(2026, 1, 1),
+    lastActiveDate: DateTime.utc(2026, 3, 10),
+    achievements: const [],
+    settings: UserSettings.defaults(),
+    frozenDates: frozenDates,
+  );
 
   group('UserModel.frozenDates', () {
     test('UserModel.initial starts with an empty list', () {

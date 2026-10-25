@@ -89,10 +89,7 @@ class EmptyState extends StatelessWidget {
           // ── Primary action ───────────────────────────────────────────────────
           if (actionLabel != null && onAction != null) ...[
             const SizedBox(height: AppSpacing.xl),
-            FilledButton(
-              onPressed: onAction,
-              child: Text(actionLabel!),
-            ),
+            FilledButton(onPressed: onAction, child: Text(actionLabel!)),
           ],
         ],
       ),

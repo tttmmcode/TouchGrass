@@ -11,7 +11,9 @@ import 'user_providers.dart';
 /// Widgets that need XP / level / streak / Rainy Days should watch this
 /// instead of [currentUserProvider] directly.
 final progressionProvider = Provider<AsyncValue<ProgressionModel?>>((ref) {
-  return ref.watch(currentUserProvider).whenData(
+  return ref
+      .watch(currentUserProvider)
+      .whenData(
         (user) => user == null ? null : ProgressionModel.fromUser(user),
       );
 });

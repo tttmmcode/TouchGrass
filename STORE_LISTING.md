@@ -19,7 +19,7 @@ New challenges every day. Snap a photo, earn XP, climb the league. Your streak i
 
 TouchGrass gives you a fresh outdoor challenge every single day — from spotting wildlife to discovering a hidden street, practicing mindfulness in a park to photographing something beautiful near you.
 
-Complete your challenge, snap a photo proof, and let AI verify your adventure. Earn XP, build streaks, and climb through 8 leagues alongside thousands of other explorers.
+Complete your challenge, snap a photo, and add it to your Journal. Earn XP, build streaks, and climb through 8 leagues alongside thousands of other explorers.
 
 **WHY TOUCHGRASS?**
 
@@ -28,7 +28,7 @@ Research shows that spending just 20 minutes outside in nature meaningfully redu
 **FEATURES**
 
 • Daily Challenge Path — A beautifully designed trail of today's challenge and your recent history
-• AI Photo Verification — Gemini Vision confirms you actually did the challenge (no cheating!)
+• Photo Journal — Every completed challenge is saved with your photo in your own Journal
 • 8 Adventure Leagues — Seedling → Sprout → Explorer → Pathfinder → Trailblazer → Wanderer → Voyager → Aurora
 • XP & Leveling — Earn points for every completion and watch your level climb
 • Streaks & Rainy Days — Build daily streaks; Rainy Days protect your streak on busy days
@@ -43,7 +43,7 @@ Research shows that spending just 20 minutes outside in nature meaningfully redu
 1. Open TouchGrass — your daily challenge is waiting
 2. Step outside and complete it (5–40 minutes depending on difficulty)
 3. Snap a photo proof
-4. AI verifies it instantly
+4. Save it to your Journal
 5. Earn XP, advance your streak, unlock achievements
 
 **PERFECT FOR**
@@ -55,7 +55,7 @@ Research shows that spending just 20 minutes outside in nature meaningfully redu
 
 Start with a free account. No subscriptions, no ads, no nonsense.
 
-**Privacy:** TouchGrass only stores what you share. Location is used solely to tag your adventure memories on your personal map and is never sold or shared with third parties.
+**Privacy:** TouchGrass only stores what you share, and never sells your data. With "Save location with adventures" on, your Journal entries are tagged with where they happened, and your approximate location is used to show local weather. Turn it off any time in Settings → Privacy.
 
 ### Keywords (100 chars max — comma-separated, no spaces after commas)
 outdoor,nature,challenge,adventure,streak,fitness,wellness,explore,mindfulness,steps,XP,habit
@@ -112,17 +112,25 @@ https://touchgrass.app/privacy  (⚠️ HOST THIS PAGE BEFORE SUBMISSION)
 | Name | Yes | No | No (display only) | Show username in profile/leaderboard |
 | Email address | Yes | No | Yes | Account creation & authentication |
 | User IDs | Yes | No | Yes | Link data to user account |
-| Photos & videos | Yes | No | No | Challenge verification photos |
-| Approximate location | Yes | No | No | Tag adventure memories on map |
+| Photos & videos | Yes | No | No | Challenge photos shown in the user's Journal; optional profile photo shown on the leaderboard |
+| Location (see note) | Yes, optional | **Owner to confirm** (see note) | No ("Save location with adventures" setting) | Tag Journal entries on the map; local weather |
 | Crash logs | Yes | No | Yes (Firebase Crashlytics) | App stability |
 | App interactions | Yes | No | No (Firebase Analytics) | Improve app experience |
 | App performance | Yes | No | No (Firebase Performance) | Optimize load times |
 
+> **Location note (2026-10-17, remediation D-09) — decide before submitting the form:**
+> - **Precise or approximate?** The app requests fine location and stores the coordinates it receives (medium accuracy, roughly 100 m) with completions and Journal entries, so Play will likely classify this as **precise** location.
+> - **Shared?** While the setting is on, coordinates rounded to ~1 km are sent to **Open-Meteo** for weather, and coordinates are sent to the platform geocoder (Apple/Google) for place names. Whether that counts as "sharing" under Play's definitions (which exempt service providers acting on your behalf) is the owner's call.
+> - **Off:** with the setting off, none of this is collected or sent.
+> - Full flow table: `REMEDIATION_CHECKLIST.md` → Phase 3 → "Location data flows".
+
 ### Data handling
 - All data is encrypted in transit (HTTPS / TLS 1.3)
 - Firebase services store data on Google Cloud (US regions by default)
-- Users can request account deletion from Settings → Account → Delete Account
-- Completion photos are stored in Firebase Storage under the user's UID
+- Users can request account deletion from Settings → Delete Account. **Release gate (Phase 7D):** this works only once the `deleteAccount` Cloud Function is deployed and tested live (`PHASE_7D_ACCOUNT_DELETION_REMEDIATION.md`); don't declare in-app deletion before that.
+- Completion photos are stored in Firebase Storage under the user's UID. Other users can't browse or open them in the app; each photo is delivered through a private link that works for anyone it is shared with.
+- Profile photos are shown to other signed-in users on the leaderboard.
+- No AI service receives photos (AI verification is disabled).
 
 ### Does your app share user data with third parties?
 Yes — Firebase (Google) for authentication, database, analytics, crash reporting, and push notifications. See Privacy Policy for details.
@@ -137,7 +145,7 @@ Required: 3–10 screenshots at 1320 × 2868 px
 Suggested sequence:
 1. Home screen — Adventure trail with today's challenge glowing
 2. Challenge detail — Beautiful challenge card with category and difficulty
-3. Camera — Taking a photo for verification
+3. Camera — Taking a photo of the challenge
 4. Success screen — Confetti + XP reward + companion celebration
 5. Map screen — Adventure memories scattered across the map
 6. Leaderboard — League standings with promotion/demotion zones
@@ -157,8 +165,8 @@ Content: App name + tagline "Stop scrolling. Start exploring." on forest green b
 
 First release! 🌿
 
-• Daily outdoor challenges powered by AI
-• Photo verification with Gemini Vision
+• A new outdoor challenge every day
+• A photo Journal of your adventures
 • 8 adventure leagues with weekly leaderboards
 • 50+ achievements to unlock
 • Beautiful adventure memory map

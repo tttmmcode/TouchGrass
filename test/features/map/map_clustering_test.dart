@@ -42,23 +42,20 @@ void main() {
 
   group('clusterMemoriesByProximity', () {
     test('two memories a world apart stay in separate clusters', () {
-      final groups = clusterMemoriesByProximity(
-        [memoryAt('a', 30.2672, -97.7431), memoryAt('b', 51.5072, -0.1276)],
-        zoom: 10,
-      );
+      final groups = clusterMemoriesByProximity([
+        memoryAt('a', 30.2672, -97.7431),
+        memoryAt('b', 51.5072, -0.1276),
+      ], zoom: 10);
       expect(groups.length, 2);
       expect(groups.every((g) => g.length == 1), isTrue);
     });
 
     test('memories at the same coordinates merge into one cluster', () {
-      final groups = clusterMemoriesByProximity(
-        [
-          memoryAt('a', 30.2672, -97.7431),
-          memoryAt('b', 30.2672, -97.7431),
-          memoryAt('c', 30.2672, -97.7431),
-        ],
-        zoom: 10,
-      );
+      final groups = clusterMemoriesByProximity([
+        memoryAt('a', 30.2672, -97.7431),
+        memoryAt('b', 30.2672, -97.7431),
+        memoryAt('c', 30.2672, -97.7431),
+      ], zoom: 10);
       expect(groups.length, 1);
       expect(groups.single.length, 3);
     });

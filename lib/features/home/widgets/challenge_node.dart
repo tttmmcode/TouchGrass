@@ -49,11 +49,12 @@ Path _buildLilyPadPath(double cx, double cy, double r, double seed) {
   final path = Path();
   for (var i = 0; i <= steps; i++) {
     final angle = (i / steps) * 2 * math.pi - math.pi / 2;
-    final rr = r *
-        (1.0
-            + 0.048 * math.sin(angle * 3.0 + seed)
-            + 0.030 * math.sin(angle * 5.0 + seed * 1.7)
-            + 0.016 * math.sin(angle * 8.0 + seed * 2.5));
+    final rr =
+        r *
+        (1.0 +
+            0.048 * math.sin(angle * 3.0 + seed) +
+            0.030 * math.sin(angle * 5.0 + seed * 1.7) +
+            0.016 * math.sin(angle * 8.0 + seed * 2.5));
     final x = cx + rr * math.cos(angle);
     final y = cy + rr * math.sin(angle);
     if (i == 0) {
@@ -186,8 +187,9 @@ class _ChallengePathSegmentState extends ConsumerState<ChallengePathSegment>
       builder: (context, constraints) {
         final avail = constraints.maxWidth;
         final xOff = _xOffset(widget.index, avail);
-        final nextXOff =
-            widget.isLast ? xOff : _xOffset(widget.index + 1, avail);
+        final nextXOff = widget.isLast
+            ? xOff
+            : _xOffset(widget.index + 1, avail);
         final nodeSize = _isActive ? _kActiveNodeSize : _kNodeSize;
         final centerX = avail / 2 + xOff;
         final nextCenterX = avail / 2 + nextXOff;
@@ -198,162 +200,159 @@ class _ChallengePathSegmentState extends ConsumerState<ChallengePathSegment>
         // are otherwise static — to repaint alongside it.
         return RepaintBoundary(
           child: SizedBox(
-          height: _kSegmentH,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              // Rising particles (completed only)
-              if (_isCompleted)
-                AnimatedBuilder(
-                  animation: _particleCtrl,
-                  builder: (_, _) => Stack(
-                    children: [
-                      _buildParticle(centerX, _particleCtrl.value, 0.00),
-                      _buildParticle(centerX, _particleCtrl.value, 0.38),
-                      _buildParticle(centerX, _particleCtrl.value, 0.67),
-                    ],
-                  ),
-                ),
-
-              // Stone trail connector
-              if (!widget.isLast)
-                Positioned.fill(
-                  child: AnimatedBuilder(
-                    animation: _glowCtrl,
-                    builder: (_, _) => CustomPaint(
-                      painter: _StoneTrailPainter(
-                        startX: centerX,
-                        endX: nextCenterX,
-                        nodeSize: nodeSize,
-                        segmentHeight: _kSegmentH,
-                        nodeTopPad: _kNodeTopPad,
-                        isCompleted: _isCompleted,
-                        glowProgress: _isCompleted ? _glowCtrl.value : -1,
-                        seed: _seed,
-                      ),
+            height: _kSegmentH,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                // Rising particles (completed only)
+                if (_isCompleted)
+                  AnimatedBuilder(
+                    animation: _particleCtrl,
+                    builder: (_, _) => Stack(
+                      children: [
+                        _buildParticle(centerX, _particleCtrl.value, 0.00),
+                        _buildParticle(centerX, _particleCtrl.value, 0.38),
+                        _buildParticle(centerX, _particleCtrl.value, 0.67),
+                      ],
                     ),
                   ),
-                ),
 
-              // Water ripple burst — expands from active pad periodically
-              if (_isActive)
-                AnimatedBuilder(
-                  animation: Listenable.merge([_rippleCtrl, _floatCtrl]),
-                  builder: (_, _) {
-                    final floatY =
-                        math.sin(_floatCtrl.value * math.pi) * 5.0;
-                    const rippleSize = _kActiveNodeSize + 44.0;
-                    return Positioned(
-                      top: _kNodeTopPad - 22 + floatY,
-                      left: centerX - rippleSize / 2,
-                      child: _WaterRipple(
-                        progress: _rippleCtrl.value,
-                        size: rippleSize,
-                      ),
-                    );
-                  },
-                ),
-
-              // Gentle pulse halo (active, floats with node)
-              if (_isActive)
-                AnimatedBuilder(
-                  animation: _floatCtrl,
-                  builder: (_, _) {
-                    const pulseSize = _kActiveNodeSize + 48.0;
-                    final floatY =
-                        math.sin(_floatCtrl.value * math.pi) * 5.0;
-                    return Positioned(
-                      top: _kNodeTopPad - 24 + floatY,
-                      left: centerX - pulseSize / 2,
-                      child: const _MultiPulse(size: pulseSize),
-                    );
-                  },
-                ),
-
-              // Active lily pad — floats
-              if (_isActive)
-                AnimatedBuilder(
-                  animation: _floatCtrl,
-                  builder: (_, child) {
-                    final floatY =
-                        math.sin(_floatCtrl.value * math.pi) * 5.0;
-                    return Positioned(
-                      top: _kNodeTopPad + floatY,
-                      left: centerX - _kActiveNodeSize / 2,
-                      child: child!,
-                    );
-                  },
-                  child: Semantics(
-                    button: true,
-                    label: _semanticLabel,
-                    // The pad's emoji/badges are Text/Icon children that
-                    // would otherwise leak their own raw content ("🎯",
-                    // "+25") into the announcement alongside this label —
-                    // exclude them so only the one composed label reads.
-                    excludeSemantics: true,
-                    child: PressableScale(
-                      scale: 0.96,
-                      child: GestureDetector(
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          widget.onTap();
-                        },
-                        child: _ActiveLilyPad(
-                          node: widget.node as ActivePathNode,
-                          size: _kActiveNodeSize,
+                // Stone trail connector
+                if (!widget.isLast)
+                  Positioned.fill(
+                    child: AnimatedBuilder(
+                      animation: _glowCtrl,
+                      builder: (_, _) => CustomPaint(
+                        painter: _StoneTrailPainter(
+                          startX: centerX,
+                          endX: nextCenterX,
+                          nodeSize: nodeSize,
+                          segmentHeight: _kSegmentH,
+                          nodeTopPad: _kNodeTopPad,
+                          isCompleted: _isCompleted,
+                          glowProgress: _isCompleted ? _glowCtrl.value : -1,
                           seed: _seed,
                         ),
                       ),
                     ),
                   ),
-                ),
 
-              // Past lily pad (completed / missed / locked) — always
-              // tappable: completed opens details, missed/locked show a
-              // friendly explanatory dialog (handled by widget.onTap).
-              if (!_isActive)
-                Positioned(
-                  top: _kNodeTopPad,
-                  left: centerX - _kNodeSize / 2,
-                  child: Semantics(
-                    button: true,
-                    label: _semanticLabel,
-                    // Same reasoning as the active pad above — the emoji,
-                    // "+XP" badge, and check-mark icon inside are decorative
-                    // to a screen reader once the label already says
-                    // "completed"/"missed"/"locked".
-                    excludeSemantics: true,
-                    child: PressableScale(
-                      scale: 0.96,
-                      child: Material(
-                        color: Colors.transparent,
-                        shape: const CircleBorder(),
-                        child: InkWell(
+                // Water ripple burst — expands from active pad periodically
+                if (_isActive)
+                  AnimatedBuilder(
+                    animation: Listenable.merge([_rippleCtrl, _floatCtrl]),
+                    builder: (_, _) {
+                      final floatY = math.sin(_floatCtrl.value * math.pi) * 5.0;
+                      const rippleSize = _kActiveNodeSize + 44.0;
+                      return Positioned(
+                        top: _kNodeTopPad - 22 + floatY,
+                        left: centerX - rippleSize / 2,
+                        child: _WaterRipple(
+                          progress: _rippleCtrl.value,
+                          size: rippleSize,
+                        ),
+                      );
+                    },
+                  ),
+
+                // Gentle pulse halo (active, floats with node)
+                if (_isActive)
+                  AnimatedBuilder(
+                    animation: _floatCtrl,
+                    builder: (_, _) {
+                      const pulseSize = _kActiveNodeSize + 48.0;
+                      final floatY = math.sin(_floatCtrl.value * math.pi) * 5.0;
+                      return Positioned(
+                        top: _kNodeTopPad - 24 + floatY,
+                        left: centerX - pulseSize / 2,
+                        child: const _MultiPulse(size: pulseSize),
+                      );
+                    },
+                  ),
+
+                // Active lily pad — floats
+                if (_isActive)
+                  AnimatedBuilder(
+                    animation: _floatCtrl,
+                    builder: (_, child) {
+                      final floatY = math.sin(_floatCtrl.value * math.pi) * 5.0;
+                      return Positioned(
+                        top: _kNodeTopPad + floatY,
+                        left: centerX - _kActiveNodeSize / 2,
+                        child: child!,
+                      );
+                    },
+                    child: Semantics(
+                      button: true,
+                      label: _semanticLabel,
+                      // The pad's emoji/badges are Text/Icon children that
+                      // would otherwise leak their own raw content ("🎯",
+                      // "+25") into the announcement alongside this label —
+                      // exclude them so only the one composed label reads.
+                      excludeSemantics: true,
+                      child: PressableScale(
+                        scale: 0.96,
+                        child: GestureDetector(
                           onTap: () {
-                            HapticFeedback.selectionClick();
+                            HapticFeedback.lightImpact();
                             widget.onTap();
                           },
-                          customBorder: const CircleBorder(),
-                          child: _PastLilyPad(
-                            node: widget.node,
-                            size: _kNodeSize,
+                          child: _ActiveLilyPad(
+                            node: widget.node as ActivePathNode,
+                            size: _kActiveNodeSize,
                             seed: _seed,
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
 
-              // Date label
-              Positioned(
-                top: _kNodeTopPad + nodeSize + 8,
-                left: centerX - 54,
-                width: 108,
-                child: _NodeLabel(node: widget.node),
-              ),
-            ],
-          ),
+                // Past lily pad (completed / missed / locked) — always
+                // tappable: completed opens details, missed/locked show a
+                // friendly explanatory dialog (handled by widget.onTap).
+                if (!_isActive)
+                  Positioned(
+                    top: _kNodeTopPad,
+                    left: centerX - _kNodeSize / 2,
+                    child: Semantics(
+                      button: true,
+                      label: _semanticLabel,
+                      // Same reasoning as the active pad above — the emoji,
+                      // "+XP" badge, and check-mark icon inside are decorative
+                      // to a screen reader once the label already says
+                      // "completed"/"missed"/"locked".
+                      excludeSemantics: true,
+                      child: PressableScale(
+                        scale: 0.96,
+                        child: Material(
+                          color: Colors.transparent,
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              widget.onTap();
+                            },
+                            customBorder: const CircleBorder(),
+                            child: _PastLilyPad(
+                              node: widget.node,
+                              size: _kNodeSize,
+                              seed: _seed,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // Date label
+                Positioned(
+                  top: _kNodeTopPad + nodeSize + 8,
+                  left: centerX - 54,
+                  width: 108,
+                  child: _NodeLabel(node: widget.node),
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -413,10 +412,7 @@ class _ActiveLilyPad extends StatelessWidget {
         children: [
           CustomPaint(
             size: Size(size, size),
-            painter: _LilyPadPainter(
-              state: _PadState.active,
-              seed: seed,
-            ),
+            painter: _LilyPadPainter(state: _PadState.active, seed: seed),
           ),
           Text(
             node.challenge?.emoji ?? '🎯',
@@ -515,20 +511,26 @@ class _PastLilyPadState extends ConsumerState<_PastLilyPad>
                   CustomPaint(
                     size: Size(size, size),
                     painter: _LilyPadPainter(
-                      state: _isCompleted ? _PadState.completed : _PadState.locked,
+                      state: _isCompleted
+                          ? _PadState.completed
+                          : _PadState.locked,
                       seed: widget.seed,
                     ),
                   ),
                   if (_isCompleted) ...[
                     Text(
-                      (widget.node as CompletedPathNode).completion.challengeEmoji,
+                      (widget.node as CompletedPathNode)
+                          .completion
+                          .challengeEmoji,
                       style: TextStyle(fontSize: size * 0.26),
                     ),
                     Positioned(
                       bottom: size * 0.06,
                       left: size * 0.04,
                       child: _XpBadge(
-                        xp: (widget.node as CompletedPathNode).completion.xpAwarded,
+                        xp: (widget.node as CompletedPathNode)
+                            .completion
+                            .xpAwarded,
                       ),
                     ),
                     Positioned(
@@ -600,9 +602,19 @@ class _LilyPadPainter extends CustomPainter {
       Paint()..color = _lilyActive,
     );
     // Inner light pool
-    canvas.drawCircle(Offset(cx, cy), r * 0.52, Paint()..color = _lilyActiveLight);
+    canvas.drawCircle(
+      Offset(cx, cy),
+      r * 0.52,
+      Paint()..color = _lilyActiveLight,
+    );
     // Radial veins
-    _paintVeins(canvas, cx, cy, r * 0.88, _lilyActiveDark.withValues(alpha: 0.38));
+    _paintVeins(
+      canvas,
+      cx,
+      cy,
+      r * 0.88,
+      _lilyActiveDark.withValues(alpha: 0.38),
+    );
     // Characteristic V-notch
     _paintNotch(canvas, cx, cy, r * 0.92, seed);
     // Specular highlight
@@ -636,9 +648,17 @@ class _LilyPadPainter extends CustomPainter {
       Paint()..color = _lilyCompletedLight.withValues(alpha: 0.78),
     );
     canvas.drawCircle(
-      Offset(cx, cy), r * 0.50, Paint()..color = _lilyCompletedLight,
+      Offset(cx, cy),
+      r * 0.50,
+      Paint()..color = _lilyCompletedLight,
     );
-    _paintVeins(canvas, cx, cy, r * 0.86, _lilyCompleted.withValues(alpha: 0.40));
+    _paintVeins(
+      canvas,
+      cx,
+      cy,
+      r * 0.86,
+      _lilyCompleted.withValues(alpha: 0.40),
+    );
     _paintNotch(canvas, cx, cy, r * 0.90, seed);
     // Gold outline
     canvas.drawPath(
@@ -762,7 +782,11 @@ class _WaterRipplePainter extends CustomPainter {
       final opacity = (1.0 - eased) * 0.55;
       // Elliptical — real water ripples are wider than tall
       canvas.drawOval(
-        Rect.fromCenter(center: Offset(cx, cy), width: r * 2.0, height: r * 1.25),
+        Rect.fromCenter(
+          center: Offset(cx, cy),
+          width: r * 2.0,
+          height: r * 1.25,
+        ),
         Paint()
           ..color = Colors.white.withValues(alpha: opacity)
           ..style = PaintingStyle.stroke
@@ -818,8 +842,7 @@ class _BloomPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _BloomPainter old) =>
-      old.progress != progress;
+  bool shouldRepaint(covariant _BloomPainter old) => old.progress != progress;
 }
 
 // ── Multi-pulse — gentle glow rings around active pad ────────────────────────
@@ -947,7 +970,12 @@ class _StoneTrailPainter extends CustomPainter {
   // Places stones at explicit arc-length fractions (0.0–1.0) so they can be
   // biased toward either end of the connector.
   List<double> _arcLengthTs(
-      Offset p0, Offset p1, Offset p2, Offset p3, List<double> fracs) {
+    Offset p0,
+    Offset p1,
+    Offset p2,
+    Offset p3,
+    List<double> fracs,
+  ) {
     const samples = 64;
     final cumLen = <double>[0.0];
     var prev = p0;
@@ -965,7 +993,11 @@ class _StoneTrailPainter extends CustomPainter {
       var hi = samples;
       while (lo < hi - 1) {
         final mid = (lo + hi) ~/ 2;
-        if (cumLen[mid] < target) { lo = mid; } else { hi = mid; }
+        if (cumLen[mid] < target) {
+          lo = mid;
+        } else {
+          hi = mid;
+        }
       }
       final span = cumLen[hi] - cumLen[lo];
       final f = span > 0 ? (target - cumLen[lo]) / span : 0.0;
@@ -974,8 +1006,7 @@ class _StoneTrailPainter extends CustomPainter {
     return result;
   }
 
-  Offset _cubicBezier(
-      Offset p0, Offset p1, Offset p2, Offset p3, double t) {
+  Offset _cubicBezier(Offset p0, Offset p1, Offset p2, Offset p3, double t) {
     final u = 1 - t;
     return Offset(
       u * u * u * p0.dx +
@@ -1041,8 +1072,11 @@ class _StoneTrailPainter extends CustomPainter {
         ..color = _stoneGlow.withValues(alpha: 0.38)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
     );
-    canvas.drawCircle(center, 5.5,
-        Paint()..color = Colors.white.withValues(alpha: 0.96));
+    canvas.drawCircle(
+      center,
+      5.5,
+      Paint()..color = Colors.white.withValues(alpha: 0.96),
+    );
     canvas.drawCircle(center, 2.5, Paint()..color = _stoneGlow);
   }
 

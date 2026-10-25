@@ -6,12 +6,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/constants/app_constants.dart';
 import '../../../core/services/error_service.dart';
 import '../../../models/challenge_model.dart';
 import '../../../models/completion_model.dart';
 import '../../../providers/assignment_providers.dart';
 import '../../../providers/challenge_providers.dart';
 import '../../../providers/settings_providers.dart';
+import '../../../services/assignment_service.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_elevation.dart';
 import '../../../theme/app_motion.dart';
@@ -293,7 +295,7 @@ class _XpBadge extends StatelessWidget {
   }
 }
 
-// ── Dice reroll button — unlimited rerolls, shows count ──────────────────────
+// ── Dice reroll button — capped per day, shows rerolls remaining ─────────────
 
 class _DiceButton extends ConsumerStatefulWidget {
   const _DiceButton({required this.challenge});
@@ -334,73 +336,90 @@ class _DiceButtonState extends ConsumerState<_DiceButton>
     });
 
     final isLoading = ref.watch(rerollProvider).isLoading;
-    final rerollCount = widget.challenge.rerollCount;
+    final remaining =
+        (AppConstants.maxRerollsPerDay - widget.challenge.rerollCount).clamp(
+          0,
+          AppConstants.maxRerollsPerDay,
+        );
+    final exhausted = !canReroll(widget.challenge);
+    final enabled = !isLoading && !exhausted;
 
-    return GestureDetector(
-      onTap: isLoading ? null : _onTap,
-      child: AnimatedOpacity(
-        opacity: isLoading ? 0.65 : 1.0,
-        duration: AppMotion.fast,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.25),
-              width: 1.5,
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: exhausted
+          ? 'No rerolls left today. A new challenge arrives tomorrow.'
+          : 'Roll for another challenge. $remaining of '
+                '${AppConstants.maxRerollsPerDay} rerolls left today.',
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: enabled ? _onTap : null,
+        child: AnimatedOpacity(
+          opacity: enabled ? 1.0 : 0.55,
+          duration: AppMotion.fast,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.25),
+                width: 1.5,
+              ),
             ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-            child: Row(
-              children: [
-                AnimatedBuilder(
-                  animation: _spin,
-                  builder: (_, child) =>
-                      Transform.rotate(angle: _spin.value, child: child),
-                  child: isLoading
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+              child: Row(
+                children: [
+                  AnimatedBuilder(
+                    animation: _spin,
+                    builder: (_, child) =>
+                        Transform.rotate(angle: _spin.value, child: child),
+                    child: isLoading
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2.5,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.casino_rounded,
                             color: Colors.white,
-                            strokeWidth: 2.5,
+                            size: 22,
                           ),
-                        )
-                      : const Icon(
-                          Icons.casino_rounded,
-                          color: Colors.white,
-                          size: 22,
-                        ),
-                ),
-                const SizedBox(width: 11),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Feeling adventurous?',
-                        style: TextStyle(
-                          fontFamily: 'Nunito',
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white70,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                      Text(
-                        'Roll for another challenge',
-                        style: TextStyle(
-                          fontFamily: 'Nunito',
-                          fontSize: 13,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
                   ),
-                ),
-                if (rerollCount > 0)
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          exhausted
+                              ? 'No rerolls left today'
+                              : 'Feeling adventurous?',
+                          style: const TextStyle(
+                            fontFamily: 'Nunito',
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white70,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                        Text(
+                          exhausted
+                              ? 'A fresh challenge arrives tomorrow'
+                              : 'Roll for another challenge',
+                          style: const TextStyle(
+                            fontFamily: 'Nunito',
+                            fontSize: 13,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   DecoratedBox(
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.18),
@@ -414,7 +433,7 @@ class _DiceButtonState extends ConsumerState<_DiceButton>
                         vertical: 3,
                       ),
                       child: Text(
-                        '×$rerollCount',
+                        '$remaining/${AppConstants.maxRerollsPerDay}',
                         style: const TextStyle(
                           fontFamily: 'Nunito',
                           fontSize: 11,
@@ -424,7 +443,8 @@ class _DiceButtonState extends ConsumerState<_DiceButton>
                       ),
                     ),
                   ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

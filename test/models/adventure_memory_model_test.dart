@@ -42,7 +42,9 @@ void main() {
 
   group('AdventureMemoryModel.verificationLabel', () {
     test('distinguishes all three verification methods', () {
-      expect(memoryWith('ai_verified').verificationLabel, '🤖 AI Verified');
+      // Older app versions checked some photos with AI; the badge says
+      // "Verified" without advertising an AI feature (Phase 7G).
+      expect(memoryWith('ai_verified').verificationLabel, '✓ Verified');
       expect(
         memoryWith('manual_override').verificationLabel,
         '✋ Manual Submit',
@@ -158,6 +160,19 @@ void main() {
         // photoUrl deliberately absent.
       }, memoryId: 'm1');
       expect(memory.photoUrl, '');
+    });
+
+    test('an entry with no recorded verification method never claims AI '
+        '(Phase 7D)', () {
+      final memory = AdventureMemoryModel.fromMap({
+        'userId': 'u1',
+        'challengeId': 'c1',
+        'completionDate': Timestamp.fromDate(DateTime(2026, 3, 10)),
+        'createdAt': Timestamp.fromDate(DateTime(2026, 3, 10)),
+        // verificationMethod deliberately absent.
+      }, memoryId: 'm1');
+      expect(memory.isAiVerified, isFalse);
+      expect(memory.verificationLabel, isNot(contains('AI')));
     });
 
     test('fromMap round-trips a fully-populated toFirestore map', () {

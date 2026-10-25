@@ -121,8 +121,10 @@ class _ChallengeDetailScreenState extends State<ChallengeDetailScreen>
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(c.challengeEmoji,
-                              style: const TextStyle(fontSize: 32)),
+                          Text(
+                            c.challengeEmoji,
+                            style: const TextStyle(fontSize: 32),
+                          ),
                           const SizedBox(width: AppSpacing.md),
                           Expanded(
                             child: Column(
@@ -142,14 +144,18 @@ class _ChallengeDetailScreenState extends State<ChallengeDetailScreen>
                                 const SizedBox(height: 4),
                                 DecoratedBox(
                                   decoration: BoxDecoration(
-                                    color: AppColors.grassGreen
-                                        .withValues(alpha: 0.15),
+                                    color: AppColors.grassGreen.withValues(
+                                      alpha: 0.15,
+                                    ),
                                     borderRadius: BorderRadius.circular(
-                                        AppSpacing.radiusFull),
+                                      AppSpacing.radiusFull,
+                                    ),
                                   ),
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(
-                                        horizontal: 10, vertical: 4),
+                                      horizontal: 10,
+                                      vertical: 4,
+                                    ),
                                     child: Text(
                                       '${c.challengeCategory.emoji} '
                                       '${c.challengeCategory.displayName}',
@@ -182,12 +188,12 @@ class _ChallengeDetailScreenState extends State<ChallengeDetailScreen>
                         isDark: isDark,
                         valueColor: AppColors.achievementGold,
                       ),
-                      if (c.verificationResult['reason'] != null) ...[
+                      if (c.verificationDisplayText.isNotEmpty) ...[
                         const SizedBox(height: AppSpacing.md),
                         _StatRow(
-                          icon: Icons.auto_awesome_rounded,
-                          label: 'AI Verdict',
-                          value: c.verificationResult['reason'] as String,
+                          icon: Icons.check_circle_outline_rounded,
+                          label: 'Completion',
+                          value: c.verificationDisplayText,
                           isDark: isDark,
                           valueColor: AppColors.grassGreen,
                         ),
@@ -231,8 +237,9 @@ class _StatRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textColor =
-        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final textColor = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
     final mutedColor = isDark
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;

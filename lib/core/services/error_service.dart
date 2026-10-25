@@ -20,7 +20,9 @@ abstract final class ErrorService {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(_snackBar(context, friendlyMessage(error), AppColors.error));
+      ..showSnackBar(
+        _snackBar(context, friendlyMessage(error), AppColors.error),
+      );
   }
 
   /// Shows a green success SnackBar. No-ops if [context] is no longer mounted.
@@ -28,8 +30,7 @@ abstract final class ErrorService {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(
-          _snackBar(context, message, AppColors.success));
+      ..showSnackBar(_snackBar(context, message, AppColors.success));
   }
 
   /// Shows a neutral info SnackBar. No-ops if [context] is no longer mounted.
@@ -37,29 +38,27 @@ abstract final class ErrorService {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(
-          _snackBar(context, message, AppColors.info));
+      ..showSnackBar(_snackBar(context, message, AppColors.info));
   }
 
   static SnackBar _snackBar(
     BuildContext context,
     String message,
     Color backgroundColor,
-  ) =>
-      SnackBar(
-        content: Text(
-          message,
-          style: const TextStyle(
-            fontFamily: 'Nunito',
-            fontWeight: FontWeight.w600,
-            fontSize: 14,
-          ),
-        ),
-        backgroundColor: backgroundColor,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        ),
-        margin: const EdgeInsets.all(AppSpacing.md),
-      );
+  ) => SnackBar(
+    content: Text(
+      message,
+      style: const TextStyle(
+        fontFamily: 'Nunito',
+        fontWeight: FontWeight.w600,
+        fontSize: 14,
+      ),
+    ),
+    backgroundColor: backgroundColor,
+    behavior: SnackBarBehavior.floating,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+    ),
+    margin: const EdgeInsets.all(AppSpacing.md),
+  );
 }

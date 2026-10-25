@@ -43,8 +43,7 @@ class CompletionReward {
   final String previousLeague;
 
   /// True when the user moved into a higher league as a result of this completion.
-  bool get leaguePromoted =>
-      updatedUser.currentLeague != previousLeague;
+  bool get leaguePromoted => updatedUser.currentLeague != previousLeague;
 
   /// True when this completion actually grew the streak (vs. holding it
   /// steady on a same-day resubmission or Rainy Day save).

@@ -9,26 +9,25 @@ import 'package:touchgrass/models/user_model.dart';
 
 void main() {
   UserModel userWithLeague(String league) => UserModel.initial(
-        uid: 'u1',
-        displayName: 'Explorer',
-      ).copyWith(currentLeague: league);
+    uid: 'u1',
+    displayName: 'Explorer',
+  ).copyWith(currentLeague: league);
 
   CompletionReward rewardWith({
     String league = 'sprout',
     String previousLeague = 'sprout',
     int newStreak = 2,
     int previousStreak = 1,
-  }) =>
-      CompletionReward(
-        updatedUser: userWithLeague(league),
-        xpAwarded: 25,
-        newStreak: newStreak,
-        previousStreak: previousStreak,
-        leveledUp: false,
-        newLevel: 1,
-        rainyDaysAvailable: 0,
-        previousLeague: previousLeague,
-      );
+  }) => CompletionReward(
+    updatedUser: userWithLeague(league),
+    xpAwarded: 25,
+    newStreak: newStreak,
+    previousStreak: previousStreak,
+    leveledUp: false,
+    newLevel: 1,
+    rainyDaysAvailable: 0,
+    previousLeague: previousLeague,
+  );
 
   group('CompletionReward.leaguePromoted', () {
     test('is false when the league is unchanged', () {
@@ -37,8 +36,7 @@ void main() {
     });
 
     test('is true when the completion moved the user into a new league', () {
-      final reward =
-          rewardWith(league: 'wildflower', previousLeague: 'sprout');
+      final reward = rewardWith(league: 'wildflower', previousLeague: 'sprout');
       expect(reward.leaguePromoted, isTrue);
     });
   });

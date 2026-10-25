@@ -50,8 +50,8 @@ class LoadingOverlay extends StatelessWidget {
                       Text(
                         message!,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
+                          fontWeight: FontWeight.w600,
+                        ),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -170,10 +170,7 @@ class LoadingCardList extends StatelessWidget {
 /// Full-screen branded loading screen.
 /// Use for initial auth checks, heavy data loads, or navigation transitions.
 class LoadingScreen extends StatelessWidget {
-  const LoadingScreen({
-    super.key,
-    this.message = 'Loading your adventure...',
-  });
+  const LoadingScreen({super.key, this.message = 'Loading your adventure...'});
 
   final String message;
 
@@ -186,7 +183,10 @@ class LoadingScreen extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text('🌿', style: TextStyle(fontSize: AppSpacing.emojiLogo)),
+              const Text(
+                '🌿',
+                style: TextStyle(fontSize: AppSpacing.emojiLogo),
+              ),
               const SizedBox(height: AppSpacing.xl),
               const SizedBox(
                 width: AppSpacing.iconXl,
@@ -200,9 +200,9 @@ class LoadingScreen extends StatelessWidget {
               Text(
                 message,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
                 textAlign: TextAlign.center,
               ),
             ],

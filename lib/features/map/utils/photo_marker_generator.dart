@@ -86,8 +86,10 @@ abstract final class PhotoMarkerGenerator {
     final srcSize = Size(image.width.toDouble(), image.height.toDouble());
     final dstRect = Rect.fromCircle(center: center, radius: photoRadius);
     final fitted = applyBoxFit(BoxFit.cover, srcSize, dstRect.size);
-    final srcRect =
-        Alignment.center.inscribe(fitted.source, Offset.zero & srcSize);
+    final srcRect = Alignment.center.inscribe(
+      fitted.source,
+      Offset.zero & srcSize,
+    );
     canvas.drawImageRect(
       image,
       srcRect,
@@ -107,9 +109,10 @@ abstract final class PhotoMarkerGenerator {
       );
     }
 
-    final rendered = await recorder
-        .endRecording()
-        .toImage(diameter.round(), diameter.round());
+    final rendered = await recorder.endRecording().toImage(
+      diameter.round(),
+      diameter.round(),
+    );
     final bytes = await rendered.toByteData(format: ui.ImageByteFormat.png);
     return BitmapDescriptor.bytes(
       bytes!.buffer.asUint8List(),
@@ -162,9 +165,10 @@ abstract final class PhotoMarkerGenerator {
       center - Offset(painter.width / 2, painter.height / 2),
     );
 
-    final rendered = await recorder
-        .endRecording()
-        .toImage(diameter.round(), diameter.round());
+    final rendered = await recorder.endRecording().toImage(
+      diameter.round(),
+      diameter.round(),
+    );
     final bytes = await rendered.toByteData(format: ui.ImageByteFormat.png);
     return BitmapDescriptor.bytes(
       bytes!.buffer.asUint8List(),

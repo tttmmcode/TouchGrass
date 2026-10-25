@@ -26,6 +26,7 @@ abstract final class AppSpacing {
   static const double radiusLg = 16;
   static const double radiusXl = 24;
   static const double radiusXxl = 32;
+
   /// Use for pill/badge shapes.
   static const double radiusFull = 999;
 
@@ -64,6 +65,7 @@ abstract final class AppSpacing {
   static const double emojiMd = 32;
   static const double emojiLg = 48;
   static const double emojiXl = 72;
+
   /// Shared splash/loading-screen wordmark glyph size.
   static const double emojiLogo = 56;
 

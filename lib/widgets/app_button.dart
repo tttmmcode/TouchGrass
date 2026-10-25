@@ -40,8 +40,9 @@ class AppButton extends StatelessWidget {
     final Color foreground;
     final Border? border;
     if (!_enabled) {
-      background =
-          isDark ? AppColors.surfaceVariantDark : AppColors.dividerLight;
+      background = isDark
+          ? AppColors.surfaceVariantDark
+          : AppColors.dividerLight;
       foreground = isDark
           ? AppColors.onSurfaceVariantDark
           : AppColors.onSurfaceVariantLight;
@@ -60,8 +61,10 @@ class AppButton extends StatelessWidget {
         ? SizedBox(
             width: 22,
             height: 22,
-            child:
-                CircularProgressIndicator(strokeWidth: 2.5, color: foreground),
+            child: CircularProgressIndicator(
+              strokeWidth: 2.5,
+              color: foreground,
+            ),
           )
         : Row(
             mainAxisSize: MainAxisSize.min,

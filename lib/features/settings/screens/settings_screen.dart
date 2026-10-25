@@ -1,8 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter/services.dart';
@@ -11,19 +10,43 @@ import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/constants/app_constants.dart';
+import '../../../core/constants/privacy_copy.dart';
 import '../../../core/services/error_service.dart';
 import '../../../models/app_theme_mode.dart';
 import '../../../models/challenge_model.dart';
 import '../../../models/league_definition.dart';
 import '../../../models/user_model.dart';
+import '../../../providers/location_privacy_providers.dart';
+import '../../../providers/memory_providers.dart';
 import '../../../providers/settings_providers.dart';
 import '../../../providers/user_providers.dart';
+import '../../../repositories/feedback_repository.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_motion.dart';
 import '../../../theme/app_spacing.dart';
 import '../../../widgets/error_retry_view.dart';
 import '../../../widgets/initials_avatar.dart';
 import '../../../widgets/loading_widgets.dart';
+import '../../../widgets/permission_primer.dart';
+import '../widgets/account_deletion_progress.dart';
+import '../widgets/remove_saved_locations.dart';
+
+/// What to tell the user when picking a profile photo fails (audit D-20) —
+/// most often because camera or photo access was denied. Never shows the
+/// raw platform error.
+@visibleForTesting
+String profilePhotoPickErrorMessage(Object error) {
+  final code = error is PlatformException ? error.code : '';
+  if (code == 'camera_access_denied') {
+    return "TouchGrass can't use your camera. You can allow camera access "
+        'for TouchGrass in your device settings.';
+  }
+  if (code == 'photo_access_denied') {
+    return "TouchGrass can't open your photos. You can allow photo access "
+        'for TouchGrass in your device settings.';
+  }
+  return "Couldn't open that photo. Please try again.";
+}
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -35,447 +58,495 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _uploadingPhoto = false;
 
+  /// True while `deleteAccount` runs: the screen is covered and can't be
+  /// left, and a second deletion can't be started (Phase 7H).
+  bool _deletingAccount = false;
+
   @override
   Widget build(BuildContext context) {
     final settingsAsync = ref.watch(settingsProvider);
     final user = ref.watch(currentUserProvider).valueOrNull;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Settings'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: settingsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => ErrorRetryView(
-          message: ErrorService.friendlyMessage(e),
-          onRetry: () => ref.invalidate(settingsProvider),
+    return PopScope(
+      canPop: !_deletingAccount,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Settings'),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
         ),
-        data: (settings) => ListView(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.screenHorizontal,
-            0,
-            AppSpacing.screenHorizontal,
-            AppSpacing.xxxl,
-          ),
+        body: Stack(
           children: [
-            // ── Profile summary ────────────────────────────────────────────
-            const SizedBox(height: AppSpacing.md),
-            if (user != null) _ProfileSummary(user: user, isDark: isDark),
-            const SizedBox(height: AppSpacing.xxl),
+            settingsAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => ErrorRetryView(
+                message: ErrorService.friendlyMessage(e),
+                onRetry: () => ref.invalidate(settingsProvider),
+              ),
+              data: (settings) => ListView(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.screenHorizontal,
+                  0,
+                  AppSpacing.screenHorizontal,
+                  AppSpacing.xxxl,
+                ),
+                children: [
+                  // ── Profile summary ────────────────────────────────────────────
+                  const SizedBox(height: AppSpacing.md),
+                  if (user != null) _ProfileSummary(user: user, isDark: isDark),
+                  const SizedBox(height: AppSpacing.xxl),
 
-            // ── Account ────────────────────────────────────────────────────
-            _SectionLabel('Account', isDark: isDark),
-            const SizedBox(height: AppSpacing.sm),
-            _SettingsCard(
-              isDark: isDark,
-              children: [
-                _NavTile(
-                  icon: Icons.person_outline_rounded,
-                  iconColor: AppColors.grassGreen,
-                  title: 'Edit Profile',
-                  subtitle: 'Name, username',
-                  isDark: isDark,
-                  onTap: user != null
-                      ? () => _editProfile(context, user)
-                      : null,
-                ),
-                _Divider(isDark: isDark),
-                _NavTile(
-                  icon: Icons.photo_camera_outlined,
-                  iconColor: AppColors.grassGreen,
-                  title: 'Change Profile Photo',
-                  subtitle: _uploadingPhoto ? 'Uploading…' : null,
-                  isDark: isDark,
-                  trailing: _uploadingPhoto
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : null,
-                  onTap: user != null && !_uploadingPhoto
-                      ? () => _changeProfilePhoto(user.uid)
-                      : null,
-                ),
-                if (user != null) ...[
-                  _Divider(isDark: isDark),
-                  _InfoTile(
-                    icon: Icons.email_outlined,
-                    label: 'Email',
-                    value: user.email.isEmpty ? '—' : user.email,
+                  // ── Account ────────────────────────────────────────────────────
+                  _SectionLabel('Account', isDark: isDark),
+                  const SizedBox(height: AppSpacing.sm),
+                  _SettingsCard(
                     isDark: isDark,
+                    children: [
+                      _NavTile(
+                        icon: Icons.person_outline_rounded,
+                        iconColor: AppColors.grassGreen,
+                        title: 'Edit Profile',
+                        subtitle: 'Name, username',
+                        isDark: isDark,
+                        onTap: user != null
+                            ? () => _editProfile(context, user)
+                            : null,
+                      ),
+                      _Divider(isDark: isDark),
+                      _NavTile(
+                        icon: Icons.photo_camera_outlined,
+                        iconColor: AppColors.grassGreen,
+                        title: 'Change Profile Photo',
+                        subtitle: _uploadingPhoto ? 'Uploading…' : null,
+                        isDark: isDark,
+                        trailing: _uploadingPhoto
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : null,
+                        onTap: user != null && !_uploadingPhoto
+                            ? () => _changeProfilePhoto(user.uid)
+                            : null,
+                      ),
+                      if (user != null) ...[
+                        _Divider(isDark: isDark),
+                        _InfoTile(
+                          icon: Icons.email_outlined,
+                          label: 'Email',
+                          value: user.email.isEmpty ? '—' : user.email,
+                          isDark: isDark,
+                        ),
+                        _Divider(isDark: isDark),
+                        _InfoTile(
+                          icon: Icons.emoji_events_outlined,
+                          label: 'League',
+                          value: LeagueDef.forXp(user.xp).name,
+                          isDark: isDark,
+                        ),
+                        _Divider(isDark: isDark),
+                        _InfoTile(
+                          icon: Icons.bolt_rounded,
+                          label: 'Level / XP',
+                          value:
+                              'Lv.${AppConstants.levelForXp(user.xp)}  ·  ${user.xp} XP',
+                          isDark: isDark,
+                        ),
+                        _Divider(isDark: isDark),
+                        _InfoTile(
+                          icon: Icons.calendar_today_outlined,
+                          label: 'Member since',
+                          value: _formatDate(user.createdAt),
+                          isDark: isDark,
+                        ),
+                      ],
+                      _Divider(isDark: isDark),
+                      _ActionTile(
+                        icon: Icons.logout_rounded,
+                        iconColor: AppColors.error,
+                        title: 'Sign Out',
+                        titleColor: AppColors.error,
+                        isDark: isDark,
+                        onTap: () => _confirmSignOut(context),
+                      ),
+                    ],
                   ),
-                  _Divider(isDark: isDark),
-                  _InfoTile(
-                    icon: Icons.emoji_events_outlined,
-                    label: 'League',
-                    value: LeagueDef.forXp(user.xp).name,
+                  const SizedBox(height: AppSpacing.xxl),
+
+                  // ── Appearance ─────────────────────────────────────────────────
+                  _SectionLabel('Appearance', isDark: isDark),
+                  const SizedBox(height: AppSpacing.sm),
+                  _SettingsCard(
                     isDark: isDark,
+                    children: [
+                      _ThemeSelector(
+                        current: settings.themeMode,
+                        isDark: isDark,
+                        onSelect: (mode) => ref
+                            .read(settingsProvider.notifier)
+                            .setThemeMode(mode),
+                      ),
+                    ],
                   ),
-                  _Divider(isDark: isDark),
-                  _InfoTile(
-                    icon: Icons.bolt_rounded,
-                    label: 'Level / XP',
-                    value:
-                        'Lv.${AppConstants.levelForXp(user.xp)}  ·  ${user.xp} XP',
+                  const SizedBox(height: AppSpacing.xxl),
+
+                  // ── Notifications ──────────────────────────────────────────────
+                  _SectionLabel('Notifications', isDark: isDark),
+                  const SizedBox(height: AppSpacing.sm),
+                  _SettingsCard(
                     isDark: isDark,
+                    children: [
+                      _ToggleTile(
+                        icon: Icons.wb_sunny_outlined,
+                        iconColor: AppColors.grassGreen,
+                        title: 'Daily Challenge',
+                        subtitle: 'Remind me to complete today\'s challenge',
+                        value: settings.dailyNotifications,
+                        isDark: isDark,
+                        onChanged: (_) => ref
+                            .read(settingsProvider.notifier)
+                            .toggleDailyNotifications(),
+                      ),
+                      _Divider(isDark: isDark),
+                      _ToggleTile(
+                        icon: Icons.local_fire_department_outlined,
+                        iconColor: Colors.deepOrange,
+                        title: 'Streak Alert',
+                        subtitle: 'Warn me before my streak breaks',
+                        value: settings.streakNotifications,
+                        isDark: isDark,
+                        onChanged: (_) => ref
+                            .read(settingsProvider.notifier)
+                            .toggleStreakNotifications(),
+                      ),
+                      _Divider(isDark: isDark),
+                      _ToggleTile(
+                        icon: Icons.emoji_events_outlined,
+                        iconColor: const Color(0xFFFFB800),
+                        title: 'League Ending Soon',
+                        subtitle: 'Alert me when the weekly league resets',
+                        value: settings.leagueNotifications,
+                        isDark: isDark,
+                        onChanged: (_) => ref
+                            .read(settingsProvider.notifier)
+                            .toggleLeagueNotifications(),
+                      ),
+                      _Divider(isDark: isDark),
+                      _ToggleTile(
+                        icon: Icons.stars_rounded,
+                        iconColor: const Color(0xFF7B68EE),
+                        title: 'Achievement Unlocked',
+                        subtitle: 'Celebrate when I earn a new achievement',
+                        value: settings.achievementNotifications,
+                        isDark: isDark,
+                        onChanged: (_) => ref
+                            .read(settingsProvider.notifier)
+                            .toggleAchievementNotifications(),
+                      ),
+                    ],
                   ),
-                  _Divider(isDark: isDark),
-                  _InfoTile(
-                    icon: Icons.calendar_today_outlined,
-                    label: 'Member since',
-                    value: _formatDate(user.createdAt),
+                  const SizedBox(height: AppSpacing.xxl),
+
+                  // ── Streak Protection ──────────────────────────────────────────
+                  _SectionLabel('Streak Protection', isDark: isDark),
+                  const SizedBox(height: AppSpacing.sm),
+                  _SettingsCard(
                     isDark: isDark,
+                    children: [
+                      _NavTile(
+                        icon: Icons.ac_unit_rounded,
+                        iconColor: const Color(0xFF42A5F5),
+                        title: 'Streak Freezes',
+                        subtitle: user != null
+                            ? '${user.settings.streakFreezesOwned} owned  ·  ${AppConstants.streakFreezeCostXp} XP each'
+                            : 'Protect your streak when you miss a day',
+                        isDark: isDark,
+                        onTap: user != null
+                            ? () => _buyStreakFreeze(context, user, isDark)
+                            : null,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.xxl),
+
+                  // ── Accessibility ──────────────────────────────────────────────
+                  _SectionLabel('Accessibility', isDark: isDark),
+                  const SizedBox(height: AppSpacing.sm),
+                  _SettingsCard(
+                    isDark: isDark,
+                    children: [
+                      _NavTile(
+                        icon: Icons.text_fields_rounded,
+                        iconColor: AppColors.forestGreen,
+                        title: 'Text Size',
+                        subtitle: _textSizeName(settings.textScale),
+                        isDark: isDark,
+                        onTap: () =>
+                            _showTextSizeDialog(context, settings.textScale),
+                      ),
+                      _Divider(isDark: isDark),
+                      _ToggleTile(
+                        icon: Icons.animation_rounded,
+                        iconColor: AppColors.forestGreen,
+                        title: 'Reduce Motion',
+                        subtitle: 'Minimise animations throughout the app',
+                        value: settings.reducedMotion,
+                        isDark: isDark,
+                        onChanged: (_) => ref
+                            .read(settingsProvider.notifier)
+                            .toggleReducedMotion(),
+                      ),
+                      _Divider(isDark: isDark),
+                      _ToggleTile(
+                        icon: Icons.contrast_rounded,
+                        iconColor: AppColors.forestGreen,
+                        title: 'High Contrast',
+                        subtitle: 'Increase contrast for better readability',
+                        value: settings.highContrast,
+                        isDark: isDark,
+                        onChanged: (_) => ref
+                            .read(settingsProvider.notifier)
+                            .toggleHighContrast(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.xxl),
+
+                  // Leagues moved to the Leaderboard screen's "Leagues" tab — no
+                  // longer a standalone Profile Settings destination (previously
+                  // the only tile in a now-removed "Progress" section).
+
+                  // ── Challenge preferences ──────────────────────────────────────
+                  _SectionLabel('Challenge Preferences', isDark: isDark),
+                  const SizedBox(height: AppSpacing.sm),
+                  _SettingsCard(
+                    isDark: isDark,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.lg,
+                          AppSpacing.md,
+                          AppSpacing.lg,
+                          AppSpacing.sm,
+                        ),
+                        child: Text(
+                          'Pick the categories you want your daily challenges drawn '
+                          'from. Leave none selected for a mix of everything.',
+                          style: TextStyle(
+                            fontFamily: 'Nunito',
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: isDark
+                                ? AppColors.onSurfaceVariantDark
+                                : AppColors.onSurfaceVariantLight,
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.lg,
+                          0,
+                          AppSpacing.lg,
+                          AppSpacing.md,
+                        ),
+                        child: _CategoryPreferenceChips(
+                          user: user,
+                          isDark: isDark,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.xxl),
+
+                  // ── Privacy ────────────────────────────────────────────────────
+                  _SectionLabel('Privacy', isDark: isDark),
+                  const SizedBox(height: AppSpacing.sm),
+                  _SettingsCard(
+                    isDark: isDark,
+                    children: [
+                      _ToggleTile(
+                        icon: Icons.location_on_outlined,
+                        iconColor: AppColors.forestGreen,
+                        title: PrivacyCopy.locationSettingTitle,
+                        subtitle: PrivacyCopy.locationSettingSubtitle(
+                          enabled: user?.settings.locationEnabled ?? true,
+                        ),
+                        value: user?.settings.locationEnabled ?? true,
+                        isDark: isDark,
+                        onChanged: user != null
+                            ? (val) => _setLocationEnabled(
+                                context,
+                                ref,
+                                user.uid,
+                                val,
+                              )
+                            : (_) {},
+                      ),
+                      _Divider(isDark: isDark),
+                      _NavTile(
+                        icon: Icons.location_off_outlined,
+                        iconColor: AppColors.forestGreen,
+                        title: PrivacyCopy.removeLocationsTitle,
+                        subtitle: PrivacyCopy.removeLocationsSubtitle,
+                        isDark: isDark,
+                        onTap: user != null
+                            ? () => confirmAndRemoveSavedLocations(
+                                context,
+                                uid: user.uid,
+                                locationSettingOn:
+                                    user.settings.locationEnabled,
+                                repository: ref.read(
+                                  locationHistoryRepositoryProvider,
+                                ),
+                                onChanged: () =>
+                                    ref.invalidate(memoriesControllerProvider),
+                              )
+                            : null,
+                      ),
+                      _Divider(isDark: isDark),
+                      _ToggleTile(
+                        icon: Icons.leaderboard_outlined,
+                        iconColor: AppColors.forestGreen,
+                        title: 'Show on Leaderboard',
+                        subtitle: 'Appear in league rankings',
+                        value: user?.settings.profilePublic ?? true,
+                        isDark: isDark,
+                        onChanged: user != null
+                            ? (val) => ref
+                                  .read(userRepositoryProvider)
+                                  .setProfilePublic(user.uid, val)
+                            : (_) {},
+                      ),
+                      _Divider(isDark: isDark),
+                      _NavTile(
+                        icon: Icons.security_outlined,
+                        iconColor: AppColors.forestGreen,
+                        title: 'Manage Permissions',
+                        subtitle: 'Camera, location, notifications',
+                        isDark: isDark,
+                        onTap: () => _managePermissions(context),
+                      ),
+                      _Divider(isDark: isDark),
+                      _NavTile(
+                        icon: Icons.copy_outlined,
+                        iconColor: AppColors.forestGreen,
+                        title: 'Export My Data',
+                        // Accurate about what actually happens today: this copies
+                        // a stats summary to the clipboard, not a downloaded file
+                        // — it does not include photos or full challenge history.
+                        // Don't promise a "download" the app doesn't perform.
+                        subtitle:
+                            'Copy a summary of your stats to your clipboard',
+                        isDark: isDark,
+                        onTap: user != null
+                            ? () => _showDataExportDialog(context, user, isDark)
+                            : null,
+                      ),
+                      _Divider(isDark: isDark),
+                      _ActionTile(
+                        icon: Icons.delete_forever_outlined,
+                        iconColor: AppColors.error,
+                        title: 'Delete Account',
+                        titleColor: AppColors.error,
+                        isDark: isDark,
+                        onTap: () => _confirmDeleteAccount(context, isDark),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.xxl),
+
+                  // ── Support ────────────────────────────────────────────────────
+                  _SectionLabel('Support', isDark: isDark),
+                  const SizedBox(height: AppSpacing.sm),
+                  _SettingsCard(
+                    isDark: isDark,
+                    children: [
+                      _NavTile(
+                        icon: Icons.help_outline_rounded,
+                        iconColor: AppColors.forestGreen,
+                        title: 'Help & Support',
+                        isDark: isDark,
+                        onTap: () => _showHelpDialog(context, isDark),
+                      ),
+                      _Divider(isDark: isDark),
+                      _NavTile(
+                        icon: Icons.feedback_outlined,
+                        iconColor: AppColors.forestGreen,
+                        title: 'Send Feedback',
+                        isDark: isDark,
+                        onTap: () => _showFeedbackDialog(context, isDark),
+                      ),
+                      _Divider(isDark: isDark),
+                      _NavTile(
+                        icon: Icons.bug_report_outlined,
+                        iconColor: AppColors.forestGreen,
+                        title: 'Report a Bug',
+                        isDark: isDark,
+                        onTap: () => _showReportBugDialog(context, isDark),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.xxl),
+
+                  // ── Legal ──────────────────────────────────────────────────────
+                  _SectionLabel('Legal', isDark: isDark),
+                  const SizedBox(height: AppSpacing.sm),
+                  _SettingsCard(
+                    isDark: isDark,
+                    children: [
+                      _NavTile(
+                        icon: Icons.privacy_tip_outlined,
+                        iconColor: AppColors.forestGreen,
+                        title: 'Privacy Policy',
+                        isDark: isDark,
+                        onTap: () => _showPrivacyDialog(context, isDark),
+                      ),
+                      _Divider(isDark: isDark),
+                      _NavTile(
+                        icon: Icons.gavel_rounded,
+                        iconColor: AppColors.forestGreen,
+                        title: 'Terms of Service',
+                        isDark: isDark,
+                        onTap: () => _showTermsDialog(context, isDark),
+                      ),
+                      _Divider(isDark: isDark),
+                      _NavTile(
+                        icon: Icons.handshake_outlined,
+                        iconColor: AppColors.forestGreen,
+                        title: 'Community Guidelines',
+                        isDark: isDark,
+                        onTap: () =>
+                            _showCommunityGuidelinesDialog(context, isDark),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.xxl),
+
+                  // ── About ──────────────────────────────────────────────────────
+                  _SectionLabel('About', isDark: isDark),
+                  const SizedBox(height: AppSpacing.sm),
+                  _SettingsCard(
+                    isDark: isDark,
+                    children: [
+                      _NavTile(
+                        icon: Icons.eco_outlined,
+                        iconColor: AppColors.forestGreen,
+                        title: 'About TouchGrass',
+                        subtitle: 'Version 1.0.0',
+                        isDark: isDark,
+                        onTap: () => _showAbout(context),
+                      ),
+                    ],
                   ),
                 ],
-                _Divider(isDark: isDark),
-                _ActionTile(
-                  icon: Icons.logout_rounded,
-                  iconColor: AppColors.error,
-                  title: 'Sign Out',
-                  titleColor: AppColors.error,
-                  isDark: isDark,
-                  onTap: () => _confirmSignOut(context),
-                ),
-              ],
+              ),
             ),
-            const SizedBox(height: AppSpacing.xxl),
-
-            // ── Appearance ─────────────────────────────────────────────────
-            _SectionLabel('Appearance', isDark: isDark),
-            const SizedBox(height: AppSpacing.sm),
-            _SettingsCard(
-              isDark: isDark,
-              children: [
-                _ThemeSelector(
-                  current: settings.themeMode,
-                  isDark: isDark,
-                  onSelect: (mode) =>
-                      ref.read(settingsProvider.notifier).setThemeMode(mode),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.xxl),
-
-            // ── Notifications ──────────────────────────────────────────────
-            _SectionLabel('Notifications', isDark: isDark),
-            const SizedBox(height: AppSpacing.sm),
-            _SettingsCard(
-              isDark: isDark,
-              children: [
-                _ToggleTile(
-                  icon: Icons.wb_sunny_outlined,
-                  iconColor: AppColors.grassGreen,
-                  title: 'Daily Challenge',
-                  subtitle: 'Remind me to complete today\'s challenge',
-                  value: settings.dailyNotifications,
-                  isDark: isDark,
-                  onChanged: (_) => ref
-                      .read(settingsProvider.notifier)
-                      .toggleDailyNotifications(),
-                ),
-                _Divider(isDark: isDark),
-                _ToggleTile(
-                  icon: Icons.local_fire_department_outlined,
-                  iconColor: Colors.deepOrange,
-                  title: 'Streak Alert',
-                  subtitle: 'Warn me before my streak breaks',
-                  value: settings.streakNotifications,
-                  isDark: isDark,
-                  onChanged: (_) => ref
-                      .read(settingsProvider.notifier)
-                      .toggleStreakNotifications(),
-                ),
-                _Divider(isDark: isDark),
-                _ToggleTile(
-                  icon: Icons.emoji_events_outlined,
-                  iconColor: const Color(0xFFFFB800),
-                  title: 'League Ending Soon',
-                  subtitle: 'Alert me when the weekly league resets',
-                  value: settings.leagueNotifications,
-                  isDark: isDark,
-                  onChanged: (_) => ref
-                      .read(settingsProvider.notifier)
-                      .toggleLeagueNotifications(),
-                ),
-                _Divider(isDark: isDark),
-                _ToggleTile(
-                  icon: Icons.stars_rounded,
-                  iconColor: const Color(0xFF7B68EE),
-                  title: 'Achievement Unlocked',
-                  subtitle: 'Celebrate when I earn a new achievement',
-                  value: settings.achievementNotifications,
-                  isDark: isDark,
-                  onChanged: (_) => ref
-                      .read(settingsProvider.notifier)
-                      .toggleAchievementNotifications(),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.xxl),
-
-            // ── Streak Protection ──────────────────────────────────────────
-            _SectionLabel('Streak Protection', isDark: isDark),
-            const SizedBox(height: AppSpacing.sm),
-            _SettingsCard(
-              isDark: isDark,
-              children: [
-                _NavTile(
-                  icon: Icons.ac_unit_rounded,
-                  iconColor: const Color(0xFF42A5F5),
-                  title: 'Streak Freezes',
-                  subtitle: user != null
-                      ? '${user.settings.streakFreezesOwned} owned  ·  ${AppConstants.streakFreezeCostXp} XP each'
-                      : 'Protect your streak when you miss a day',
-                  isDark: isDark,
-                  onTap: user != null
-                      ? () => _buyStreakFreeze(context, user, isDark)
-                      : null,
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.xxl),
-
-            // ── Accessibility ──────────────────────────────────────────────
-            _SectionLabel('Accessibility', isDark: isDark),
-            const SizedBox(height: AppSpacing.sm),
-            _SettingsCard(
-              isDark: isDark,
-              children: [
-                _NavTile(
-                  icon: Icons.text_fields_rounded,
-                  iconColor: AppColors.forestGreen,
-                  title: 'Text Size',
-                  subtitle: _textSizeName(settings.textScale),
-                  isDark: isDark,
-                  onTap: () => _showTextSizeDialog(context, settings.textScale),
-                ),
-                _Divider(isDark: isDark),
-                _ToggleTile(
-                  icon: Icons.animation_rounded,
-                  iconColor: AppColors.forestGreen,
-                  title: 'Reduce Motion',
-                  subtitle: 'Minimise animations throughout the app',
-                  value: settings.reducedMotion,
-                  isDark: isDark,
-                  onChanged: (_) =>
-                      ref.read(settingsProvider.notifier).toggleReducedMotion(),
-                ),
-                _Divider(isDark: isDark),
-                _ToggleTile(
-                  icon: Icons.contrast_rounded,
-                  iconColor: AppColors.forestGreen,
-                  title: 'High Contrast',
-                  subtitle: 'Increase contrast for better readability',
-                  value: settings.highContrast,
-                  isDark: isDark,
-                  onChanged: (_) =>
-                      ref.read(settingsProvider.notifier).toggleHighContrast(),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.xxl),
-
-            // Leagues moved to the Leaderboard screen's "Leagues" tab — no
-            // longer a standalone Profile Settings destination (previously
-            // the only tile in a now-removed "Progress" section).
-
-            // ── Challenge preferences ──────────────────────────────────────
-            _SectionLabel('Challenge Preferences', isDark: isDark),
-            const SizedBox(height: AppSpacing.sm),
-            _SettingsCard(
-              isDark: isDark,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.lg,
-                    AppSpacing.md,
-                    AppSpacing.lg,
-                    AppSpacing.sm,
-                  ),
-                  child: Text(
-                    'Pick the categories you want your daily challenges drawn '
-                    'from. Leave none selected for a mix of everything.',
-                    style: TextStyle(
-                      fontFamily: 'Nunito',
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: isDark
-                          ? AppColors.onSurfaceVariantDark
-                          : AppColors.onSurfaceVariantLight,
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.lg,
-                    0,
-                    AppSpacing.lg,
-                    AppSpacing.md,
-                  ),
-                  child: _CategoryPreferenceChips(user: user, isDark: isDark),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.xxl),
-
-            // ── Privacy ────────────────────────────────────────────────────
-            _SectionLabel('Privacy', isDark: isDark),
-            const SizedBox(height: AppSpacing.sm),
-            _SettingsCard(
-              isDark: isDark,
-              children: [
-                _ToggleTile(
-                  icon: Icons.location_on_outlined,
-                  iconColor: AppColors.forestGreen,
-                  title: 'Store Location Data',
-                  subtitle: 'Save GPS coordinates with challenge completions',
-                  value: user?.settings.locationEnabled ?? true,
-                  isDark: isDark,
-                  onChanged: user != null
-                      ? (val) =>
-                            ref.read(userRepositoryProvider).updateUserFields(
-                              user.uid,
-                              {'settings.locationEnabled': val},
-                            )
-                      : (_) {},
-                ),
-                _Divider(isDark: isDark),
-                _ToggleTile(
-                  icon: Icons.leaderboard_outlined,
-                  iconColor: AppColors.forestGreen,
-                  title: 'Show on Leaderboard',
-                  subtitle: 'Appear in league rankings',
-                  value: user?.settings.profilePublic ?? true,
-                  isDark: isDark,
-                  onChanged: user != null
-                      ? (val) => ref
-                            .read(userRepositoryProvider)
-                            .setProfilePublic(user.uid, val)
-                      : (_) {},
-                ),
-                _Divider(isDark: isDark),
-                _NavTile(
-                  icon: Icons.security_outlined,
-                  iconColor: AppColors.forestGreen,
-                  title: 'Manage Permissions',
-                  subtitle: 'Camera, location, notifications',
-                  isDark: isDark,
-                  onTap: () => _managePermissions(context),
-                ),
-                _Divider(isDark: isDark),
-                _NavTile(
-                  icon: Icons.copy_outlined,
-                  iconColor: AppColors.forestGreen,
-                  title: 'Export My Data',
-                  // Accurate about what actually happens today: this copies
-                  // a stats summary to the clipboard, not a downloaded file
-                  // — it does not include photos or full challenge history.
-                  // Don't promise a "download" the app doesn't perform.
-                  subtitle: 'Copy a summary of your stats to your clipboard',
-                  isDark: isDark,
-                  onTap: user != null
-                      ? () => _showDataExportDialog(context, user, isDark)
-                      : null,
-                ),
-                _Divider(isDark: isDark),
-                _ActionTile(
-                  icon: Icons.delete_forever_outlined,
-                  iconColor: AppColors.error,
-                  title: 'Delete Account',
-                  titleColor: AppColors.error,
-                  isDark: isDark,
-                  onTap: () => _confirmDeleteAccount(context, isDark),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.xxl),
-
-            // ── Support ────────────────────────────────────────────────────
-            _SectionLabel('Support', isDark: isDark),
-            const SizedBox(height: AppSpacing.sm),
-            _SettingsCard(
-              isDark: isDark,
-              children: [
-                _NavTile(
-                  icon: Icons.help_outline_rounded,
-                  iconColor: AppColors.forestGreen,
-                  title: 'Help & Support',
-                  isDark: isDark,
-                  onTap: () => _showHelpDialog(context, isDark),
-                ),
-                _Divider(isDark: isDark),
-                _NavTile(
-                  icon: Icons.feedback_outlined,
-                  iconColor: AppColors.forestGreen,
-                  title: 'Send Feedback',
-                  isDark: isDark,
-                  onTap: () => _showFeedbackDialog(context, isDark),
-                ),
-                _Divider(isDark: isDark),
-                _NavTile(
-                  icon: Icons.bug_report_outlined,
-                  iconColor: AppColors.forestGreen,
-                  title: 'Report a Bug',
-                  isDark: isDark,
-                  onTap: () => _showReportBugDialog(context, isDark),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.xxl),
-
-            // ── Legal ──────────────────────────────────────────────────────
-            _SectionLabel('Legal', isDark: isDark),
-            const SizedBox(height: AppSpacing.sm),
-            _SettingsCard(
-              isDark: isDark,
-              children: [
-                _NavTile(
-                  icon: Icons.privacy_tip_outlined,
-                  iconColor: AppColors.forestGreen,
-                  title: 'Privacy Policy',
-                  isDark: isDark,
-                  onTap: () => _showPrivacyDialog(context, isDark),
-                ),
-                _Divider(isDark: isDark),
-                _NavTile(
-                  icon: Icons.gavel_rounded,
-                  iconColor: AppColors.forestGreen,
-                  title: 'Terms of Service',
-                  isDark: isDark,
-                  onTap: () => _showTermsDialog(context, isDark),
-                ),
-                _Divider(isDark: isDark),
-                _NavTile(
-                  icon: Icons.handshake_outlined,
-                  iconColor: AppColors.forestGreen,
-                  title: 'Community Guidelines',
-                  isDark: isDark,
-                  onTap: () => _showCommunityGuidelinesDialog(context, isDark),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.xxl),
-
-            // ── About ──────────────────────────────────────────────────────
-            _SectionLabel('About', isDark: isDark),
-            const SizedBox(height: AppSpacing.sm),
-            _SettingsCard(
-              isDark: isDark,
-              children: [
-                _NavTile(
-                  icon: Icons.eco_outlined,
-                  iconColor: AppColors.forestGreen,
-                  title: 'About TouchGrass',
-                  subtitle: 'Version 1.0.0',
-                  isDark: isDark,
-                  onTap: () => _showAbout(context),
-                ),
-              ],
-            ),
+            if (_deletingAccount)
+              const Positioned.fill(child: AccountDeletionProgress()),
           ],
         ),
       ),
@@ -791,16 +862,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     if (source == null || !mounted) return;
 
-    final picked = await ImagePicker().pickImage(
-      source: source,
-      maxWidth: 1024,
-      maxHeight: 1024,
-      imageQuality: 90,
-    );
+    // Explain before the OS camera prompt, as CameraScreen does (audit D-20).
+    if (source == ImageSource.camera) {
+      await maybeShowPermissionPrimer(context, PermissionPrimerKind.camera);
+      if (!mounted) return;
+    }
 
-    if (picked == null || !mounted) return;
-
-    final bytes = await picked.readAsBytes();
+    final Uint8List bytes;
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 90,
+      );
+      if (picked == null || !mounted) return;
+      bytes = await picked.readAsBytes();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(profilePhotoPickErrorMessage(e))),
+        );
+      }
+      return;
+    }
     if (!mounted) return;
 
     final croppedBytes = await Navigator.of(context).push<Uint8List>(
@@ -954,6 +1039,50 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  /// Turning optional location off is confirmed first, with exactly what
+  /// stops working (audit D-09); turning it on needs no confirmation. The
+  /// app never changes this setting on the user's behalf.
+  Future<void> _setLocationEnabled(
+    BuildContext context,
+    WidgetRef ref,
+    String uid,
+    bool enabled,
+  ) async {
+    if (!enabled) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text(PrivacyCopy.locationOffDialogTitle),
+          content: const SingleChildScrollView(
+            child: Text(PrivacyCopy.locationOffEffects),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Keep on'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Turn off'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+    final result = await ref.read(userRepositoryProvider).updateUserFields(
+      uid,
+      {'settings.locationEnabled': enabled},
+    );
+    if (result.isErr && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Couldn't update this setting. Please try again."),
+        ),
+      );
+    }
+  }
+
   Future<void> _showPrivacyDialog(BuildContext context, bool isDark) async {
     final surface = isDark
         ? AppColors.surfaceVariantDark
@@ -968,12 +1097,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         backgroundColor: surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
         ),
         title: Text(
-          'Privacy Policy',
+          PrivacyCopy.privacyPolicyTitle,
           style: TextStyle(
             fontFamily: 'Nunito',
             fontWeight: FontWeight.w900,
@@ -981,9 +1111,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
         ),
         content: Text(
-          'TouchGrass collects your display name, profile photo, challenge completions, XP, and streak data to power the app experience.\n\n'
-          'Your data is stored securely in Firebase and is never sold to third parties.\n\n'
-          'Location data is only accessed when you complete a challenge and is stored as a coordinate linked to that completion.',
+          PrivacyCopy.privacyPolicyText,
           style: TextStyle(
             fontFamily: 'Nunito',
             fontSize: 13,
@@ -1027,7 +1155,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           style: TextStyle(fontFamily: 'Nunito', fontWeight: FontWeight.w900),
         ),
         content: const Text(
-          'This will permanently delete your account, XP, streak, and all challenge history. This cannot be undone.',
+          PrivacyCopy.deleteAccountWarning,
           style: TextStyle(fontFamily: 'Nunito', fontWeight: FontWeight.w500),
         ),
         actions: [
@@ -1057,7 +1185,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
     );
 
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !mounted || _deletingAccount) return;
 
     final uid = ref.read(currentUserProvider).valueOrNull?.uid;
     if (uid == null) return;
@@ -1076,7 +1204,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (password == null || !mounted) return;
     }
 
-    // Step 4: Cascading delete (reauth → Firestore → Storage → Auth).
+    // Step 4: Re-authenticate, then the server-side deleteAccount function
+    // removes all data and the Auth account (retry-safe). Success is only
+    // reported once the server confirms everything is gone. The app-wide
+    // messenger is captured first: on success, signing out replaces this
+    // screen before the confirmation is shown.
+    final messenger = ScaffoldMessenger.of(this.context);
+    setState(() => _deletingAccount = true);
     final result = await ref
         .read(userRepositoryProvider)
         .deleteAccount(
@@ -1086,10 +1220,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           providerId: providerId,
         );
 
-    if (!mounted) return;
+    if (mounted) setState(() => _deletingAccount = false);
     result.when(
-      ok: (_) {}, // GoRouter redirect fires when auth state clears
-      err: (e) => ErrorService.showError(this.context, e),
+      // GoRouter's redirect leaves this screen when auth state clears.
+      ok: (_) => messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(PrivacyCopy.deleteAccountDone),
+            backgroundColor: AppColors.success,
+            behavior: SnackBarBehavior.floating,
+          ),
+        ),
+      err: (e) {
+        if (mounted) ErrorService.showError(this.context, e);
+      },
     );
   }
 
@@ -1193,7 +1338,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             _HelpItem(
               title: 'How do I complete a challenge?',
               body:
-                  'Tap the active lily pad on your home screen, then take a photo of your outdoor activity to verify it.',
+                  'Tap the active lily pad on your home screen, then take a photo of your outdoor activity to complete it.',
               isDark: isDark,
             ),
             const SizedBox(height: 14),
@@ -1234,7 +1379,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       isDark: isDark,
       title: 'Send Feedback',
       hint: 'Feature ideas, general feedback, anything…',
-      type: 'feedback',
+      type: FeedbackType.feedback,
     );
   }
 
@@ -1244,7 +1389,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       isDark: isDark,
       title: 'Report a Bug',
       hint: 'Describe what happened and how to reproduce it…',
-      type: 'bug',
+      type: FeedbackType.bug,
     );
   }
 
@@ -1253,7 +1398,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     required bool isDark,
     required String title,
     required String hint,
-    required String type,
+    required FeedbackType type,
   }) async {
     final surface = isDark
         ? AppColors.surfaceVariantDark
@@ -1316,23 +1461,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   : () async {
                       setS(() => submitting = true);
                       try {
-                        await ref
-                            .read(firestoreServiceProvider)
-                            .addDocument(
-                              collection: AppConstants.colFeedback,
-                              data: {
-                                'type': type,
-                                'message': ctrl.text.trim(),
-                                'userId': uid,
-                                'createdAt': FieldValue.serverTimestamp(),
-                                'appVersion': '1.0.0',
-                              },
-                            );
+                        (await ref
+                                .read(feedbackRepositoryProvider)
+                                .submit(
+                                  userId: uid,
+                                  type: type,
+                                  message: ctrl.text,
+                                ))
+                            .valueOrThrow;
                         if (ctx.mounted) Navigator.of(ctx).pop();
                         messenger.showSnackBar(
                           SnackBar(
                             content: Text(
-                              type == 'bug'
+                              type == FeedbackType.bug
                                   ? '🐛 Bug report submitted — thank you!'
                                   : '💚 Feedback received — thank you!',
                               style: const TextStyle(
@@ -1417,7 +1558,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             'By using TouchGrass you agree to the following terms:\n\n'
             '1. Use the app for lawful purposes only. Do not submit photos that depict illegal activity, harassment, or content inappropriate for all ages.\n\n'
             '2. Your account is personal and non-transferable. You are responsible for maintaining the security of your credentials.\n\n'
-            '3. Challenge photos you submit may be used to improve AI verification. We will never share identifiable photos publicly without your consent.\n\n'
+            '3. Challenge photos you submit are stored to show in your Journal. They are not used to train or improve AI, and we will never share identifiable photos publicly without your consent.\n\n'
             '4. We reserve the right to suspend accounts that violate these terms or abuse the challenge system.\n\n'
             '5. The app is provided "as is" without warranty of any kind. We are not liable for any loss of data or service interruptions.\n\n'
             '6. These terms may be updated at any time. Continued use of the app after changes constitutes acceptance.\n\n'

@@ -8,7 +8,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../core/constants/app_constants.dart';
 import '../core/errors/app_exception.dart';
-import '../models/adventure_memory_model.dart';
+import '../core/result.dart';
 import '../models/challenge_model.dart';
 import '../models/completion_model.dart';
 import '../models/weather_model.dart';
@@ -17,70 +17,55 @@ import '../repositories/completion_repository.dart';
 import '../repositories/memory_repository.dart';
 import '../repositories/user_repository.dart';
 import '../services/analytics_service.dart';
-import '../services/gemini_service.dart';
 import '../services/location_service.dart';
 import '../services/storage_service.dart';
 import '../services/weather_service.dart';
 import 'auth_providers.dart';
 import 'challenge_providers.dart';
 import 'connectivity_providers.dart';
-import 'entitlement_providers.dart';
-import 'memory_providers.dart';
+import 'location_privacy_providers.dart';
+import 'map_providers.dart';
 import 'user_providers.dart';
+import 'weather_providers.dart';
 
-/// The `verificationResult` map recorded on a completion that skipped a
-/// real Gemini call — either because AI verification is a paid feature and
-/// this user is free-tier ([aiLocked]), or because no Gemini key is
-/// configured at all (dev/staging fallback, unrelated to entitlement).
-/// Extracted as a pure function — the one piece of business logic in this
-/// honor-system path that could silently regress — so it's unit-testable
-/// without needing to mock [CameraNotifier]'s Firebase-backed dependencies
-/// (matches this codebase's established pattern of extracting pure
-/// decision logic, e.g. `resolveStreakOutcome`, `mapLocationAccessStatus`).
+/// The `verificationResult` map recorded on an honor-system completion —
+/// every completion today, since AI photo verification is disabled (audit
+/// D-06). The same for every tier: the earlier free-tier wording advertised
+/// AI verification as a "premium feature, coming soon", which Phase 7G
+/// removed. firestore.rules only accept the keys `reason` and `aiLocked`,
+/// so a client can't record a fake AI verdict; `aiLocked` is no longer
+/// written. Extracted as a pure function so it's unit-testable without
+/// mocking [CameraNotifier]'s Firebase-backed dependencies.
 @visibleForTesting
-Map<String, dynamic> honorSystemVerificationResult({required bool aiLocked}) {
-  return aiLocked
-      ? const {
-          'reason':
-              'Honor-system approved — AI verification is a '
-              'premium feature.',
-          'aiLocked': true,
-        }
-      : const {'reason': 'Auto-approved — AI verification not configured.'};
+Map<String, dynamic> honorSystemVerificationResult() {
+  return const {'reason': honorSystemReason};
 }
 
 // ── Diagnostics ──────────────────────────────────────────────────────────────
 
-/// Appends the underlying cause to an [AppException]'s message when it's an
-/// [UnexpectedException] — i.e. specifically the generic "An unexpected
-/// error occurred." case, which otherwise hides what actually went wrong.
-/// Every other [AppException] subtype already carries a specific, meaningful
-/// message, so this is a no-op for those.
+/// The user-facing text for a failure (audit S-9). Typed [AppException]s
+/// already carry a friendly message and are returned as is. For the generic
+/// [UnexpectedException], only a short Firebase error code is appended
+/// (e.g. `[permission-denied]`) so support can tell failures apart; raw
+/// cause text (JS error dumps, paths, IDs) is never shown to users. The full
+/// cause goes to crash reporting instead.
 ///
-/// Deliberately does NOT assume the cause is a [FirebaseException] — on
-/// Flutter Web, `cloud_firestore`'s JS interop layer frequently throws
-/// errors that never get converted to a typed Dart [FirebaseException] at
-/// all (this was confirmed in the field: a first version of this helper
-/// that only handled [FirebaseException] produced no visible change,
-/// meaning the real cause is some other type). Falls back to the cause's
-/// runtime type and a truncated `toString()` so *something* diagnosable
-/// always surfaces, whatever shape the cause turns out to be.
-///
-/// TEMPORARY diagnostic aid (KNOWN_BUGS.md A1 follow-up) — safe to remove
-/// once the completions-write failure reported there is confirmed resolved
-/// in the field, since at that point this is just extra noise in the UI.
+/// Replaces the temporary diagnostic aid from KNOWN_BUGS.md A1, which
+/// appended the raw cause text while that (since fixed) web bug was traced.
 @visibleForTesting
 String diagnosticFailureMessage(AppException e) {
   if (e is! UnexpectedException) return e.message;
   final cause = e.cause;
-  if (cause is FirebaseException) {
+  CrashReporter.recordError(
+    cause ?? e,
+    null,
+    reason: 'camera flow: ${e.message}',
+  );
+  if (cause is FirebaseException &&
+      RegExp(r'^[a-z][a-z0-9-]{0,40}$').hasMatch(cause.code)) {
     return '${e.message} [${cause.code}]';
   }
-  var causeText = cause.toString();
-  if (causeText.length > 140) {
-    causeText = '${causeText.substring(0, 140)}…';
-  }
-  return '${e.message} [${cause.runtimeType}: $causeText]';
+  return e.message;
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -105,14 +90,15 @@ final class CameraImagePicked extends CameraFlowState {
 /// Real stage of the verification pipeline, so the UI can show what's
 /// actually happening instead of a timer-driven guess.
 enum VerifyingStage {
-  /// Gemini is analyzing the photo against the challenge.
+  /// AI is analyzing the photo. Unused while AI verification is disabled
+  /// (audit D-06); kept for the future server-side verifier.
   analyzing,
 
-  /// Verification passed (or was skipped/overridden); uploading the photo
-  /// and fetching location/caption prompt.
+  /// Uploading the photo (and reading location, if the user allows it).
   uploading,
 
-  /// Caption submitted; writing the completion, XP, streak and achievements.
+  /// Caption submitted; writing the completion, XP, streak, achievements
+  /// and the Journal entry in one atomic batch.
   saving,
 }
 
@@ -120,17 +106,15 @@ final class CameraVerifying extends CameraFlowState {
   const CameraVerifying({
     required this.bytes,
     this.stage = VerifyingStage.analyzing,
-    this.usingAi = true,
+    this.usingAi = false,
   });
   final Uint8List bytes;
   final VerifyingStage stage;
 
-  /// Whether this verification pass is actually calling Gemini. False for
-  /// both honor-system reasons (`aiLocked` paid-tier gate, or no API key
-  /// configured) — the UI must never claim AI is reviewing the photo when
-  /// no AI call is happening. Defaults `true` to match the real-Gemini
-  /// branch's existing behavior; the honor-system branch in [verify]
-  /// explicitly passes `false`.
+  /// Whether an AI verifier is actually reviewing this photo — the UI must
+  /// never claim AI is reviewing when no AI call is happening. Defaults to
+  /// `false` (fail-safe): client-side AI was removed (audit D-06), and only
+  /// a future server-side verifier may set it.
   final bool usingAi;
 }
 
@@ -178,6 +162,7 @@ final class CameraSuccess extends CameraFlowState {
     this.newAchievements = const [],
     this.rainyDayConsumed = false,
     this.rainyDayEarned = 0,
+    this.savedToJournal = false,
   });
   final int xpAwarded;
   final String challengeTitle;
@@ -208,6 +193,27 @@ final class CameraSuccess extends CameraFlowState {
   /// completion. Only ever true when [previousLeague] and [newLeague]
   /// genuinely differ — never inferred or assumed.
   bool get leagueChanged => previousLeague != newLeague;
+
+  /// True when the Journal entry (with this photo) was committed in the same
+  /// batch as the completion — only then may the UI say it's saved.
+  final bool savedToJournal;
+}
+
+/// What went wrong, so the UI can say what was (not) saved and whether a
+/// retry can help (audit D-13).
+enum CameraFailureKind {
+  /// The photo didn't upload. Nothing was saved; retrying is safe.
+  uploadFailed,
+
+  /// The photo uploaded but the completion (and its Journal entry) wasn't
+  /// saved. Nothing was counted; retrying is safe and can't double-count.
+  saveFailed,
+
+  /// Today's challenge is already completed and in the Journal. Final.
+  alreadyCompleted,
+
+  /// Anything else (no challenge, photo couldn't be loaded, …).
+  other,
 }
 
 final class CameraFailure extends CameraFlowState {
@@ -217,8 +223,15 @@ final class CameraFailure extends CameraFlowState {
     this.confidence,
     this.explanation,
     this.caption,
+    this.kind = CameraFailureKind.other,
   });
   final String message;
+  final CameraFailureKind kind;
+
+  /// Whether Retry can help: there's a photo to retry with and the failure
+  /// isn't final.
+  bool get canRetry =>
+      bytes != null && kind != CameraFailureKind.alreadyCompleted;
   final Uint8List? bytes;
   final double? confidence;
   final String? explanation;
@@ -233,47 +246,60 @@ final class CameraFailure extends CameraFlowState {
 
 // ── Notifier ──────────────────────────────────────────────────────────────────
 
+/// Message shown when today's completion already exists (a retry after a
+/// save whose confirmation was lost, a double-tap, or a second device).
+const alreadyCompletedMessage =
+    "You've already completed today's challenge — it's saved in your Journal.";
+
+/// Place name and weather looked up for a photo's location, to enrich its
+/// Journal entry. Only ever fetched when the user allows optional location
+/// use (audit D-09).
+class _PlaceAndWeather {
+  const _PlaceAndWeather({this.name, this.condition, this.emoji});
+  final String? name;
+  final String? condition;
+  final String? emoji;
+}
+
 class CameraNotifier extends StateNotifier<CameraFlowState> {
   CameraNotifier({
     required this._challenge,
     required this._userId,
     required this._ref,
-    required GeminiService geminiService,
     required StorageService storageService,
     required CompletionRepository completionRepository,
     required UserRepository userRepository,
     required ChallengeRepository challengeRepository,
-    required MemoryRepository memoryRepository,
-  }) : _gemini = geminiService,
-       _storage = storageService,
+    required LocationService locationService,
+    required WeatherService weatherService,
+  }) : _storage = storageService,
        _completions = completionRepository,
        _users = userRepository,
        _challenges = challengeRepository,
-       _memories = memoryRepository,
+       _location = locationService,
+       _weather = weatherService,
        _picker = ImagePicker(),
        super(const CameraIdle());
 
   final ChallengeModel? _challenge;
   final String? _userId;
   final Ref _ref;
-  final GeminiService _gemini;
   final StorageService _storage;
   final CompletionRepository _completions;
   final UserRepository _users;
   final ChallengeRepository _challenges;
-  final MemoryRepository _memories;
+  final LocationService _location;
+  final WeatherService _weather;
   final ImagePicker _picker;
 
-  /// Pre-flight connectivity check — Gemini verification and Storage upload
-  /// both require a live connection, so failing fast with a clear message
+  /// Pre-flight connectivity check — the photo upload and the completion
+  /// commit both require a live connection, so failing fast with a clear message
   /// beats letting the user sit on a spinner until a network timeout fires.
   bool get _isOffline => _ref.read(isOnlineProvider).valueOrNull == false;
 
-  /// AI photo verification is a paid feature (KNOWN_BUGS.md / entitlement
-  /// architecture) — free-tier users (everyone, until a payment provider or
-  /// a manual `premium`/`admin_test` grant exists) never reach Gemini at
-  /// all, honor-system-approved instead. See [verify]'s first branch.
-  bool get _canUseAi => _ref.read(canUseAiVerificationProvider);
+  /// The user's optional-location setting (audit D-09), read at each step so
+  /// switching it off mid-flow takes effect before anything is saved.
+  bool get _locationAllowed => _ref.read(optionalLocationAllowedProvider);
 
   /// Bumped by [cancelVerification]; captured at the start of [verify]/
   /// [override] so in-flight awaits can tell they were cancelled and skip
@@ -286,6 +312,10 @@ class CameraNotifier extends StateNotifier<CameraFlowState> {
   /// set by [retryVerification] and consumed once by the next successful
   /// [CameraCaptionStep] this run produces — see [CameraCaptionStep.initialCaption].
   String? _pendingCaptionOnRetry;
+
+  /// Place name + weather lookup started while the user writes a caption,
+  /// so the Journal entry can be saved with them in the completion batch.
+  Future<_PlaceAndWeather?>? _enrichment;
 
   /// Lets the user back out of the verifying screen. Does not (and cannot)
   /// abort the underlying network calls, but ensures their eventual result
@@ -314,196 +344,164 @@ class CameraNotifier extends StateNotifier<CameraFlowState> {
     }
   }
 
-  Future<void> verify() async {
-    final current = state;
-    if (current is! CameraImagePicked) return;
-
-    final challenge = _challenge;
-    final userId = _userId;
+  /// Checks that a photo may be submitted for [challenge] now. Returns the
+  /// failure to show, or null to proceed.
+  Future<CameraFailure?> _preflight(
+    ChallengeModel? challenge,
+    String? userId,
+    Uint8List bytes,
+  ) async {
     if (challenge == null || userId == null) {
-      state = const CameraFailure(message: 'No active challenge found.');
-      return;
+      return const CameraFailure(message: 'No active challenge found.');
     }
     if (challenge.isCompleted) {
-      state = const CameraFailure(
-        message: "You've already completed today's challenge. Nice work!",
+      return const CameraFailure(
+        message: alreadyCompletedMessage,
+        kind: CameraFailureKind.alreadyCompleted,
       );
-      return;
     }
-
-    final bytes = current.bytes;
-
     if (_isOffline) {
-      state = CameraFailure(
-        message: "You're offline. Connect to the internet and try again.",
+      return CameraFailure(
+        message:
+            "You're offline, so nothing was uploaded or saved. "
+            'Connect to the internet and tap Retry.',
         bytes: bytes,
+        kind: CameraFailureKind.uploadFailed,
       );
-      return;
     }
-
-    final gen = ++_generation;
-
-    // Two distinct reasons to skip the real Gemini call and honor-system
-    // approve instead — both must never fabricate a `confidence`/`matches`
-    // verdict, only differ in the message shown/stored:
-    //   1. AI verification is a paid feature (KNOWN_BUGS.md) and this user
-    //      is free-tier — never reaches Gemini at all, regardless of
-    //      whether a key is configured, so a free user can't consume paid
-    //      AI quota. This is the common case today (everyone is free-tier
-    //      until a payment provider or manual grant exists).
-    //   2. No API key configured at all (dev/staging build) — unrelated to
-    //      entitlement, preserved as a fallback so the app still works
-    //      without a Gemini key regardless of tier.
-    // Computed before the first `CameraVerifying` state-set below so the
-    // "AI is reviewing" copy is never shown, even momentarily, for a
-    // completion that will never actually call Gemini.
-    final aiLocked = !_canUseAi;
-    final usingAi = !aiLocked && AppConstants.geminiApiKey.isNotEmpty;
-    state = CameraVerifying(bytes: bytes, usingAi: usingAi);
-
-    if (aiLocked || AppConstants.geminiApiKey.isEmpty) {
-      state = CameraVerifying(
-        bytes: bytes,
-        stage: VerifyingStage.uploading,
-        usingAi: false,
-      );
-      // Location is a best-effort enrichment — a failure there shouldn't
-      // block completion. The photo upload is not optional: silently
-      // proceeding with an empty photoUrl would persist a broken
-      // completion, so that failure is surfaced instead.
-      GeoPoint? location;
-      try {
-        location = await LocationService().getCurrentLocation();
-      } catch (_) {}
-      if (gen != _generation) return;
-      final String photoUrl;
-      try {
-        photoUrl = await _storage.uploadCompletionPhoto(
-          userId: userId,
-          bytes: bytes,
-        );
-      } on AppException catch (e) {
-        if (gen != _generation) return;
-        state = CameraFailure(
-          message: diagnosticFailureMessage(e),
-          bytes: bytes,
-        );
-        return;
-      } catch (_) {
-        if (gen != _generation) return;
-        state = CameraFailure(
-          message: 'Upload failed. Please try again.',
-          bytes: bytes,
-        );
-        return;
-      }
-      if (gen != _generation) return;
-
-      state = CameraCaptionStep(
-        bytes: bytes,
-        captionPrompt: AppConstants.defaultCaptionPrompt,
-        pendingUserId: userId,
-        pendingChallenge: challenge,
-        // No fabricated confidence/matches — this bypassed AI entirely, so
-        // the completion record should honestly say so rather than claiming
-        // a verification that never happened. `aiLocked` lets the caption
-        // screen show "Coming Soon" messaging specifically for the paid-
-        // feature case, distinct from the generic dev/staging fallback.
-        pendingVerificationResult: honorSystemVerificationResult(
-          aiLocked: aiLocked,
-        ),
-        pendingPhotoUrl: photoUrl,
-        pendingLocation: location,
-        initialCaption: _pendingCaptionOnRetry,
-      );
-      _pendingCaptionOnRetry = null;
-      return;
-    }
-
-    final locationFuture = LocationService().getCurrentLocation();
-    // The caption prompt is a cosmetic nicety — falling back on failure
-    // (same default used elsewhere) means a transient Gemini hiccup here
-    // can never sink an already-verified, already-uploading submission via
-    // Future.wait's fail-fast behavior below.
-    final captionPromptFuture = _gemini
-        .generateCaptionPrompt(
-          challengeTitle: challenge.title,
-          challengeCategory: challenge.challengeCategory.displayName,
-        )
-        .catchError((_) => AppConstants.defaultCaptionPrompt);
-
+    // The photo path is fixed per completion, so uploading again after the
+    // completion was saved would replace the photo it points to. Check the
+    // authoritative completion first (the challenge's isCompleted flag can
+    // lag behind, e.g. when a save's confirmation was lost).
+    final completionId = CompletionRepository.completionDocId(
+      userId,
+      challenge.challengeId,
+    );
+    final bool exists;
     try {
-      final result = await _gemini.verifyPhoto(
-        imageBytes: bytes,
-        challengeTitle: challenge.title,
-        challengeDescription: challenge.description,
-        challengeObjective: challenge.objective,
-        challengeSuccessCriteria: challenge.successCriteria,
-        challengeCategory: challenge.challengeCategory.displayName,
+      exists = await _completions.exists(completionId);
+    } catch (_) {
+      return CameraFailure(
+        message:
+            "We couldn't reach TouchGrass, so nothing was uploaded or "
+            'saved. Check your connection and tap Retry.',
+        bytes: bytes,
+        kind: CameraFailureKind.uploadFailed,
       );
-      if (gen != _generation) return;
+    }
+    if (exists) {
+      return const CameraFailure(
+        message: alreadyCompletedMessage,
+        kind: CameraFailureKind.alreadyCompleted,
+      );
+    }
+    return null;
+  }
 
-      if (!result.matches) {
-        state = CameraFailure(
-          message: VerificationException.lowConfidence(
-            result.confidence,
-          ).message,
-          bytes: bytes,
-          confidence: result.confidence,
-          explanation: result.reason,
-        );
-        return;
-      }
-
-      AnalyticsService.logVerificationPassed(
+  /// Reads the location (only if the user allows it) and uploads the photo
+  /// to its fixed per-completion path. Returns the upload's download URL and
+  /// location, or sets a failure state and returns null.
+  Future<({String photoUrl, GeoPoint? location})?> _uploadPhoto({
+    required int gen,
+    required String userId,
+    required ChallengeModel challenge,
+    required Uint8List bytes,
+  }) async {
+    // Location is an optional enrichment (audit D-09): never read unless the
+    // user allows it, and a failure there never blocks the completion.
+    GeoPoint? location;
+    if (_locationAllowed) {
+      try {
+        location = await _location.getCurrentLocation();
+      } catch (_) {}
+    }
+    if (gen != _generation) return null;
+    try {
+      final photoUrl = await _storage.uploadCompletionPhoto(
+        userId: userId,
         challengeId: challenge.challengeId,
-        confidence: result.confidence,
+        bytes: bytes,
       );
-
-      state = CameraVerifying(bytes: bytes, stage: VerifyingStage.uploading);
-
-      final results = await Future.wait([
-        locationFuture,
-        captionPromptFuture,
-        _storage.uploadCompletionPhoto(userId: userId, bytes: bytes),
-      ]);
-      if (gen != _generation) return;
-
-      final location = results[0] as GeoPoint?;
-      final captionPrompt = results[1] as String;
-      final photoUrl = results[2] as String;
-
+      if (gen != _generation) return null;
       AnalyticsService.logPhotoUploaded(challengeId: challenge.challengeId);
-
-      state = CameraCaptionStep(
-        bytes: bytes,
-        captionPrompt: captionPrompt,
-        pendingUserId: userId,
-        pendingChallenge: challenge,
-        pendingVerificationResult: result.toMap(),
-        pendingPhotoUrl: photoUrl,
-        pendingLocation: location,
-        initialCaption: _pendingCaptionOnRetry,
-      );
-      _pendingCaptionOnRetry = null;
-    } on AppException catch (e) {
-      if (gen != _generation) return;
-      state = CameraFailure(message: diagnosticFailureMessage(e), bytes: bytes);
+      return (photoUrl: photoUrl, location: location);
     } catch (e) {
-      if (gen != _generation) return;
+      if (gen != _generation) return null;
+      final detail = e is AppException
+          ? ' (${diagnosticFailureMessage(e)})'
+          : '';
       state = CameraFailure(
-        message: 'Something went wrong. Please try again.',
+        message:
+            "Your photo didn't upload, so nothing was saved. "
+            'Tap Retry to try again.$detail',
         bytes: bytes,
+        kind: CameraFailureKind.uploadFailed,
       );
+      return null;
     }
   }
 
-  /// Re-runs verification on the same photo after a failure, without making
-  /// the user retake it. Distinct from [retake] (new photo) and [override]
-  /// (skip verification entirely).
+  Future<void> verify() async {
+    final current = state;
+    if (current is! CameraImagePicked) return;
+    final bytes = current.bytes;
+    final gen = ++_generation;
+
+    // AI photo verification is disabled on every tier (audit D-06): the
+    // client never holds an AI key, and the server-side verifier
+    // (functions/) is not deployed. Every submission is honor-system
+    // approved, the UI never claims AI is reviewing it (`usingAi: false`),
+    // and the stored verification record says exactly why no AI ran —
+    // never a fabricated confidence/match verdict (firestore.rules reject
+    // one anyway).
+    state = CameraVerifying(
+      bytes: bytes,
+      stage: VerifyingStage.uploading,
+      usingAi: false,
+    );
+
+    final challenge = _challenge;
+    final userId = _userId;
+    final blocked = await _preflight(challenge, userId, bytes);
+    if (gen != _generation) return;
+    if (blocked != null) {
+      state = blocked;
+      return;
+    }
+
+    final uploaded = await _uploadPhoto(
+      gen: gen,
+      userId: userId!,
+      challenge: challenge!,
+      bytes: bytes,
+    );
+    if (uploaded == null) return;
+
+    // Look up the place name and weather while the user writes a caption.
+    _enrichment = uploaded.location == null
+        ? null
+        : _lookUpPlaceAndWeather(uploaded.location!);
+
+    state = CameraCaptionStep(
+      bytes: bytes,
+      captionPrompt: AppConstants.defaultCaptionPrompt,
+      pendingUserId: userId,
+      pendingChallenge: challenge,
+      pendingVerificationResult: honorSystemVerificationResult(),
+      pendingPhotoUrl: uploaded.photoUrl,
+      pendingLocation: uploaded.location,
+      initialCaption: _pendingCaptionOnRetry,
+    );
+    _pendingCaptionOnRetry = null;
+  }
+
+  /// Retries after a failure with the same photo, without making the user
+  /// retake it. Safe to repeat: the photo goes to the same fixed path and
+  /// the save is create-only, so nothing is ever saved or counted twice.
+  /// Distinct from [retake] (new photo) and [override] (skip verification).
   Future<void> retryVerification() async {
     final current = state;
-    if (current is! CameraFailure || current.bytes == null) return;
+    if (current is! CameraFailure || !current.canRetry) return;
     _ref.read(verificationRetryCountProvider.notifier).state++;
     _pendingCaptionOnRetry = current.caption;
     state = CameraImagePicked(bytes: current.bytes!);
@@ -521,53 +519,31 @@ class CameraNotifier extends StateNotifier<CameraFlowState> {
     // no longer CameraCaptionStep, so it returns immediately at the guard.
     state = CameraVerifying(bytes: bytes, stage: VerifyingStage.saving);
 
-    try {
-      final trimmed = caption.trim();
-      final completionResult = await _completions.createCompletion(
-        userId: current.pendingUserId,
-        challengeId: current.pendingChallenge.challengeId,
-        challengeTitle: current.pendingChallenge.title,
-        challengeEmoji: current.pendingChallenge.emoji,
-        challengeCategory: current.pendingChallenge.challengeCategory,
-        photoUrl: current.pendingPhotoUrl,
-        verificationResult: current.pendingVerificationResult,
-        xpAwarded: current.pendingChallenge.xpReward,
-        overrideUsed: false,
-        assignmentDate: current.pendingChallenge.generatedAt,
-        location: current.pendingLocation,
-        caption: trimmed.isNotEmpty ? trimmed : null,
-      );
-
-      CompletionModel? completion;
-      completionResult.when(
-        ok: (c) => completion = c,
-        err: (e) => state = CameraFailure(
-          message: diagnosticFailureMessage(e),
-          bytes: bytes,
-          caption: caption,
-        ),
-      );
-      if (completion == null) return;
-
-      await _finishWithCompletion(
-        completion!,
-        bytes,
-        current.pendingChallenge,
-        captionPrompt: current.captionPrompt,
-      );
-    } on AppException catch (e) {
+    if (_isOffline) {
       state = CameraFailure(
-        message: diagnosticFailureMessage(e),
+        message:
+            "You're offline, so your adventure isn't saved yet. "
+            'Reconnect and tap Retry — nothing will be counted twice.',
         bytes: bytes,
         caption: caption,
+        kind: CameraFailureKind.saveFailed,
       );
-    } catch (_) {
-      state = CameraFailure(
-        message: 'Something went wrong. Please try again.',
-        bytes: bytes,
-        caption: caption,
-      );
+      return;
     }
+
+    final trimmed = caption.trim();
+    await _commit(
+      bytes: bytes,
+      caption: caption,
+      userId: current.pendingUserId,
+      challenge: current.pendingChallenge,
+      photoUrl: current.pendingPhotoUrl,
+      location: current.pendingLocation,
+      verificationResult: current.pendingVerificationResult,
+      overrideUsed: false,
+      captionText: trimmed.isNotEmpty ? trimmed : null,
+      captionPrompt: current.captionPrompt,
+    );
   }
 
   Future<void> override() async {
@@ -577,28 +553,6 @@ class CameraNotifier extends StateNotifier<CameraFlowState> {
       state = const CameraFailure(message: 'No photo to submit.');
       return;
     }
-
-    final challenge = _challenge;
-    final userId = _userId;
-    if (challenge == null || userId == null) {
-      state = const CameraFailure(message: 'No active challenge found.');
-      return;
-    }
-    if (challenge.isCompleted) {
-      state = const CameraFailure(
-        message: "You've already completed today's challenge. Nice work!",
-      );
-      return;
-    }
-
-    if (_isOffline) {
-      state = CameraFailure(
-        message: "You're offline. Connect to the internet and try again.",
-        bytes: bytes,
-      );
-      return;
-    }
-
     final gen = ++_generation;
     // Manual override — the user explicitly chose "Submit Anyway" after AI
     // verification failed or was skipped, so AI is definitionally not
@@ -609,80 +563,178 @@ class CameraNotifier extends StateNotifier<CameraFlowState> {
       usingAi: false,
     );
 
+    final challenge = _challenge;
+    final userId = _userId;
+    final blocked = await _preflight(challenge, userId, bytes);
+    if (gen != _generation) return;
+    if (blocked != null) {
+      state = blocked;
+      return;
+    }
+    AnalyticsService.logVerificationOverridden(
+      challengeId: challenge!.challengeId,
+    );
+
+    final uploaded = await _uploadPhoto(
+      gen: gen,
+      userId: userId!,
+      challenge: challenge,
+      bytes: bytes,
+    );
+    if (uploaded == null) return;
+    _enrichment = uploaded.location == null
+        ? null
+        : _lookUpPlaceAndWeather(uploaded.location!);
+
+    // Once the commit below persists the submission, the flow can no
+    // longer be cancelled — the user must land on the real result.
+    state = CameraVerifying(bytes: bytes, stage: VerifyingStage.saving);
+    await _commit(
+      bytes: bytes,
+      userId: userId,
+      challenge: challenge,
+      photoUrl: uploaded.photoUrl,
+      location: uploaded.location,
+      // No fabricated confidence — the user submitted this without AI
+      // agreement, so the record says exactly that (overrideUsed below is
+      // the authoritative signal).
+      verificationResult: const {
+        'reason': 'Manually submitted by user after verification failed.',
+      },
+      overrideUsed: true,
+    );
+  }
+
+  /// Saves the completion, reward and Journal entry in one atomic batch
+  /// (audit D-13), then shows the committed result — or a failure that says
+  /// nothing was saved and whether Retry can help.
+  Future<void> _commit({
+    required Uint8List bytes,
+    required String userId,
+    required ChallengeModel challenge,
+    required String photoUrl,
+    required GeoPoint? location,
+    required Map<String, dynamic> verificationResult,
+    required bool overrideUsed,
+    String? caption,
+    String? captionText,
+    String? captionPrompt,
+  }) async {
     try {
-      AnalyticsService.logVerificationOverridden(
-        challengeId: challenge.challengeId,
-      );
+      // Re-check the setting now: if the user switched it off after the
+      // photo was taken, nothing location-related is saved.
+      final allowLocation = _locationAllowed;
+      final savedLocation = allowLocation ? location : null;
+      final place = savedLocation == null ? null : await _placeAndWeather();
 
-      final location = await LocationService().getCurrentLocation();
-      final photoUrl = await _storage.uploadCompletionPhoto(
-        userId: userId,
-        bytes: bytes,
-      );
-      // Once createCompletion below persists the submission, the flow can
-      // no longer be cancelled — the completion already exists in Firestore,
-      // so the user must land on the real result rather than being left to
-      // wonder whether their submission went through.
-      if (gen != _generation) return;
-      AnalyticsService.logPhotoUploaded(challengeId: challenge.challengeId);
-
-      final completionResult = await _completions.createCompletion(
+      final draft = _completions.buildCompletion(
         userId: userId,
         challengeId: challenge.challengeId,
         challengeTitle: challenge.title,
         challengeEmoji: challenge.emoji,
         challengeCategory: challenge.challengeCategory,
         photoUrl: photoUrl,
-        // No fabricated confidence — the user submitted this without AI
-        // agreement, so the record should say exactly that (overrideUsed
-        // below is the authoritative signal), not claim a verification score
-        // that was never computed.
-        verificationResult: const {
-          'reason': 'Manually submitted by user after verification failed.',
-        },
+        verificationResult: verificationResult,
         xpAwarded: challenge.xpReward,
-        overrideUsed: true,
+        overrideUsed: overrideUsed,
         assignmentDate: challenge.generatedAt,
-        location: location,
+        location: savedLocation,
+        caption: captionText,
       );
 
-      CompletionModel? completion;
-      completionResult.when(
-        ok: (c) => completion = c,
-        err: (e) => state = CameraFailure(
-          message: diagnosticFailureMessage(e),
-          bytes: bytes,
+      final result = await _users.commitCompletion(
+        draft,
+        journalEntry: (completion) => journalEntryForCompletion(
+          completion,
+          challengeDay: challenge.dayNumber,
+          includeLocation: allowLocation,
+          captionPrompt: captionPrompt,
+          locationName: place?.name,
+          weatherCondition: place?.condition,
+          weatherEmoji: place?.emoji,
         ),
       );
-      if (completion == null) return;
-
-      await _finishWithCompletion(completion!, bytes, challenge);
-    } on AppException catch (e) {
-      if (gen != _generation) return;
-      state = CameraFailure(message: diagnosticFailureMessage(e), bytes: bytes);
+      switch (result) {
+        case Ok(:final value):
+          await _finishWithCompletion(value, challenge);
+        case Err(:final exception):
+          final already = exception.message.contains('already completed');
+          state = CameraFailure(
+            message: already
+                ? alreadyCompletedMessage
+                : 'Your photo is uploaded, but your adventure isn\'t saved '
+                      'yet and nothing was counted. Tap Retry to save it. '
+                      '(${diagnosticFailureMessage(exception)})',
+            bytes: bytes,
+            caption: caption,
+            kind: already
+                ? CameraFailureKind.alreadyCompleted
+                : CameraFailureKind.saveFailed,
+          );
+      }
     } catch (_) {
-      if (gen != _generation) return;
       state = CameraFailure(
-        message: 'Something went wrong. Please try again.',
+        message:
+            'Your photo is uploaded, but your adventure isn\'t saved '
+            'yet and nothing was counted. Tap Retry to save it.',
         bytes: bytes,
+        caption: caption,
+        kind: CameraFailureKind.saveFailed,
       );
     }
   }
 
+  /// The enrichment started at upload, waited for briefly: it's cosmetic,
+  /// so a slow lookup never holds up saving.
+  Future<_PlaceAndWeather?> _placeAndWeather() async {
+    final pending = _enrichment;
+    _enrichment = null;
+    if (pending == null) return null;
+    try {
+      return await pending.timeout(const Duration(seconds: 4));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Sends the photo's coordinates to the platform geocoder (place name) and
+  /// Open-Meteo (weather, coarse coordinates). Only called when the user
+  /// allows optional location use. Never throws.
+  Future<_PlaceAndWeather?> _lookUpPlaceAndWeather(GeoPoint loc) async {
+    try {
+      final results = await Future.wait([
+        _location.getLocationName(
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+        ),
+        _weather.fetchWeather(
+          latitude: coarseCoordinate(loc.latitude),
+          longitude: coarseCoordinate(loc.longitude),
+        ),
+      ]);
+      final weather = results[1] as WeatherModel?;
+      return _PlaceAndWeather(
+        name: results[0] as String?,
+        condition: weather?.condition,
+        emoji: weather?.emoji,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _finishWithCompletion(
-    CompletionModel completion,
-    Uint8List bytes,
-    ChallengeModel challenge, {
-    String? captionPrompt,
-  }) async {
-    // Fire-and-forget: create adventure memory in background.
-    unawaited(_createMemory(completion, challenge, captionPrompt));
+    CompletionCommit commit,
+    ChallengeModel challenge,
+  ) async {
+    final completion = commit.completion;
+    final reward = commit.reward;
 
     // Mark the challenge document as completed. Best-effort: the completion
     // doc's deterministic per-day ID (see CompletionRepository) is the real
-    // source of truth for "already completed," so a failure here shouldn't
-    // block the reward transaction below — but it also shouldn't be
-    // silently swallowed, since it can leave challenge.isCompleted stale.
+    // source of truth for "already completed," so a failure here must not
+    // undo the success — but it also shouldn't be silently swallowed, since
+    // it can leave challenge.isCompleted stale.
     final markResult = await _challenges.markChallengeCompleted(
       completion.userId,
       challenge.challengeId,
@@ -695,140 +747,38 @@ class CameraNotifier extends StateNotifier<CameraFlowState> {
       ),
     );
 
-    final rewardResult = await _users.awardCompletionRewards(
-      uid: completion.userId,
-      xpAmount: completion.xpAwarded,
+    AnalyticsService.logChallengeComplete(
+      challengeId: completion.challengeId,
+      category: completion.challengeCategory.name,
+      xpAwarded: reward.xpAwarded,
     );
-
-    if (rewardResult.isOk) {
-      final reward = rewardResult.valueOrThrow;
-      AnalyticsService.logChallengeComplete(
-        challengeId: completion.challengeId,
-        category: completion.challengeCategory.name,
-        xpAwarded: reward.xpAwarded,
-      );
-      if (reward.leveledUp) AnalyticsService.logLevelUp(reward.newLevel);
-      for (final id in reward.newAchievements) {
-        AnalyticsService.logAchievementUnlocked(id);
-      }
-      if (reward.leaguePromoted) {
-        AnalyticsService.logLeaguePromotion(
-          fromLeague: reward.previousLeague,
-          toLeague: reward.updatedUser.currentLeague,
-        );
-      }
-      state = CameraSuccess(
-        xpAwarded: reward.xpAwarded,
-        challengeTitle: completion.challengeTitle,
-        emoji: completion.challengeEmoji,
-        completion: completion,
-        newStreak: reward.newStreak,
-        streakIncreased: reward.streakIncreased,
-        leveledUp: reward.leveledUp,
-        newLevel: reward.newLevel,
-        newAchievements: reward.newAchievements,
-        rainyDayConsumed: reward.rainyDayConsumed,
-        rainyDayEarned: reward.rainyDayEarned,
-        rainyDaysAvailable: reward.rainyDaysAvailable,
-        previousLeague: reward.previousLeague,
-        newLeague: reward.updatedUser.currentLeague,
-      );
-      return;
+    if (reward.leveledUp) AnalyticsService.logLevelUp(reward.newLevel);
+    for (final id in reward.newAchievements) {
+      AnalyticsService.logAchievementUnlocked(id);
     }
-
-    // The reward write may have partially or fully succeeded even though
-    // this call reported failure (e.g. a later step inside it threw) —
-    // re-fetch the real user doc instead of showing fabricated numbers that
-    // could contradict what's actually persisted.
-    final fresh = (await _users.fetchUser(completion.userId)).valueOrNull;
-    // We don't know the pre-completion streak/league here (the write's own
-    // result is what would have told us), so previousStreak/previousLeague
-    // are set equal to the fresh values — the celebration screen then
-    // correctly shows neither a false "streak extended" nor a false league
-    // change rather than guessing.
+    if (reward.leaguePromoted) {
+      AnalyticsService.logLeaguePromotion(
+        fromLeague: reward.previousLeague,
+        toLeague: reward.updatedUser.currentLeague,
+      );
+    }
     state = CameraSuccess(
-      xpAwarded: completion.xpAwarded,
+      xpAwarded: reward.xpAwarded,
       challengeTitle: completion.challengeTitle,
       emoji: completion.challengeEmoji,
       completion: completion,
-      newStreak: fresh?.streak ?? 0,
-      streakIncreased: false,
-      leveledUp: false,
-      newLevel: fresh?.level ?? 1,
-      rainyDaysAvailable: fresh?.rainyDaysAvailable ?? 0,
-      previousLeague: fresh?.currentLeague ?? 'seedling',
-      newLeague: fresh?.currentLeague ?? 'seedling',
+      newStreak: reward.newStreak,
+      streakIncreased: reward.streakIncreased,
+      leveledUp: reward.leveledUp,
+      newLevel: reward.newLevel,
+      newAchievements: reward.newAchievements,
+      rainyDayConsumed: reward.rainyDayConsumed,
+      rainyDayEarned: reward.rainyDayEarned,
+      rainyDaysAvailable: reward.rainyDaysAvailable,
+      previousLeague: reward.previousLeague,
+      newLeague: reward.updatedUser.currentLeague,
+      savedToJournal: commit.journalEntry != null,
     );
-  }
-
-  /// Creates the [AdventureMemoryModel] entry for this completion.
-  ///
-  /// Runs in the background — never blocks the success screen.
-  /// Fetches weather and reverse-geocodes location name in parallel.
-  Future<void> _createMemory(
-    CompletionModel completion,
-    ChallengeModel challenge,
-    String? captionPrompt,
-  ) async {
-    try {
-      final loc = completion.location;
-      String? locationName;
-      String? weatherCondition;
-      String? weatherEmoji;
-
-      if (loc != null) {
-        // Fetch location name + weather in parallel.
-        final results = await Future.wait([
-          LocationService().getLocationName(
-            latitude: loc.latitude,
-            longitude: loc.longitude,
-          ),
-          WeatherService().fetchWeather(
-            latitude: loc.latitude,
-            longitude: loc.longitude,
-          ),
-        ]);
-        locationName = results[0] as String?;
-        final weather = results[1] as WeatherModel?;
-        if (weather != null) {
-          weatherCondition = weather.condition;
-          weatherEmoji = weather.emoji;
-        }
-      }
-
-      final memory = AdventureMemoryModel(
-        memoryId: completion.id,
-        userId: completion.userId,
-        challengeId: completion.challengeId,
-        challengeDay: challenge.dayNumber,
-        challengeTitle: completion.challengeTitle,
-        challengeCategory: completion.challengeCategory,
-        photoUrl: completion.photoUrl,
-        caption: completion.caption,
-        captionPrompt: captionPrompt,
-        latitude: loc?.latitude,
-        longitude: loc?.longitude,
-        locationName: locationName,
-        weatherCondition: weatherCondition,
-        weatherEmoji: weatherEmoji,
-        xpEarned: completion.xpAwarded,
-        // 'ai_verified' only when Gemini actually ran (its result map
-        // carries a 'confidence' key) — the no-API-key auto-approve path
-        // shares overrideUsed:false with it but never called Gemini, so it
-        // must not be mislabeled as AI-verified either.
-        verificationMethod: completion.overrideUsed
-            ? 'manual_override'
-            : completion.verificationResult.containsKey('confidence')
-            ? 'ai_verified'
-            : 'auto_approved',
-        completionDate: completion.completedAt,
-        createdAt: completion.completedAt,
-      );
-
-      await _memories.createMemory(memory);
-    } catch (_) {
-      // Memory creation is best-effort — never affect the completion flow.
-    }
   }
 
   void startLiveCamera() => state = const CameraLive();
@@ -857,12 +807,10 @@ final verificationRetryCountProvider = StateProvider.autoDispose<int>((_) => 0);
 
 // ── Service providers ─────────────────────────────────────────────────────────
 
-final geminiServiceProvider = Provider<GeminiService>((_) => GeminiService());
-
 // storageServiceProvider is defined in user_providers.dart — import that file.
 
 final completionRepositoryProvider = Provider<CompletionRepository>(
-  (_) => const CompletionRepository(),
+  (_) => CompletionRepository(),
 );
 
 // ── Camera notifier provider ──────────────────────────────────────────────────
@@ -876,11 +824,11 @@ final cameraFlowProvider =
         challenge: ref.read(todaysChallengeProvider).valueOrNull,
         userId: ref.read(authStateProvider).valueOrNull?.uid,
         ref: ref,
-        geminiService: ref.watch(geminiServiceProvider),
         storageService: ref.watch(storageServiceProvider),
         completionRepository: ref.watch(completionRepositoryProvider),
         userRepository: ref.watch(userRepositoryProvider),
         challengeRepository: ref.watch(challengeRepositoryProvider),
-        memoryRepository: ref.watch(memoryRepositoryProvider),
+        locationService: ref.watch(locationServiceProvider),
+        weatherService: ref.watch(weatherServiceProvider),
       );
     });

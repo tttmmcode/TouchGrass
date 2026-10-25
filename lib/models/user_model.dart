@@ -34,6 +34,8 @@ class UserModel {
     required this.settings,
     this.frozenDates = const [],
     this.entitlementTier = EntitlementTier.free,
+    this.lastCompletionId,
+    this.lastCompletionDate,
   });
 
   final String uid;
@@ -66,6 +68,9 @@ class UserModel {
   final String currentLeague;
 
   final DateTime createdAt;
+
+  /// Last activity (sign-in or completion). NOT a completion date — see
+  /// [lastCompletionDate].
   final DateTime lastActiveDate;
 
   /// IDs of unlocked achievements, e.g. "first_touch", "streak_7".
@@ -89,6 +94,20 @@ class UserModel {
   /// NOT written by [toFirestore] — see entitlement.dart's doc comment for
   /// why the client must never be able to set this itself.
   final EntitlementTier entitlementTier;
+
+  /// ID of the completion document whose reward was last applied to this
+  /// user. Written in the same atomic batch as that completion (see
+  /// UserRepository.commitCompletion) — firestore.rules uses it to prove
+  /// every XP increase is backed by exactly one brand-new completion.
+  final String? lastCompletionId;
+
+  /// Server time of the user's last committed completion — the ONLY input
+  /// to "already completed today?" and streak math (audit D-01). Kept
+  /// separate from [lastActiveDate], which is refreshed on every sign-in
+  /// and therefore must never decide rewards. Null until the first
+  /// completion after this field was introduced (see
+  /// UserRepository.commitCompletion for the legacy fallback).
+  final DateTime? lastCompletionDate;
 
   // ── Computed properties ────────────────────────────────────────────────────
 
@@ -179,6 +198,10 @@ class UserModel {
       entitlementTier: EntitlementTierX.fromString(
         data['entitlementTier'] as String?,
       ),
+      lastCompletionId: data['lastCompletionId'] as String?,
+      lastCompletionDate: data['lastCompletionDate'] is Timestamp
+          ? (data['lastCompletionDate'] as Timestamp).toDate().toUtc()
+          : null,
     );
   }
 
@@ -231,6 +254,7 @@ class UserModel {
     Map<String, DateTime>? achievementTimestamps,
     UserSettings? settings,
     List<String>? frozenDates,
+    DateTime? lastCompletionDate,
   }) => UserModel(
     uid: uid,
     email: email ?? this.email,
@@ -254,6 +278,8 @@ class UserModel {
     frozenDates: frozenDates ?? this.frozenDates,
     // No override parameter, deliberately — see entitlement.dart.
     entitlementTier: entitlementTier,
+    lastCompletionId: lastCompletionId,
+    lastCompletionDate: lastCompletionDate ?? this.lastCompletionDate,
   );
 
   // ── Equality ───────────────────────────────────────────────────────────────
@@ -285,8 +311,14 @@ class UserModel {
         .replaceAll(RegExp(r'[^a-z0-9]'), '_')
         .replaceAll(RegExp(r'_+'), '_')
         .replaceAll(RegExp(r'^_+|_+$'), '');
+    // Bounded so the generated handle always satisfies the username
+    // registry rule (`[a-z0-9_]{1,100}` in firestore.rules), even for very
+    // long display names.
+    final shortBase = base.length > 40
+        ? base.substring(0, 40).replaceAll(RegExp(r'_+$'), '')
+        : base;
     final suffix = uid.length >= 4 ? uid.substring(0, 4).toLowerCase() : uid;
-    return '${base.isEmpty ? 'user' : base}_$suffix';
+    return '${shortBase.isEmpty ? 'user' : shortBase}_$suffix';
   }
 }
 

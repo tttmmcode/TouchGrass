@@ -1,12 +1,14 @@
 import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_performance/firebase_performance.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/services/error_service.dart';
+import '../../../core/utils/avatar_url.dart';
 import '../../../models/leaderboard_entry_model.dart';
 import '../../../models/league_definition.dart';
 import '../../../providers/leaderboard_providers.dart';
@@ -800,8 +802,18 @@ class _Avatar extends StatelessWidget {
   final bool isMe;
   final double size;
 
+  /// Other users' photos only load from the app's own avatar storage or
+  /// Google's profile-photo host (audit N-6); anything else shows initials.
+  static String? _loadableUrl(String? url) {
+    final bucket = Firebase.apps.isEmpty
+        ? null
+        : Firebase.app().options.storageBucket;
+    return isTrustedAvatarUrl(url, appStorageBucket: bucket) ? url : null;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final photoUrl = _loadableUrl(entry.photoUrl);
     return SizedBox(
       width: size,
       height: size,
@@ -813,9 +825,9 @@ class _Avatar extends StatelessWidget {
               : null,
         ),
         child: ClipOval(
-          child: entry.photoUrl != null
+          child: photoUrl != null
               ? CachedNetworkImage(
-                  imageUrl: entry.photoUrl!,
+                  imageUrl: photoUrl,
                   fit: BoxFit.cover,
                   placeholder: (ctx, url) => const ShimmerBox(),
                   errorWidget: (ctx, url, err) => InitialsAvatar(

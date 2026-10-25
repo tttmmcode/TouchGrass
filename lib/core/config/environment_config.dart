@@ -1,17 +1,15 @@
 /// Compile-time environment configuration.
 ///
-/// Values are injected via --dart-define at build time:
-///   flutter run  --dart-define=GEMINI_API_KEY=AIza...
-///   flutter build apk --dart-define=GEMINI_API_KEY=$KEY --dart-define=ENVIRONMENT=production
+/// Values are injected via --dart-define at build time, e.g.:
+///   flutter build web --dart-define=ENVIRONMENT=production
 ///
-/// In CI/CD, set GEMINI_API_KEY as a secret environment variable and pass it
-/// through --dart-define. NEVER hardcode a real key here.
+/// Every value here is compiled into the client bundle and is therefore
+/// PUBLIC. Never add a secret (API keys with billing, service credentials)
+/// here or pass one via --dart-define / --dart-define-from-file: the Gemini
+/// key that used to be read here shipped inside the public web bundle
+/// (audit D-06). AI calls belong behind a server (Cloud Functions + Secret
+/// Manager); tool/check_web_bundle_secrets.mjs guards web builds.
 abstract final class EnvironmentConfig {
-  static const String geminiApiKey = String.fromEnvironment(
-    'GEMINI_API_KEY',
-    defaultValue: '',
-  );
-
   /// Web Push certificate key pair's public key, from Firebase Console →
   /// Project Settings → Cloud Messaging → Web Push certificates. Only
   /// meaningful on web (see KNOWN_BUGS.md B4) — empty by default, which
@@ -30,9 +28,6 @@ abstract final class EnvironmentConfig {
   static bool get isProduction => _env == 'production';
   static bool get isStaging => _env == 'staging';
   static bool get isDevelopment => !isProduction && !isStaging;
-
-  /// True when a Gemini API key has been provided at build time.
-  static bool get geminiConfigured => geminiApiKey.isNotEmpty;
 
   /// True when a web-push VAPID key has been provided at build time.
   static bool get fcmVapidConfigured => fcmVapidKey.isNotEmpty;

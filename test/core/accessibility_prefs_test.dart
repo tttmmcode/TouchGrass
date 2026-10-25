@@ -11,10 +11,7 @@ void main() {
   group('combinedTextScale', () {
     test('is a pure passthrough of the system scale when the app scale is '
         'left at its 1.0 default', () {
-      expect(
-        combinedTextScale(systemTextScale: 1.8, appTextScale: 1.0),
-        1.8,
-      );
+      expect(combinedTextScale(systemTextScale: 1.8, appTextScale: 1.0), 1.8);
     });
 
     test('stacks the app-level preference on top of the system scale', () {
@@ -26,10 +23,7 @@ void main() {
 
     test('a default system scale (1.0) still reflects a customized app '
         'scale', () {
-      expect(
-        combinedTextScale(systemTextScale: 1.0, appTextScale: 1.3),
-        1.3,
-      );
+      expect(combinedTextScale(systemTextScale: 1.0, appTextScale: 1.3), 1.3);
     });
   });
 
@@ -37,7 +31,9 @@ void main() {
     test('is false only when neither source wants reduced motion', () {
       expect(
         combinedReducedMotion(
-            systemReducedMotion: false, appReducedMotion: false),
+          systemReducedMotion: false,
+          appReducedMotion: false,
+        ),
         isFalse,
       );
     });
@@ -46,7 +42,9 @@ void main() {
         'in-app toggle was never touched', () {
       expect(
         combinedReducedMotion(
-            systemReducedMotion: true, appReducedMotion: false),
+          systemReducedMotion: true,
+          appReducedMotion: false,
+        ),
         isTrue,
       );
     });
@@ -54,7 +52,9 @@ void main() {
     test('the in-app toggle alone is still honored without OS support', () {
       expect(
         combinedReducedMotion(
-            systemReducedMotion: false, appReducedMotion: true),
+          systemReducedMotion: false,
+          appReducedMotion: true,
+        ),
         isTrue,
       );
     });
@@ -63,7 +63,9 @@ void main() {
         'reason about)', () {
       expect(
         combinedReducedMotion(
-            systemReducedMotion: true, appReducedMotion: true),
+          systemReducedMotion: true,
+          appReducedMotion: true,
+        ),
         isTrue,
       );
     });
@@ -72,8 +74,7 @@ void main() {
   group('combinedHighContrast', () {
     test('is false only when neither source wants high contrast', () {
       expect(
-        combinedHighContrast(
-            systemHighContrast: false, appHighContrast: false),
+        combinedHighContrast(systemHighContrast: false, appHighContrast: false),
         isFalse,
       );
     });

@@ -30,8 +30,9 @@ class _AppCardState extends State<AppCard> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final background =
-        isDark ? AppColors.surfaceVariantDark : AppColors.surfaceLight;
+    final background = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceLight;
     final border = isDark ? AppColors.dividerDark : AppColors.dividerLight;
 
     final card = AnimatedContainer(
@@ -41,8 +42,9 @@ class _AppCardState extends State<AppCard> {
         color: background,
         borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
         border: Border.all(color: border, width: 1.5),
-        boxShadow:
-            widget.onTap != null && _hovered ? AppElevation.high : AppElevation.medium,
+        boxShadow: widget.onTap != null && _hovered
+            ? AppElevation.high
+            : AppElevation.medium,
       ),
       child: Padding(padding: widget.padding, child: widget.child),
     );

@@ -16,31 +16,52 @@ abstract final class AppTheme {
   static ThemeData _build(Brightness brightness) {
     final isDark = brightness == Brightness.dark;
 
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: AppColors.forestGreen,
-      brightness: brightness,
-    ).copyWith(
-      primary: AppColors.forestGreen,
-      onPrimary: Colors.white,
-      primaryContainer: isDark ? AppColors.forestGreenDark : const Color(0xFFD8F3DC),
-      onPrimaryContainer: isDark ? AppColors.onSurfaceDark : AppColors.forestGreenDark,
-      secondary: AppColors.grassGreen,
-      onSecondary: Colors.white,
-      secondaryContainer: isDark ? AppColors.surfaceVariantDark : AppColors.surfaceVariantLight,
-      onSecondaryContainer: isDark ? AppColors.onSurfaceDark : AppColors.forestGreenDark,
-      tertiary: AppColors.skyBlue,
-      onTertiary: Colors.white,
-      tertiaryContainer: isDark ? const Color(0xFF1A2E3A) : const Color(0xFFDEF0FA),
-      onTertiaryContainer: isDark ? AppColors.skyBlueLight : const Color(0xFF0A2D45),
-      error: AppColors.error,
-      onError: Colors.white,
-      surface: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
-      onSurface: isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight,
-      surfaceContainerHighest: isDark ? AppColors.surfaceVariantDark : AppColors.surfaceVariantLight,
-      onSurfaceVariant: isDark ? AppColors.onSurfaceVariantDark : AppColors.onSurfaceVariantLight,
-      outline: isDark ? AppColors.outlineDark : AppColors.outlineLight,
-      outlineVariant: isDark ? AppColors.dividerDark : AppColors.dividerLight,
-    );
+    final colorScheme =
+        ColorScheme.fromSeed(
+          seedColor: AppColors.forestGreen,
+          brightness: brightness,
+        ).copyWith(
+          primary: AppColors.forestGreen,
+          onPrimary: Colors.white,
+          primaryContainer: isDark
+              ? AppColors.forestGreenDark
+              : const Color(0xFFD8F3DC),
+          onPrimaryContainer: isDark
+              ? AppColors.onSurfaceDark
+              : AppColors.forestGreenDark,
+          secondary: AppColors.grassGreen,
+          onSecondary: Colors.white,
+          secondaryContainer: isDark
+              ? AppColors.surfaceVariantDark
+              : AppColors.surfaceVariantLight,
+          onSecondaryContainer: isDark
+              ? AppColors.onSurfaceDark
+              : AppColors.forestGreenDark,
+          tertiary: AppColors.skyBlue,
+          onTertiary: Colors.white,
+          tertiaryContainer: isDark
+              ? const Color(0xFF1A2E3A)
+              : const Color(0xFFDEF0FA),
+          onTertiaryContainer: isDark
+              ? AppColors.skyBlueLight
+              : const Color(0xFF0A2D45),
+          error: AppColors.error,
+          onError: Colors.white,
+          surface: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+          onSurface: isDark
+              ? AppColors.onSurfaceDark
+              : AppColors.onSurfaceLight,
+          surfaceContainerHighest: isDark
+              ? AppColors.surfaceVariantDark
+              : AppColors.surfaceVariantLight,
+          onSurfaceVariant: isDark
+              ? AppColors.onSurfaceVariantDark
+              : AppColors.onSurfaceVariantLight,
+          outline: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+          outlineVariant: isDark
+              ? AppColors.dividerDark
+              : AppColors.dividerLight,
+        );
 
     final textTheme = _buildTextTheme(isDark, colorScheme);
 
@@ -49,28 +70,41 @@ abstract final class AppTheme {
       brightness: brightness,
       colorScheme: colorScheme,
       textTheme: textTheme,
-      scaffoldBackgroundColor: isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
+      scaffoldBackgroundColor: isDark
+          ? AppColors.backgroundDark
+          : AppColors.backgroundLight,
 
       // ── AppBar ─────────────────────────────────────────────────────────────
       appBarTheme: AppBarTheme(
-        backgroundColor: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
-        foregroundColor: isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight,
+        backgroundColor: isDark
+            ? AppColors.surfaceDark
+            : AppColors.surfaceLight,
+        foregroundColor: isDark
+            ? AppColors.onSurfaceDark
+            : AppColors.onSurfaceLight,
         elevation: 0,
         scrolledUnderElevation: 1,
         centerTitle: true,
         surfaceTintColor: Colors.transparent,
         titleTextStyle: _nunito(
-          18, FontWeight.w800,
+          18,
+          FontWeight.w800,
           isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight,
         ),
         systemOverlayStyle: isDark
-            ? SystemUiOverlayStyle.light.copyWith(statusBarColor: Colors.transparent)
-            : SystemUiOverlayStyle.dark.copyWith(statusBarColor: Colors.transparent),
+            ? SystemUiOverlayStyle.light.copyWith(
+                statusBarColor: Colors.transparent,
+              )
+            : SystemUiOverlayStyle.dark.copyWith(
+                statusBarColor: Colors.transparent,
+              ),
       ),
 
       // ── Bottom Navigation Bar ──────────────────────────────────────────────
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+        backgroundColor: isDark
+            ? AppColors.surfaceDark
+            : AppColors.surfaceLight,
         indicatorColor: AppColors.forestGreen.withValues(alpha: 0.15),
         surfaceTintColor: Colors.transparent,
         shadowColor: Colors.black.withValues(alpha: 0.08),
@@ -80,7 +114,9 @@ abstract final class AppTheme {
           return IconThemeData(
             color: selected
                 ? AppColors.forestGreen
-                : (isDark ? AppColors.onSurfaceVariantDark : AppColors.onSurfaceVariantLight),
+                : (isDark
+                      ? AppColors.onSurfaceVariantDark
+                      : AppColors.onSurfaceVariantLight),
             size: AppSpacing.iconMd,
           );
         }),
@@ -91,7 +127,9 @@ abstract final class AppTheme {
             selected ? FontWeight.w800 : FontWeight.w600,
             selected
                 ? AppColors.forestGreen
-                : (isDark ? AppColors.onSurfaceVariantDark : AppColors.onSurfaceVariantLight),
+                : (isDark
+                      ? AppColors.onSurfaceVariantDark
+                      : AppColors.onSurfaceVariantLight),
           );
         }),
       ),
@@ -115,8 +153,9 @@ abstract final class AppTheme {
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.forestGreen,
           foregroundColor: Colors.white,
-          disabledBackgroundColor:
-              isDark ? AppColors.surfaceVariantDark : AppColors.dividerLight,
+          disabledBackgroundColor: isDark
+              ? AppColors.surfaceVariantDark
+              : AppColors.dividerLight,
           minimumSize: const Size.fromHeight(AppSpacing.buttonHeight),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
@@ -137,7 +176,12 @@ abstract final class AppTheme {
           ),
           side: const BorderSide(color: AppColors.forestGreen, width: 2),
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-          textStyle: _nunito(16, FontWeight.w800, AppColors.forestGreen, ls: 0.5),
+          textStyle: _nunito(
+            16,
+            FontWeight.w800,
+            AppColors.forestGreen,
+            ls: 0.5,
+          ),
         ),
       ),
 
@@ -159,7 +203,9 @@ abstract final class AppTheme {
       // ── Input Decoration ───────────────────────────────────────────────────
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: isDark ? AppColors.surfaceVariantDark : AppColors.surfaceVariantLight,
+        fillColor: isDark
+            ? AppColors.surfaceVariantDark
+            : AppColors.surfaceVariantLight,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.lg,
           vertical: AppSpacing.md,
@@ -186,21 +232,30 @@ abstract final class AppTheme {
           borderSide: const BorderSide(color: AppColors.error, width: 1.5),
         ),
         labelStyle: _nunito(
-          14, FontWeight.w600,
-          isDark ? AppColors.onSurfaceVariantDark : AppColors.onSurfaceVariantLight,
+          14,
+          FontWeight.w600,
+          isDark
+              ? AppColors.onSurfaceVariantDark
+              : AppColors.onSurfaceVariantLight,
         ),
         hintStyle: _nunito(
-          14, FontWeight.w500,
-          isDark ? AppColors.onSurfaceVariantDark : AppColors.onSurfaceVariantLight,
+          14,
+          FontWeight.w500,
+          isDark
+              ? AppColors.onSurfaceVariantDark
+              : AppColors.onSurfaceVariantLight,
         ),
       ),
 
       // ── Chip ──────────────────────────────────────────────────────────────
       chipTheme: ChipThemeData(
-        backgroundColor: isDark ? AppColors.surfaceVariantDark : AppColors.surfaceVariantLight,
+        backgroundColor: isDark
+            ? AppColors.surfaceVariantDark
+            : AppColors.surfaceVariantLight,
         selectedColor: AppColors.forestGreen.withValues(alpha: 0.18),
         labelStyle: _nunito(
-          13, FontWeight.w700,
+          13,
+          FontWeight.w700,
           isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight,
         ),
         shape: RoundedRectangleBorder(
@@ -213,7 +268,9 @@ abstract final class AppTheme {
 
       // ── SnackBar ──────────────────────────────────────────────────────────
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: isDark ? AppColors.surfaceVariantDark : AppColors.onSurfaceLight,
+        backgroundColor: isDark
+            ? AppColors.surfaceVariantDark
+            : AppColors.onSurfaceLight,
         contentTextStyle: _nunito(14, FontWeight.w600, Colors.white),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
@@ -225,14 +282,18 @@ abstract final class AppTheme {
       // ── Progress Indicator ────────────────────────────────────────────────
       progressIndicatorTheme: ProgressIndicatorThemeData(
         color: AppColors.forestGreen,
-        linearTrackColor: isDark ? AppColors.dividerDark : AppColors.dividerLight,
+        linearTrackColor: isDark
+            ? AppColors.dividerDark
+            : AppColors.dividerLight,
         linearMinHeight: 8,
         borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
       ),
 
       // ── Icon ─────────────────────────────────────────────────────────────
       iconTheme: IconThemeData(
-        color: isDark ? AppColors.onSurfaceVariantDark : AppColors.onSurfaceVariantLight,
+        color: isDark
+            ? AppColors.onSurfaceVariantDark
+            : AppColors.onSurfaceVariantLight,
         size: AppSpacing.iconMd,
       ),
 
@@ -245,27 +306,34 @@ abstract final class AppTheme {
 
       // ── Dialog ────────────────────────────────────────────────────────────
       dialogTheme: DialogThemeData(
-        backgroundColor: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+        backgroundColor: isDark
+            ? AppColors.surfaceDark
+            : AppColors.surfaceLight,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppSpacing.radiusDialog),
         ),
         titleTextStyle: _nunito(
-          20, FontWeight.w800,
+          20,
+          FontWeight.w800,
           isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight,
         ),
       ),
 
       // ── Bottom Sheet ──────────────────────────────────────────────────────
       bottomSheetTheme: BottomSheetThemeData(
-        backgroundColor: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+        backgroundColor: isDark
+            ? AppColors.surfaceDark
+            : AppColors.surfaceLight,
         surfaceTintColor: Colors.transparent,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(
             top: Radius.circular(AppSpacing.radiusBottomSheet),
           ),
         ),
-        dragHandleColor: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+        dragHandleColor: isDark
+            ? AppColors.outlineDark
+            : AppColors.outlineLight,
       ),
     );
   }
@@ -278,28 +346,35 @@ abstract final class AppTheme {
     Color color, {
     double? ls,
     double? height,
-  }) =>
-      GoogleFonts.nunito(
-        fontSize: size,
-        fontWeight: weight,
-        color: color,
-        letterSpacing: ls,
-        height: height,
-      );
+  }) => GoogleFonts.nunito(
+    fontSize: size,
+    fontWeight: weight,
+    color: color,
+    letterSpacing: ls,
+    height: height,
+  );
 
   static TextTheme _buildTextTheme(bool isDark, ColorScheme scheme) {
-    final onSurface = isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
-    final onSurfaceVariant =
-        isDark ? AppColors.onSurfaceVariantDark : AppColors.onSurfaceVariantLight;
+    final onSurface = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
+    final onSurfaceVariant = isDark
+        ? AppColors.onSurfaceVariantDark
+        : AppColors.onSurfaceVariantLight;
 
-    TextStyle t(double size, FontWeight weight, Color color,
-            {double? ls, double? h}) =>
-        GoogleFonts.nunito(
-            fontSize: size,
-            fontWeight: weight,
-            color: color,
-            letterSpacing: ls,
-            height: h);
+    TextStyle t(
+      double size,
+      FontWeight weight,
+      Color color, {
+      double? ls,
+      double? h,
+    }) => GoogleFonts.nunito(
+      fontSize: size,
+      fontWeight: weight,
+      color: color,
+      letterSpacing: ls,
+      height: h,
+    );
 
     return TextTheme(
       displayLarge: t(57, FontWeight.w900, onSurface, ls: -0.25),

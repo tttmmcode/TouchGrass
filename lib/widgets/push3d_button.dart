@@ -60,7 +60,10 @@ class _Push3DButtonState extends State<Push3DButton> {
         padding: EdgeInsets.only(
           bottom: (_pressed || !_enabled) ? 0 : widget.depth,
         ),
-        decoration: BoxDecoration(color: widget.shadowColor, borderRadius: radius),
+        decoration: BoxDecoration(
+          color: widget.shadowColor,
+          borderRadius: radius,
+        ),
         child: widget.face,
       ),
     );

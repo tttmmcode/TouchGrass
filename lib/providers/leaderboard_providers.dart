@@ -34,25 +34,24 @@ final leaderboardServiceProvider = Provider<LeaderboardService>(
 /// the true top 30 by weekly XP whenever a league has more than
 /// [AppConstants.leaderboardPageSize] members. The page-size cap is applied
 /// after sorting instead.
-final leagueBoardProvider = StreamProvider.autoDispose.family<List<LeaderboardEntryModel>, String>(
-  (ref, leagueId) {
-    final firestore = ref.watch(firestoreServiceProvider);
-    final service = ref.watch(leaderboardServiceProvider);
-    return firestore
-        .watchCollection(
-          // Reads the public mirror, not `colUsers` — no client can see
-          // another user's private fields (e.g. email) via this query.
-          collection: AppConstants.colLeaderboardPublic,
-          filters: [QueryFilter(field: 'currentLeague', isEqualTo: leagueId)],
-        )
-        .map((snap) {
-          final users = snap.docs.map(UserModel.fromFirestore).toList()
-            ..sort((a, b) => b.weeklyXp.compareTo(a.weeklyXp));
-          final top = users.take(AppConstants.leaderboardPageSize).toList();
-          return service.buildEntries(top);
-        });
-  },
-);
+final leagueBoardProvider = StreamProvider.autoDispose
+    .family<List<LeaderboardEntryModel>, String>((ref, leagueId) {
+      final firestore = ref.watch(firestoreServiceProvider);
+      final service = ref.watch(leaderboardServiceProvider);
+      return firestore
+          .watchCollection(
+            // Reads the public mirror, not `colUsers` — no client can see
+            // another user's private fields (e.g. email) via this query.
+            collection: AppConstants.colLeaderboardPublic,
+            filters: [QueryFilter(field: 'currentLeague', isEqualTo: leagueId)],
+          )
+          .map((snap) {
+            final users = snap.docs.map(UserModel.fromFirestore).toList()
+              ..sort((a, b) => b.weeklyXp.compareTo(a.weeklyXp));
+            final top = users.take(AppConstants.leaderboardPageSize).toList();
+            return service.buildEntries(top);
+          });
+    });
 
 // ── Current user helpers ──────────────────────────────────────────────────────
 
@@ -77,14 +76,11 @@ final currentUserLeagueProvider = Provider<LeagueDef?>((ref) {
 final weeklyResetCountdownProvider = StreamProvider.autoDispose<String>((ref) {
   final controller = StreamController<String>();
   controller.add(AppConstants.weeklyResetLabel());
-  final timer = Timer.periodic(
-    const Duration(seconds: 30),
-    (_) {
-      if (!controller.isClosed) {
-        controller.add(AppConstants.weeklyResetLabel());
-      }
-    },
-  );
+  final timer = Timer.periodic(const Duration(seconds: 30), (_) {
+    if (!controller.isClosed) {
+      controller.add(AppConstants.weeklyResetLabel());
+    }
+  });
   ref.onDispose(() {
     timer.cancel();
     controller.close();

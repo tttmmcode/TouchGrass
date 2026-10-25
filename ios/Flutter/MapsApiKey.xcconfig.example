@@ -1,0 +1,6 @@
+// Copy to ios/Flutter/MapsApiKey.xcconfig (git-ignored) and set the
+// iOS-restricted Maps SDK for iOS key (application restriction: iOS apps,
+// bundle ID com.touchgrass.app; API restriction: Maps SDK for iOS).
+// Do NOT reuse the web or Android key: one key can carry only one kind of
+// application restriction. Never commit the real file.
+MAPS_API_KEY =

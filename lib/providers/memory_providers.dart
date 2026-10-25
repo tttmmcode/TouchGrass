@@ -7,12 +7,37 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/adventure_memory_model.dart';
 import '../repositories/memory_repository.dart';
 import 'auth_providers.dart';
+import 'location_privacy_providers.dart';
+import 'user_providers.dart';
 
 // ── Repository ────────────────────────────────────────────────────────────────
 
 final memoryRepositoryProvider = Provider<MemoryRepository>(
-  (_) => const MemoryRepository(),
+  (_) => MemoryRepository(),
 );
+
+// ── Journal repair ────────────────────────────────────────────────────────────
+
+/// Recreates Journal entries missing for the user's recent completions
+/// (audit D-13) — once per session, when the Journal or map first loads.
+/// Resolves to the number of entries created; an error means the repair
+/// didn't finish, and the UI offers a retry (`ref.invalidate` this
+/// provider). Retrying is always safe: the repair is idempotent and never
+/// touches XP or completions.
+final journalSyncProvider = FutureProvider<int>((ref) async {
+  final uid = ref.watch(authStateProvider).valueOrNull?.uid;
+  if (uid == null) return 0;
+  // Wait for the profile so the location setting is known (the provider
+  // fails closed while it loads).
+  await ref.read(currentUserProvider.future);
+  final result = await ref
+      .read(memoryRepositoryProvider)
+      .repairMissingEntries(
+        userId: uid,
+        includeLocation: ref.read(optionalLocationAllowedProvider),
+      );
+  return result.valueOrThrow;
+});
 
 // ── Paginated memory list ─────────────────────────────────────────────────────
 
@@ -42,14 +67,13 @@ class MemoriesState {
     bool? hasMore,
     Object? error,
     bool clearError = false,
-  }) =>
-      MemoriesState(
-        memories: memories ?? this.memories,
-        initialLoading: initialLoading ?? this.initialLoading,
-        loadingMore: loadingMore ?? this.loadingMore,
-        hasMore: hasMore ?? this.hasMore,
-        error: clearError ? null : (error ?? this.error),
-      );
+  }) => MemoriesState(
+    memories: memories ?? this.memories,
+    initialLoading: initialLoading ?? this.initialLoading,
+    loadingMore: loadingMore ?? this.loadingMore,
+    hasMore: hasMore ?? this.hasMore,
+    error: clearError ? null : (error ?? this.error),
+  );
 }
 
 /// Merges two already-sorted (newest-first), possibly-overlapping memory
@@ -103,7 +127,9 @@ class MemoriesController extends StateNotifier<MemoriesState> {
   bool _paginatedBeyondFirstPage = false;
 
   void _subscribeFirstPage() {
-    _sub = _repo.watchFirstPage(_userId!).listen(
+    _sub = _repo
+        .watchFirstPage(_userId!)
+        .listen(
           _onFirstPage,
           onError: (Object e) =>
               state = state.copyWith(initialLoading: false, error: e),
@@ -132,7 +158,10 @@ class MemoriesController extends StateNotifier<MemoriesState> {
 
     state = state.copyWith(loadingMore: true, clearError: true);
     try {
-      final page = await _repo.fetchNextPage(userId: _userId, startAfter: cursor);
+      final page = await _repo.fetchNextPage(
+        userId: _userId,
+        startAfter: cursor,
+      );
       _paginatedBeyondFirstPage = true;
       _cursor = page.lastDoc ?? _cursor;
       state = state.copyWith(
@@ -168,9 +197,8 @@ class MemoriesController extends StateNotifier<MemoriesState> {
 }
 
 final memoriesControllerProvider =
-    StateNotifierProvider.autoDispose<MemoriesController, MemoriesState>(
-        (ref) {
-  final uid = ref.watch(authStateProvider).valueOrNull?.uid;
-  final repo = ref.watch(memoryRepositoryProvider);
-  return MemoriesController(repo, uid);
-});
+    StateNotifierProvider.autoDispose<MemoriesController, MemoriesState>((ref) {
+      final uid = ref.watch(authStateProvider).valueOrNull?.uid;
+      final repo = ref.watch(memoryRepositoryProvider);
+      return MemoriesController(repo, uid);
+    });

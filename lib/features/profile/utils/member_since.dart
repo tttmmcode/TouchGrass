@@ -1,3 +1,5 @@
+import '../../../core/utils/calendar_days.dart';
+
 /// Human-friendly account-age duration for the Profile screen's "Member
 /// Since" stat tile, e.g. "2 days" / "3 months" / "1 year" — the tile's own
 /// "Member Since" caption already supplies the "member since" framing, so
@@ -16,7 +18,7 @@ String memberSinceDuration({
 }) {
   final joined = DateTime(createdAt.year, createdAt.month, createdAt.day);
   final today = DateTime(now.year, now.month, now.day);
-  final days = today.difference(joined).inDays;
+  final days = calendarDaysBetween(joined, today);
 
   if (days <= 0) return 'Today';
   if (days == 1) return '1 day';

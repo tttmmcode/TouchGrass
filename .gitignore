@@ -44,6 +44,15 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Operator tool output (object names / uids) and credentials — never commit (Phase 6)
+ops-out/
+*.p12
+*.pem
+*-service-account*.json
+service-account*.json
+.env
+.env.*
+
 # Local secrets — never commit
 secrets.json
 key.properties
@@ -55,6 +64,8 @@ android/local.properties
 # The Gemini secret itself is never stored in a file at all — see
 # functions/README.md, it's set via `firebase functions:secrets:set`.
 functions/node_modules/
+firestore-tests/node_modules/
+firestore-tests/*.log
 functions/lib/
 functions/.env
 functions/.env.*
@@ -63,3 +74,6 @@ functions/*.log
 # Firebase CLI's local deploy cache (hosting hash cache, per-machine,
 # regenerated automatically) — no reason to version it.
 .firebase/
+
+# Phase 7A: the iOS Maps key (copy ios/Flutter/MapsApiKey.xcconfig.example).
+ios/Flutter/MapsApiKey.xcconfig

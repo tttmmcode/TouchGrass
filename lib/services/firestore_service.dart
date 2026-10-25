@@ -11,7 +11,7 @@ import '../core/errors/app_exception.dart';
 /// All higher-level logic (retries, business rules) lives in repositories.
 class FirestoreService {
   FirestoreService({FirebaseFirestore? db})
-      : _db = db ?? FirebaseFirestore.instance;
+    : _db = db ?? FirebaseFirestore.instance;
 
   final FirebaseFirestore _db;
 
@@ -19,8 +19,7 @@ class FirestoreService {
   // as a friendly timeout instead of hanging the caller indefinitely. Not
   // applied to watchDocument/watchCollection — those are long-lived
   // subscriptions that are meant to stay open.
-  static const _timeout =
-      Duration(seconds: AppConstants.networkTimeoutSeconds);
+  static const _timeout = Duration(seconds: AppConstants.networkTimeoutSeconds);
 
   // ── Write ─────────────────────────────────────────────────────────────────
 
@@ -90,7 +89,11 @@ class FirestoreService {
     required String id,
   }) async {
     try {
-      final doc = await _db.collection(collection).doc(id).get().timeout(_timeout);
+      final doc = await _db
+          .collection(collection)
+          .doc(id)
+          .get()
+          .timeout(_timeout);
       return doc.exists ? doc : null;
     } on TimeoutException {
       throw NetworkException.timeout();
@@ -143,8 +146,7 @@ class FirestoreService {
     // async* + await for is used instead of .handleError() because on Flutter
     // Web the JS interop error type fails a typed handleError callback.
     try {
-      await for (final snap
-          in _db.collection(collection).doc(id).snapshots()) {
+      await for (final snap in _db.collection(collection).doc(id).snapshots()) {
         yield snap;
       }
     } on FirebaseException catch (e) {
@@ -192,16 +194,14 @@ class FirestoreService {
   // ── Error mapping ─────────────────────────────────────────────────────────
 
   AppException _map(FirebaseException e) => switch (e.code) {
-        'permission-denied' || 'unauthorized' =>
-          DataException.permissionDenied(),
-        'not-found' => DataException.notFound('Document'),
-        'unavailable' ||
-        'deadline-exceeded' ||
-        'cancelled' =>
-          DataException.unavailable(e),
-        'already-exists' => DataException.alreadyExists('Document'),
-        _ => DataException.unavailable(e),
-      };
+    'permission-denied' || 'unauthorized' => DataException.permissionDenied(),
+    'not-found' => DataException.notFound('Document'),
+    'unavailable' ||
+    'deadline-exceeded' ||
+    'cancelled' => DataException.unavailable(e),
+    'already-exists' => DataException.alreadyExists('Document'),
+    _ => DataException.unavailable(e),
+  };
 }
 
 /// Typed query predicate passed to [FirestoreService.queryCollection].

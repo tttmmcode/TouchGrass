@@ -40,7 +40,12 @@ void main() {
 
     test('never returns a value below 0.0', () {
       final def = byId('xp_100');
-      final v = def.progressValue(xp: 0, streak: 0, totalCompletions: 0, level: 1);
+      final v = def.progressValue(
+        xp: 0,
+        streak: 0,
+        totalCompletions: 0,
+        level: 1,
+      );
       expect(v, greaterThanOrEqualTo(0.0));
     });
 
@@ -56,11 +61,11 @@ void main() {
 
   group('AchievementModel.completionPercentage', () {
     AchievementModel modelWith(double fraction) => AchievementModel(
-          def: byId('challenges_5'),
-          isUnlocked: fraction >= 1.0,
-          progressFraction: fraction,
-          progressLabel: '',
-        );
+      def: byId('challenges_5'),
+      isUnlocked: fraction >= 1.0,
+      progressFraction: fraction,
+      progressLabel: '',
+    );
 
     test('0.0 fraction is 0%', () {
       expect(modelWith(0.0).completionPercentage, 0.0);
@@ -112,18 +117,22 @@ void main() {
     // AchievementRarity.values is a legitimate proxy for "rarer".
     test('glowAlpha strictly increases with rarity — no two tiers look '
         'equally special', () {
-      final alphas =
-          AchievementRarity.values.map((r) => r.glowAlpha).toList();
+      final alphas = AchievementRarity.values.map((r) => r.glowAlpha).toList();
       for (var i = 1; i < alphas.length; i++) {
-        expect(alphas[i], greaterThan(alphas[i - 1]),
-            reason: '${AchievementRarity.values[i]} should glow stronger '
-                'than ${AchievementRarity.values[i - 1]}');
+        expect(
+          alphas[i],
+          greaterThan(alphas[i - 1]),
+          reason:
+              '${AchievementRarity.values[i]} should glow stronger '
+              'than ${AchievementRarity.values[i - 1]}',
+        );
       }
     });
 
     test('glowBlurRadius strictly increases with rarity', () {
-      final radii =
-          AchievementRarity.values.map((r) => r.glowBlurRadius).toList();
+      final radii = AchievementRarity.values
+          .map((r) => r.glowBlurRadius)
+          .toList();
       for (var i = 1; i < radii.length; i++) {
         expect(radii[i], greaterThan(radii[i - 1]));
       }

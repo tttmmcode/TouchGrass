@@ -65,8 +65,7 @@ abstract final class Responsive {
     if (isTablet(context)) {
       return const EdgeInsets.symmetric(horizontal: AppSpacing.xxxl);
     }
-    return const EdgeInsets.symmetric(
-        horizontal: AppSpacing.screenHorizontal);
+    return const EdgeInsets.symmetric(horizontal: AppSpacing.screenHorizontal);
   }
 
   /// Scales a base font size slightly up on tablets.

@@ -23,43 +23,42 @@ sealed class Result<T> {
 
   /// Returns the value or throws the contained [AppException].
   T get valueOrThrow => switch (this) {
-        Ok(:final value) => value,
-        Err(:final exception) => throw exception,
-      };
+    Ok(:final value) => value,
+    Err(:final exception) => throw exception,
+  };
 
   /// Returns the exception or throws [StateError] if this is [Ok].
   AppException get exceptionOrThrow => switch (this) {
-        Ok() => throw StateError('Result is Ok, not Err'),
-        Err(:final exception) => exception,
-      };
+    Ok() => throw StateError('Result is Ok, not Err'),
+    Err(:final exception) => exception,
+  };
 
   /// Returns the value or null.
   T? get valueOrNull => switch (this) {
-        Ok(:final value) => value,
-        Err() => null,
-      };
+    Ok(:final value) => value,
+    Err() => null,
+  };
 
   /// Transform the success value; error passes through unchanged.
   Result<U> map<U>(U Function(T value) transform) => switch (this) {
-        Ok(:final value) => Result.ok(transform(value)),
-        Err(:final exception) => Result.err(exception),
-      };
+    Ok(:final value) => Result.ok(transform(value)),
+    Err(:final exception) => Result.err(exception),
+  };
 
   /// Chain async operations that each produce a [Result].
   Result<U> flatMap<U>(Result<U> Function(T value) transform) => switch (this) {
-        Ok(:final value) => transform(value),
-        Err(:final exception) => Result.err(exception),
-      };
+    Ok(:final value) => transform(value),
+    Err(:final exception) => Result.err(exception),
+  };
 
   /// Exhaustive pattern match — both branches must return [R].
   R when<R>({
     required R Function(T value) ok,
     required R Function(AppException exception) err,
-  }) =>
-      switch (this) {
-        Ok(:final value) => ok(value),
-        Err(:final exception) => err(exception),
-      };
+  }) => switch (this) {
+    Ok(:final value) => ok(value),
+    Err(:final exception) => err(exception),
+  };
 
   /// Side-effect on success; returns `this` for chaining.
   Result<T> onOk(void Function(T value) action) {

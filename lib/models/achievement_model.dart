@@ -33,14 +33,14 @@ class AchievementModel {
 
   // ── Convenience pass-throughs ─────────────────────────────────────────────
 
-  String get id          => def.id;
-  String get emoji       => def.emoji;
-  String get title       => def.title;
+  String get id => def.id;
+  String get emoji => def.emoji;
+  String get title => def.title;
   String get description => def.description;
 
-  AchievementRarity  get rarity   => def.rarity;
+  AchievementRarity get rarity => def.rarity;
   AchievementCategory get category => def.category;
-  int get xpReward                 => def.xpReward;
+  int get xpReward => def.xpReward;
 
   /// Percentage complete, 0–100.
   double get completionPercentage => (progressFraction * 100).clamp(0.0, 100.0);

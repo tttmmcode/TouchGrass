@@ -1,0 +1,17 @@
+{
+  "name": "touchgrass-rules-tests",
+  "description": "Emulator-only security tests for firestore.rules and storage.rules. Dev-only; never deployed, never touches production (demo- project ID).",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "firebase emulators:exec --only firestore,storage --project demo-touchgrass-rules \"node ../tool/strict_node_test.mjs --test-concurrency=1 test/*.test.mjs\"",
+    "test:only": "node ../tool/strict_node_test.mjs --test-concurrency=1 test/*.test.mjs"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase": "^11.10.0"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.14.3"
+  }
+}

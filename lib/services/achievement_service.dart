@@ -13,7 +13,7 @@ class AchievementService {
   ///
   /// Earned achievements are sorted first; locked achievements follow.
   List<AchievementModel> buildModels(UserModel user) {
-    final earnedSet  = user.achievements.toSet();
+    final earnedSet = user.achievements.toSet();
     final timestamps = user.achievementTimestamps;
 
     final List<AchievementModel> all = AchievementDefinition.catalog

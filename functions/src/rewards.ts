@@ -20,6 +20,15 @@ export const XP_PER_LEVEL = 100;
 export const AI_CONFIDENCE_THRESHOLD = 0.6;
 export const GEMINI_MODEL = "gemini-2.5-flash";
 
+/**
+ * Master switch for server-side AI photo verification (owner decision,
+ * 2026-10-17: AI stays off). While false, `verifyChallengeCompletion`
+ * refuses every request before reading data or calling Gemini — even if it
+ * were deployed by mistake. Turning it on is a code change that needs
+ * review, Blaze, a secret and owner approval (AI_VERIFICATION_PLAN.md).
+ */
+export const AI_VERIFICATION_ENABLED = false;
+
 const LEAGUE_THRESHOLDS: Array<{ id: string; minXp: number }> = [
   {id: "aurora", minXp: 20000},
   {id: "sky_trail", minXp: 10000},

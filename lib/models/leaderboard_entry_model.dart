@@ -39,10 +39,7 @@ class LeaderboardEntryModel {
   /// 1-based rank within the queried league leaderboard.
   final int rank;
 
-  factory LeaderboardEntryModel.fromUser(
-    UserModel user, {
-    required int rank,
-  }) =>
+  factory LeaderboardEntryModel.fromUser(UserModel user, {required int rank}) =>
       LeaderboardEntryModel(
         userId: user.uid,
         displayName: user.displayName,

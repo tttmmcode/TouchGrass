@@ -21,7 +21,10 @@ void main() {
         currentStreak: 5,
         freezesOwned: 0,
       );
-      expect(outcome, const StreakOutcome(newStreak: 5, rainyDayConsumed: false));
+      expect(
+        outcome,
+        const StreakOutcome(newStreak: 5, rainyDayConsumed: false),
+      );
     });
 
     test('next-day completion increments the streak', () {
@@ -31,7 +34,10 @@ void main() {
         currentStreak: 5,
         freezesOwned: 0,
       );
-      expect(outcome, const StreakOutcome(newStreak: 6, rainyDayConsumed: false));
+      expect(
+        outcome,
+        const StreakOutcome(newStreak: 6, rainyDayConsumed: false),
+      );
     });
 
     test('one missed day with a freeze available consumes the freeze and '
@@ -42,7 +48,10 @@ void main() {
         currentStreak: 5,
         freezesOwned: 1,
       );
-      expect(outcome, const StreakOutcome(newStreak: 5, rainyDayConsumed: true));
+      expect(
+        outcome,
+        const StreakOutcome(newStreak: 5, rainyDayConsumed: true),
+      );
     });
 
     test('one missed day with no freeze available resets the streak to 1', () {
@@ -52,7 +61,10 @@ void main() {
         currentStreak: 5,
         freezesOwned: 0,
       );
-      expect(outcome, const StreakOutcome(newStreak: 1, rainyDayConsumed: false));
+      expect(
+        outcome,
+        const StreakOutcome(newStreak: 1, rainyDayConsumed: false),
+      );
     });
 
     test('a multi-day gap resets the streak even with freezes available — '
@@ -63,7 +75,10 @@ void main() {
         currentStreak: 5,
         freezesOwned: 3,
       );
-      expect(outcome, const StreakOutcome(newStreak: 1, rainyDayConsumed: false));
+      expect(
+        outcome,
+        const StreakOutcome(newStreak: 1, rainyDayConsumed: false),
+      );
     });
 
     test('first-ever completion (streak 0, no prior activity) starts at 1', () {
@@ -73,17 +88,26 @@ void main() {
         currentStreak: 0,
         freezesOwned: 0,
       );
-      expect(outcome, const StreakOutcome(newStreak: 1, rainyDayConsumed: false));
+      expect(
+        outcome,
+        const StreakOutcome(newStreak: 1, rainyDayConsumed: false),
+      );
     });
   });
 
   group('UserRepository.dateKeyForCalendarDay', () {
     test('formats as zero-padded yyyy-MM-dd', () {
-      expect(UserRepository.dateKeyForCalendarDay(DateTime(2026, 3, 5)), '2026-03-05');
+      expect(
+        UserRepository.dateKeyForCalendarDay(DateTime(2026, 3, 5)),
+        '2026-03-05',
+      );
     });
 
     test('pads single-digit months and days', () {
-      expect(UserRepository.dateKeyForCalendarDay(DateTime(2026, 1, 9)), '2026-01-09');
+      expect(
+        UserRepository.dateKeyForCalendarDay(DateTime(2026, 1, 9)),
+        '2026-01-09',
+      );
     });
 
     test('matches the streak calendar\'s own key format — the two must stay '

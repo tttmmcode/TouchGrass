@@ -135,7 +135,10 @@ class AdventureMemoryModel {
 
   /// Human-readable badge text covering all three [verificationMethod] values.
   String get verificationLabel => switch (verificationMethod) {
-    'ai_verified' => '🤖 AI Verified',
+    // Older app versions ran an AI check on some photos. The entry keeps
+    // that fact (isAiVerified) but the badge no longer advertises AI
+    // verification, which the app doesn't offer (Phase 7G).
+    'ai_verified' => '✓ Verified',
     'manual_override' => '✋ Manual Submit',
     _ => '✓ Auto-Approved',
   };
@@ -173,7 +176,8 @@ class AdventureMemoryModel {
       weatherCondition: d['weatherCondition'] as String?,
       weatherEmoji: d['weatherEmoji'] as String?,
       xpEarned: d['xpEarned'] as int? ?? 0,
-      verificationMethod: d['verificationMethod'] as String? ?? 'ai_verified',
+      // An entry with no recorded method must not claim AI ran (Phase 7D).
+      verificationMethod: d['verificationMethod'] as String? ?? 'auto_approved',
       completionDate: _tsToDate(d['completionDate']),
       createdAt: _tsToDate(d['createdAt']),
       captionUpdatedAt: d['captionUpdatedAt'] != null

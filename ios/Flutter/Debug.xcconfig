@@ -1,1 +1,4 @@
 #include "Generated.xcconfig"
+// Google Maps key (git-ignored; see MapsApiKey.xcconfig.example). Optional
+// for debug builds — the map just won't load without it.
+#include? "MapsApiKey.xcconfig"

@@ -1,7 +1,7 @@
-// Unit tests for honorSystemVerificationResult — the pure decision logic
-// behind the honor-system auto-approve path (camera_providers.dart's
-// verify()), covering both reasons a completion can skip a real Gemini
-// call: paid-feature gating (aiLocked) vs. no key configured.
+// Unit tests for the camera flow's pure helpers: the honor-system
+// verification result every completion records (no AI check runs, and
+// since Phase 7G no tier-specific "AI is a premium feature" wording), the
+// diagnostic failure message, and CameraVerifying.usingAi.
 
 import 'dart:typed_data';
 
@@ -9,16 +9,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:touchgrass/core/errors/app_exception.dart';
 import 'package:touchgrass/models/challenge_model.dart';
+import 'package:touchgrass/models/completion_model.dart';
 import 'package:touchgrass/providers/camera_providers.dart';
 
 void main() {
-  group('diagnosticFailureMessage', () {
-    // KNOWN_BUGS.md A1 follow-up: the generic "An unexpected error
-    // occurred." text hides exactly which Firestore/Storage condition
-    // rejected a request. This is what turns a user's next retry into a
-    // usable diagnostic instead of a repeat of the same opaque message.
+  group('diagnosticFailureMessage (audit S-9: no raw error text in the UI)', () {
     test(
-      'UnexpectedException wrapping a FirebaseException appends its code',
+      'an unexpected Firebase failure shows the friendly text plus its short code',
       () {
         final wrapped = UnexpectedException.wrap(
           FirebaseException(
@@ -28,77 +25,80 @@ void main() {
         );
         expect(
           diagnosticFailureMessage(wrapped),
-          contains('[permission-denied]'),
+          '${wrapped.message} [permission-denied]',
         );
-        expect(diagnosticFailureMessage(wrapped), startsWith(wrapped.message));
       },
     );
 
-    test('UnexpectedException wrapping a non-Firebase cause still surfaces '
-        'its type and text, rather than being left generic', () {
-      final wrapped = UnexpectedException.wrap(Exception('some other failure'));
+    test('a non-Firebase cause is never shown — only the friendly text', () {
+      final wrapped = UnexpectedException.wrap(
+        Exception(
+          'JSObject: Error at https://internal.example/path?uid=abc123',
+        ),
+      );
       final result = diagnosticFailureMessage(wrapped);
-      expect(result, startsWith(wrapped.message));
-      expect(result, contains('some other failure'));
+      expect(result, wrapped.message);
+      expect(result, isNot(contains('internal.example')));
+      expect(result, isNot(contains('abc123')));
     });
 
-    test('a very long cause description is truncated, not dumped in full', () {
-      final wrapped = UnexpectedException.wrap(Exception('x' * 500));
-      expect(diagnosticFailureMessage(wrapped).length, lessThan(300));
+    test('a Firebase error with an unusual code does not leak it either', () {
+      final wrapped = UnexpectedException.wrap(
+        FirebaseException(
+          plugin: 'x',
+          code: 'Error: <script>alert(1)</script> at line 4',
+        ),
+      );
+      expect(diagnosticFailureMessage(wrapped), wrapped.message);
     });
 
-    test('other AppException subtypes are never modified', () {
+    test('typed AppExceptions keep their own friendly message', () {
       final e = DataException.permissionDenied();
       expect(diagnosticFailureMessage(e), equals(e.message));
     });
   });
 
-  group('honorSystemVerificationResult', () {
-    test(
-      'aiLocked: marks the completion as premium-gated, not AI-verified',
-      () {
-        final result = honorSystemVerificationResult(aiLocked: true);
-        expect(result['aiLocked'], true);
-        expect(result.containsKey('confidence'), isFalse);
-        expect(result.containsKey('matches'), isFalse);
-        expect(result['reason'], contains('premium feature'));
-      },
-    );
-
-    test('not aiLocked (no key configured): does not claim a premium lock', () {
-      final result = honorSystemVerificationResult(aiLocked: false);
-      expect(result.containsKey('aiLocked'), isFalse);
+  group('honorSystemVerificationResult (Phase 7G)', () {
+    test('records an honor-system completion, never an AI verdict', () {
+      final result = honorSystemVerificationResult();
+      expect(result, {'reason': honorSystemReason});
       expect(result.containsKey('confidence'), isFalse);
       expect(result.containsKey('matches'), isFalse);
-      expect(result['reason'], contains('not configured'));
     });
 
-    test(
-      'the two reasons are distinct strings — UI/analytics can tell them apart',
-      () {
-        final locked = honorSystemVerificationResult(aiLocked: true);
-        final unconfigured = honorSystemVerificationResult(aiLocked: false);
-        expect(locked['reason'], isNot(equals(unconfigured['reason'])));
-      },
-    );
+    test('no longer writes aiLocked or advertises AI as a premium feature', () {
+      final result = honorSystemVerificationResult();
+      expect(result.containsKey('aiLocked'), isFalse);
+      final reason = result['reason'] as String;
+      expect(reason, isNot(matches(RegExp(r'AI'))));
+      expect(reason.toLowerCase(), isNot(contains('premium')));
+      expect(reason.toLowerCase(), isNot(contains('coming soon')));
+      expect(reason.toLowerCase(), isNot(contains('verif')));
+    });
+
+    test('only keys firestore.rules accept (reason, aiLocked)', () {
+      expect(
+        honorSystemVerificationResult().keys.every(
+          (k) => const {'reason', 'aiLocked'}.contains(k),
+        ),
+        isTrue,
+      );
+    });
   });
 
   group('CameraVerifying.usingAi', () {
     // Pure construction/default checks — the UI must never claim "AI is
-    // reviewing your adventure" for a completion that never calls Gemini.
-    // Reaching verify()'s actual honor-system branch needs a fully mocked
-    // CameraNotifier (GeminiService/StorageService/repositories), which
-    // isn't attempted here; these tests instead pin down the contract the
-    // branch relies on: the field defaults to true (matching the real-AI
-    // path's behavior) and is only false when explicitly set.
-    test('defaults to true, matching the real-Gemini path', () {
+    // reviewing your adventure" when no AI is running. Client-side AI was
+    // removed (audit D-06), so the default is now the fail-safe `false`:
+    // nothing can show the AI copy unless a verifier explicitly opts in.
+    test('defaults to false — AI copy is opt-in, never implied', () {
       final state = CameraVerifying(bytes: Uint8List(0));
-      expect(state.usingAi, isTrue);
+      expect(state.usingAi, isFalse);
     });
 
-    test('can be explicitly set to false for the honor-system path', () {
-      final state = CameraVerifying(bytes: Uint8List(0), usingAi: false);
-      expect(state.usingAi, isFalse);
+    test('is true only when explicitly set by an AI verifier', () {
+      final state = CameraVerifying(bytes: Uint8List(0), usingAi: true);
+      expect(state.usingAi, isTrue);
     });
   });
 

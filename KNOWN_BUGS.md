@@ -11,6 +11,123 @@ Items in the "Unverified" section at the bottom are explicitly *not* confirmed b
 things nobody has been able to test yet (no physical device, no real browser session) and are
 listed separately so they don't get treated as equivalent to a confirmed defect.
 
+> **Remediation program (2026-10-17 onward):** the current status of every audit finding,
+> with test evidence and blockers, is tracked in `REMEDIATION_CHECKLIST.md`. Phase 3 (local
+> only — nothing deployed) changed the following; details and evidence are in its "Phase 3 —
+> results" section:
+> - **Location privacy (D-09):** the setting, now "Save location with adventures"
+>   (`settings.locationEnabled`), actually works. When it's off, no location is saved with
+>   completions or Journal entries, and none is sent to Open-Meteo (weather) or the place-name
+>   geocoder. `firestore.rules` also refuse stored location data while it's off. Weather only
+>   receives coordinates rounded to ~1 km. The in-app privacy policy now lists every data flow.
+> - **Journal, photo and XP consistency (D-13):** the Journal entry is written in the same
+>   atomic batch as the completion and its XP. Each completion's photo has one fixed path
+>   (`completion_photos/{uid}/{yyyy-MM-dd}.jpg`, enforced by both rule files), so retries
+>   replace it instead of orphaning files. Missing entries from older app versions are restored
+>   once per session. The camera screen distinguishes "Photo not uploaded", "Not saved yet"
+>   (retry), "Already completed" and "saved to your Journal".
+> - **AI verification:** still off on every tier (owner decision); future design in
+>   `AI_VERIFICATION_PLAN.md`.
+> - **Cloud Functions runtime:** Node 22 (Node 20 is decommissioned by Google on 2026-10-30).
+>
+> Phase 4 (local only — nothing deployed) changed the following; details in "Phase 4 —
+> results":
+> - **Dependencies:** `functions/` npm audit went from 1 critical / 6 high / 10 moderate to
+>   2 high / 7 moderate, using lockfile-only, semver-compatible updates. The remainder sits in
+>   firebase-admin 12's node-forge and uuid, isn't reachable in this app, and needs the
+>   firebase-admin 14 major upgrade (awaiting approval). 6 unused Dart packages were removed.
+> - **Lint:** `npm run lint` now really runs ESLint (with type-aware promise checks).
+> - **Formatting:** 76 Dart files formatted; the format check is clean.
+> - **Privacy fix (new, N-2):** photos could carry **embedded GPS (EXIF/XMP)** into Storage
+>   even with the location setting off. Every completion photo is now stripped before upload.
+> - **Smaller fixes:** raw error text no longer shown (S-9); notification deep links are
+>   allow-listed (S-10); weather no longer prompts before the location primer (D-14); DST-safe
+>   day counts (D-17); profile-photo permission denial handled (D-20); retention analytics
+>   logged once per session (D-21).
+> - **Android build:** besides the external Firebase registration (X-5, still blocking), three
+>   more blockers were found and fixed: geocoding 3 → 4 (compileSdk), R8 Play Core rules, and
+>   the Crashlytics mapping upload, now opt-in so local builds never contact production.
+>
+> Phase 5 (2026-10-19, local only — nothing deployed) changed the following; details in
+> "Phase 5 — results":
+> - **Dependencies:** `firebase-admin` 12 → 14.5.0 with the required `firebase-functions`
+>   6 → 7.4.0 (code moved to the modular Admin API). `functions/` npm audit: **0**. The
+>   dev-only `firestore-tests/` chain still has 5 high (grpc-js 1.9, no upstream fix, client-only
+>   use against the local emulator).
+> - **Avatar uploads no longer count as photo uploads** (`totalPhotosUploaded` untouched;
+>   adventure photos are counted by `totalCompletions`).
+> - **"Remove saved locations"** in Settings → Privacy deletes the location, place name and
+>   weather from past completions and Journal entries, and nothing else (enforced by
+>   `firestore.rules`; needs a rules deploy). Photo files from earlier versions may still carry
+>   GPS metadata (B11).
+> - **Abandoned-photo cleanup** written and tested, dry-run by default, **not deployed or
+>   scheduled** (needs approval).
+> - **Leaderboard:** other users' photos only load from the app's own avatar storage or Google
+>   profile photos (A27). The D-12 data-model redesign is a proposal awaiting decisions.
+> - **Still blocked:** Firebase registration for `com.touchgrass.app` (B6/X-5), release signing
+>   (B7/X-6), iOS (no Mac), and `deleteAccount` deployment (D-04).
+>
+> Phase 6 (2026-10-19, local only — nothing deployed); details in `PHASE_6_FINAL_REPORT.md`:
+> - **Account deletion:** other sessions are signed out first; every failure point is tested
+>   to stop and resume; analytics identity is cleared on sign-out and reset after deletion; the
+>   in-app wording says exactly what is deleted and that Firebase keeps diagnostics for its
+>   retention period. Still **not deployed**.
+> - **Profile photos (A27):** `firestore.rules` now accept only no photo, the owner's own avatar
+>   in this app's bucket, or the photo in the caller's verified Google ID token.
+> - **Old photos' GPS (B11):** a dry-run-first inventory and lossless in-place remediation tool
+>   exists (`functions/src/ops/`); nothing has been run against production.
+> - **Android:** release builds no longer fall back to the debug key — they stop with the fix
+>   (B7). Builds also stop with a clear message while Firebase has no `com.touchgrass.app` app (B6).
+> - **iOS:** deployment target raised to 14.0 (Google Maps plugin requirement); permission texts
+>   corrected. Entitlements, plist and signing still need a Mac (B6).
+>
+> Phase 7A (2026-10-19, local + READ-ONLY production checks — nothing deployed); details in
+> `PHASE_7A_FINAL_REPORT.md`:
+> - **NEW, critical (B12):** the LIVE Storage rules let any signed-in user read and list every
+>   user's completion photos. Interim rules that close this without breaking the live web app
+>   are ready (`deploy/interim/`), not deployed.
+> - **NEW, high (B13):** production has no composite indexes; the completions query needs one.
+>   `firebase.json` now deploys `firestore.indexes.json`; the deploy itself is pending.
+> - **Live Firestore rules = committed HEAD rules**, so every audit finding on them is live until
+>   the coordinated rules + web release (`PHASE_7A_DEPLOYMENT_MANIFEST.md`).
+> - **Maps (B5):** one key serves web, iOS and Android, so it can't be restricted correctly; the
+>   iOS key moved out of `AppDelegate.swift` into a git-ignored xcconfig.
+> - Project billing (Blaze) verified enabled; no functions deployed yet.
+>
+> Phase 7C (2026-10-20, local + one READ-ONLY rules export — nothing deployed); details in
+> `PHASE_7C_FINAL_REPORT.md`:
+> - **Still live:** production Storage rules are unchanged (exposed); S-1 is not deployed.
+> - **Fixed locally:** final `storage.rules` avatar listing (A30); data appended after a JPEG,
+>   which can hold GPS, is no longer uploaded (A29); token URLs can't reach Crashlytics (A31).
+> - **New tool:** download-token rotation for links harvested while the rules were open (B15).
+>   Needs S-1 first, then separate authorizations.
+> - **Live account deletion** fails at Firestore before touching photos (D-04 detail).
+>
+> Phase 7D (2026-10-20); details in `PHASE_7D_FINAL_REPORT.md`:
+> - **Interim Storage rules DEPLOYED (authorized) and verified live** (B12 containment).
+> - Harvested links are still valid until rotation (B15).
+> - Rotation is now two-phase, so no saved link ever breaks.
+> - Account-deletion root cause confirmed and server fix hardened (D-04).
+> - Misleading privacy and AI copy corrected locally (A32).
+>
+> Phase 7E (2026-10-20); details in `PHASE_7E_FINAL_REPORT.md`:
+> - **Live smoke test 32/32**, so containment at the rules level is verified in production.
+> - Old token URLs still open photos without sign-in (B15).
+> - `deleteAccount` deploy blocker removed (B16).
+> - Firebase app registrations mismatch on Android **and** iOS (B6).
+>
+> Phase 7F (2026-10-21); details in `PHASE_7F_FINAL_REPORT.md`:
+> - Live state re-verified read-only: still contained at the rules level; old links still valid (B15).
+> - The rotation dry-run was not read-only (it wrote a lease document); fixed locally (B17).
+> - Late uploads after account deletion: the final Storage rules now require the profile (B18).
+> - Nothing was deployed, rotated or inventoried: no Google Cloud credentials on the operator machine.
+>
+> Phase 7G (2026-10-21); details in `PHASE_7G_FINAL_REPORT.md`:
+> - The camera no longer advertises "AI verification — Coming soon!"; AI stays disabled (B19).
+> - Operator dry-runs proven read-only and guarded by a central mutation mode and exact allowlists (B17 update).
+> - A deleted account can no longer re-create its profile to upload again (B18 update).
+> - Still nothing deployed, rotated or inventoried: no Google Cloud credentials on the operator machine.
+
 ---
 
 ## CATEGORY A — Claude Code can fix these directly (no external account/credential needed)
@@ -174,6 +291,56 @@ listed separately so they don't get treated as equivalent to a confirmed defect.
 **What changed (explicit product decision — see conversation):** Rather than promoting Journal to a 6th bottom-nav destination (a larger, harder-to-reverse IA change touching every screen that embeds the app shell), added a persistent "Your Adventure Journal" shortcut card to Home, between Today's Challenge and the trail. Tapping it sets a new `pendingMapTabProvider` and navigates to the Map screen, which now reads that provider in `initState` to open directly on its Journal tab (index 1) instead of the default Map tab — same consume-once-and-clear pattern as the existing `pendingMapFocusProvider`. Separately, `_JournalTile` now renders inside a bordered, shadowed card shell (matching the design language already used for achievement cards) instead of a bare padded row.
 **Status:** **Fixed in code.** `flutter analyze` clean. No new test — both changes are structural/visual, consistent with this codebase's existing lack of coverage for pure layout/navigation-wiring changes of this kind.
 
+### A27. Leaderboard loaded any URL as another user's profile photo — FIXED IN THE APP, RULES FIX PENDING (Phase 5, N-6)
+**Files:** `firestore.rules` (`isValidNewProfile`, `isProfileEdit`: any string ≤ 2048 accepted as `photoUrl`), `lib/features/leaderboard/screens/leaderboard_screen.dart` (`_Avatar`)
+**The bug:** A user could set their `photoUrl` to any address; every signed-in user viewing that league then fetched it, revealing their IP address and device to whoever runs that server, or seeing any image.
+**Reproduction (emulator):** update `users/{uid}` with `photoUrl: 'https://x.test/a.png'` and sync the mirror — both writes are allowed.
+**Status:** The app now loads other users' photos only from this app's Storage bucket (`user_avatars/`) or `*.googleusercontent.com`, otherwise it shows initials (`lib/core/utils/avatar_url.dart`, 16 tests). Older app versions are still exposed until the rules are tightened — proposal in `REMEDIATION_CHECKLIST.md` → Phase 5 → N-6 (needs a production check of the Google `picture` token claim first).
+
+> **Update 2026-10-19 (Phase 6):** rules fix implemented and emulator-tested (35 cases; reverting to the old rule fails 20). `isAllowedProfilePhoto` accepts only `null`, the owner's own `user_avatars/{uid}.png` in `touchgrass-today.firebasestorage.app`, or exactly the `picture` claim of the caller's verified ID token; sign-up now stores that claim, so legitimate Google sign-up passes. Existing stored URLs stay readable (no forced migration; read-only inventory in `functions/src/ops/profilePhotoInventory.ts`). **Not deployed**: older app versions stay exposed until the rules are published (runbook §7 stage 1).
+
+### A28. Account deletion said "not deleted" after a timeout, when it might have been — FIXED (Phase 7A)
+**File:** `lib/services/account_deletion_service.dart`. On `unavailable` / `deadline-exceeded`
+the app said "your account was not deleted", but the request may already have reached the
+server and finished. It now says it couldn't confirm the result and that retrying is safe
+(deletion is idempotent). Tested in `test/repositories/commit_completion_test.dart`.
+
+### A29. Uploads could carry location data appended after the photo — FIXED LOCALLY (Phase 7C)
+**Files:** `lib/core/utils/image_metadata.dart`, `functions/src/ops/jpegMetadata.ts`. The "lossless"
+JPEG path removed header metadata but copied everything from the image data to the end of the file.
+Phones append a second (MPF) image with its own EXIF/GPS, motion-photo video or vendor data after
+the image's end marker, and APPn segments can sit between progressive scans. Stripping now walks every
+segment and stops at the end marker. The primary image's compressed data stays byte-identical.
+5 new Dart tests failed before the fix; TS unit and emulator tests cover the operator tool. Ships with
+the next web build (H-1).
+
+### A30. Final `storage.rules` let any signed-in user list every profile photo — FIXED LOCALLY (Phase 7C)
+`match /user_avatars/{fileName} { allow read: … }`: `read` includes `list`, which enumerates every
+uid that set a photo (the same defect Phase 7B fixed in the interim rules). Now `allow get`.
+Emulator: the pre-fix file listed avatars, the fixed file denies. A release gate
+(`firestore-tests/test/storage_release_parity.test.mjs`) runs the same cases against the final and
+interim rules and pins the exact set of grants. Not deployed (S-2, coordinated release).
+
+### A31. Photo download links could reach crash reports — FIXED LOCALLY (Phase 7C, hardening)
+On mobile, `FlutterError.onError` sent unhandled errors to Crashlytics, and Flutter's image-load
+errors contain the full URL, **token included**. Every current photo widget handles its own errors,
+so this was latent. Tokens are now redacted in `main.dart`'s handlers and in `CrashReporter`
+(`lib/core/utils/secret_redaction.dart`, 5 tests). Profile photos are also sanitised at the upload
+boundary now (`sanitizeProfilePhoto`).
+
+### A32. App and store copy promised privacy and AI behaviour that doesn't exist — FIXED LOCALLY (Phase 7D)
+- "Challenge photos, which only you can see" (they are delivered by bearer links).
+- "Delete Account deletes everything" (analytics, crash and log data are kept, and deletion isn't deployed).
+- Onboarding: "our AI will verify your completion".
+- Terms of Service: photos "may be used to improve AI verification".
+- An "AI Verdict" label, and a Journal "AI Verified" badge as the default for entries with no recorded method.
+- Camera and help text: "verify".
+- `STORE_LISTING.md`: AI verification and "challenges powered by AI".
+
+AI is disabled and challenges come from the seed library. All of it was corrected to describe what the code does
+(`PHASE_7D_PRIVACY_DISCLOSURE_MATRIX.md`). Regression tests in `privacy_copy_test.dart` and
+`adventure_memory_model_test.dart`. Nothing published.
+
 ### A26. "Start Challenge" could get permanently stuck unresponsive after an interrupted navigation — FIXED (hardening, not confirmed as the reported cause)
 **File:** `lib/features/home/widgets/todays_challenge_card.dart` (`_StartButtonState`)
 **The gap:** The tap handler set a `_navigating` guard to `true` before pushing the camera route, then reset it to `false` only on the line immediately after `await context.pushNamed('camera')`. If that navigation was ever interrupted (a route error, certain back/forward sequences on web) rather than resolving normally, the reset line would never run — leaving `_navigating` stuck `true` and the button silently unresponsive to every future tap, with no visible error.
@@ -185,6 +352,8 @@ listed separately so they don't get treated as equivalent to a confirmed defect.
 ## CATEGORY B — Needs action outside Claude Code's reach first
 
 ### B1. Gemini photo verification can be spoofed — no server-side re-check — CODE WRITTEN + UNIT TESTED, NOT DEPLOYED
+
+> **Update 2026-10-17 (remediation Phases 1 and 3):** client-side Gemini verification was removed entirely (Phase 1), so there is no on-device AI verdict left to spoof; every completion is honor-system and says so. Server-side verification remains **deferred by owner decision** (Phase 3). Before it could be deployed, the gaps listed in `AI_VERIFICATION_PLAN.md` (Journal entry in the same transaction, fixed photo path, location setting, App Check) must be closed.
 **Files:** `lib/services/gemini_service.dart:33-104` (still the live path); `functions/src/index.ts` + `functions/src/rewards.ts` (the real fix); `lib/services/challenge_verification_service.dart` (client-side abstraction, also not adopted yet)
 **The bug:** Verification runs entirely on-device. A modified client can fabricate `VerificationResult(matches: true, confidence: 0.95, ...)` and skip the real Gemini call, then still call the ordinary reward-write path.
 **What changed this pass:**
@@ -202,6 +371,10 @@ listed separately so they don't get treated as equivalent to a confirmed defect.
 **Status:** Code complete, unit-tested (49/49), fail-closed production semantics in place; deployment and client cutover remain, in that order.
 
 ### B2. Gemini API key is embedded in the client — mobile and web
+
+> **Update 2026-10-17 (Phase 3):** the owner reports that the exposed key was **revoked** on 2026-10-17. This is owner-reported and not independently verified; a clean bundle scan is not proof of revocation. The deployed bundles still contain the old key string until they are redeployed.
+>
+> **Update 2026-10-17 (remediation Phase 1, see REMEDIATION_CHECKLIST.md):** the app no longer reads `GEMINI_API_KEY` at all. The client Gemini code and the `google_generative_ai` package are removed; challenges are template-only and AI verification is off for every tier. Even a build given `--dart-define-from-file=secrets.json` no longer embeds the key: a canary build proved this, and `tool/check_web_bundle_secrets.mjs` gates every web build. **Do not rebuild with `secrets.json` as described below.** The **already-deployed** bundles on both domains still contain the old key until they are redeployed, and the old key was confirmed **still active** on 2026-10-17. Rotation is external action X-1.
 **File:** `lib/core/config/environment_config.dart:10-11`, compiled in via `--dart-define=GEMINI_API_KEY=...`
 **The bug:** The key is a literal constant in the compiled output. On mobile, extraction requires decompiling the APK/IPA. On the web build, it requires nothing more than opening Chrome DevTools' Network tab or viewing the compiled JS source.
 **Who it affects:** You (financially/quota-wise) if the key is scraped and reused elsewhere.
@@ -232,6 +405,15 @@ listed separately so they don't get treated as equivalent to a confirmed defect.
 **Why Claude Code can't close this alone:** Purely a Google Cloud Console setting — I have no access to check or change it.
 **Status:** Unverified — needs a 2-minute check on your end (Console → Credentials → this key → Application restrictions → HTTP referrers).
 
+> **Update 2026-10-19 (Phase 7A):** compared by hash (never printed), the SAME key (`#97425825`)
+> is used by `web/index.html`, was hard-coded in `ios/Runner/AppDelegate.swift`, and is the
+> Android `MAPS_API_KEY` in `local.properties`. A key carries only one kind of application
+> restriction, so it cannot be locked down for all three. The iOS key now comes from the
+> git-ignored `ios/Flutter/MapsApiKey.xcconfig` via `Info.plist` (`GMSApiKey`); release builds
+> stop without that file; `tool/check_firebase_config.mjs` flags a shared key. Owner steps:
+> one restricted key per platform, then restrict `#97425825` to the web sites
+> (`PHASE_7A_RELEASE_RUNBOOK.md` §9). Restriction status itself is still unverified.
+
 ### B6. iOS Firebase bundle ID mismatch, AND a separate Android Firebase-config mismatch — XCODE ID FIXED, FIREBASE CONFIG FILES STILL EXTERNAL
 **Files:** `lib/firebase_options.dart:68,78` (`iosBundleId: 'com.example.touchgrass'`, unchanged — see below); `ios/Runner.xcodeproj/project.pbxproj` (`PRODUCT_BUNDLE_IDENTIFIER`, **now `com.touchgrass.app`, fixed this pass**); `android/app/google-services.json:12,37` (`com.example.touchgrass`, unchanged) vs. `android/app/build.gradle.kts:36` (`applicationId = "com.touchgrass.app"`)
 **The bug (iOS):** The Firebase iOS app config was generated against the placeholder bundle ID `com.example.touchgrass`. There is also **no `ios/Runner/GoogleService-Info.plist` in the repository at all** — iOS has no Firebase config file checked in, not just a wrong one.
@@ -240,6 +422,13 @@ listed separately so they don't get treated as equivalent to a confirmed defect.
 **Who it affects:** Every iOS user (blocks sign-in entirely, and there's no config file to even attempt a build with Firebase iOS support). Potentially every Android release-build user too, depending on how strictly Google Sign-In validates the package name against `google-services.json`.
 **Why Claude Code can't close this alone:** Both require registering apps with the correct ID in the Firebase Console and downloading new config files (`GoogleService-Info.plist` for iOS, `google-services.json` for Android) — genuine external account actions.
 **Status:** iOS Xcode identifier fixed in code this pass. Both platforms still need their Firebase Console registration + config file download — external blocker, unchanged.
+
+> **Update 2026-10-18 (remediation Phase 4, X-5):** confirmed read-only with `firebase apps:list`: the project has exactly one Android app (`com.example.touchgrass`) and one iOS app (bundle `com.example.touchgrass`). Nothing is registered for `com.touchgrass.app`, so **Android stays BLOCKED** until the owner registers it and supplies the real config files. Exact steps, including this machine's debug SHA fingerprints, are in `REMEDIATION_CHECKLIST.md` → Phase 4 → Android. A diagnostic build in a throwaway copy, with the package patched in the copy only, found and fixed three more blockers: geocoding_android compileSdk 33, missing R8 rules, and the Crashlytics mapping upload. Debug and release then built successfully. Release signing still falls back to the debug key (B7 / X-6).
+
+> **Update 2026-10-19 (Phase 7A):** re-checked read-only — still only `com.example.touchgrass`
+> on both platforms, no SHA fingerprints. `node tool/check_firebase_config.mjs --live` now checks
+> local files AND live registration (read-only `apps:list` / `apps:android:sha:list`), never
+> printing keys; 16 tests. Status unchanged: OWNER ACTION (runbook §1).
 
 ### B9. Android `MainActivity.kt` was compiled under the old package, orphaned from the app's actual namespace — FIXED, BUILD PROGRESS CONFIRMED (5th pass)
 **Files:** `android/app/src/main/kotlin/com/touchgrass/app/MainActivity.kt` (new location); `android/app/build.gradle.kts:26,36` (`namespace`/`applicationId`, both already `com.touchgrass.app`)
@@ -254,7 +443,160 @@ listed separately so they don't get treated as equivalent to a confirmed defect.
 **Why Claude Code can't close this alone:** Signing credentials must be generated and held by you; I should never generate or hold these myself.
 **Status:** Documented in `RELEASE_GUIDE.md` Part 2; not started.
 
+> **Update 2026-10-19 (Phase 6):** the debug-key fallback is **removed**. A release build without a complete `android/key.properties` (and the Maps key) now stops immediately and lists what is missing. Verified: the repo and a corrected-config copy both stop; the copy built with a throwaway test key, and `apksigner` confirmed the signer is that key, not the debug key. The upload key itself must still be created and backed up by you (runbook §3).
+
+> **Update 2026-10-19 (Phase 7A):** `bash tool/test_android_gates.sh [--full]` re-proves the
+> gates on a throwaway copy (missing / incomplete `key.properties`, bad keystore path, missing
+> Maps key, malformed or wrong-package `google-services.json`, debug needs no signing) and, with
+> `--full`, builds a test-key release and verifies signer, package, non-debuggable and no
+> Crashlytics upload. The upload key itself is still an OWNER ACTION (runbook §2).
+>
+> **Update 2026-10-19 (Phase 5):** re-checked — still no `android/key.properties` and no keystore, so `--release` builds are signed with the **debug** key (fallback in `android/app/build.gradle.kts`). Owner steps (create, store outside the repo, back up, Play App Signing, add the release SHA fingerprints to Firebase) are in `REMEDIATION_CHECKLIST.md` → Phase 5 → 9. No signing material was created.
+
+### B11. Photos uploaded by earlier app versions may still contain GPS metadata — NEEDS A SERVER-SIDE JOB (Phase 5, N-7)
+**Files:** Storage `completion_photos/{uid}/…` (objects uploaded before the Phase 4 N-2 fix, i.e. by every released version)
+**The bug:** Those photo files may carry EXIF/XMP GPS coordinates. "Remove saved locations" clears the location fields in Firestore but cannot change the photo files: re-uploading from the app would give each file a new download token and break the completion's stored, immutable `photoUrl`.
+**Who it affects:** Only the photo's owner can read these files (storage.rules), so it is a data-minimisation and deletion-completeness issue, not public exposure.
+**Status:** Proposal: a one-off Admin SDK job that strips metadata from each object while keeping its download token. Needs a new Node image dependency, a deploy and your approval. The in-app confirmation says photos from earlier versions may still contain location details.
+
+> **Update 2026-10-19 (Phase 6):** implemented as an operator tool, without a new dependency and without a deploy: `functions/src/ops/` (`jpegMetadata.ts`, `photoMetadataJob.ts`, `opsCli.ts`). The inventory reads only each photo's header and reports counts; remediation strips metadata losslessly in place (keeping a minimal orientation tag for rotated photos), keeps the download token, content type and cache control, validates the replacement, writes only if the photo is unchanged, and keeps a server-only backup and a manifest. Dry-run by default; a real project needs explicit flags. 39 unit and 4 emulator tests (the saved download URL still works after rewriting). **Not run against production**, so the number of affected photos is still unknown (runbook §9).
+
+> **Update 2026-10-19 (Phase 7A):** two defects fixed before any production use. (1) Backups
+> were Storage *copies*, which inherit the original's download token — and a token URL bypasses
+> the rules — so a backup could be opened with the photo's own URL token. Backups are now new
+> objects with no token (emulator-proven: the original token is refused). (2) Backups lived at
+> `metadata_backup/{run}/…`, outside the user's prefix, so account deletion missed them; they
+> now live at `metadata_backup/completion_photos/{uid}/{run}/…` and `deleteAccount` removes
+> that prefix. Remediation can resume (`--resume`), the CLI keeps cursors and names off stdout,
+> and real-project runs must write a private `--out` file. Still **not run against production**.
+
+> **Update 2026-10-20 (Phase 7C):**
+> - **"Only the photo's owner can read these files" is not true of production:** the live Storage
+>   rules expose them (B12), and harvested links stay valid (B15). So this is an exposure issue, not
+>   only data minimisation.
+> - Released versions could store GPS. The camera path's `encodeJpg` wrote the decoded EXIF back; the
+>   gallery path uploaded the picked bytes unstripped.
+> - Tool fixes:
+>   - data appended after the image is removed and validated (A29);
+>   - `--full-read` inventory counts it;
+>   - a backup is deleted again if its overwrite doesn't happen (e.g. `deleteAccount` ran mid-run),
+>     so no copy outlives its photo;
+>   - remediation and token rotation share a lease;
+>   - `--uid` allows a test-account canary.
+> - Plan: `PHASE_7C_HISTORICAL_METADATA_RUNBOOK.md`; run it **after** token rotation. Still **not run
+>   against production**.
+
+### B12. LIVE Storage rules expose every user's completion photos to any signed-in user — NEW (Phase 7A), FIX READY, NOT DEPLOYED
+**Evidence:** the live ruleset was exported read-only on 2026-10-19
+(`tool/export_live_rules.mjs`). It matches no committed `storage.rules`:
+`match /completion_photos/{userId}/{allPaths=**} { allow read: if request.auth != null; allow write: if … uid == userId; }`.
+`firestore-tests/test/live_storage_exposure.test.mjs` runs it on the emulator: a second user can
+read and list another user's photos, any file type can be stored, and avatar uploads are denied
+(no rule). User IDs are visible as `leaderboard_public` document IDs, and older photos may carry
+GPS (B11).
+**Fix:** `deploy/interim/storage.interim.rules` closes cross-user access while still accepting
+the live web app's `{timestamp}.jpg` uploads (14 emulator tests); the final `storage.rules`
+replaces it in the coordinated release.
+**Status:** ⚠️ PRODUCTION action awaiting authorization — runbook §5.2 (S-1). Also see the
+privacy draft's M-1.
+
+> **Update 2026-10-19 (Phase 7B):**
+> - The live rules were re-exported read-only and are unchanged.
+> - The emulator matrix shows the exposure is **wider than reported**: any signed-in user can also list the
+>   `completion_photos` root, which enumerates every user's folder.
+> - The interim rules had a defect: `allow read` on avatars, which includes `list`. It is fixed to `allow get`.
+>   All 38 cases × 2 rulesets pass.
+> - Even after deployment, **token URLs obtained while the rules were open stay valid**. Rules can't revoke them;
+>   token rotation is a separate change.
+> - Status: **NOT DEPLOYED**, awaiting authorization (`PHASE_7B_STORAGE_CONTAINMENT_RUNBOOK.md`).
+
+> **Update 2026-10-20 (Phase 7C):**
+> - Still live: a read-only export at 03:33Z showed the same exposed rules (`c5502223…`), so S-1 is
+>   not deployed.
+> - The interim file is unchanged (`630dc9a0…`), so the Phase 7B authorization question still
+>   applies.
+> - Correction to 7B: the live web app's account deletion never reaches Storage. It fails at Firestore
+>   first, so the interim owner-delete grant is harmless but unused.
+> - The final rules' avatar listing is fixed (A30).
+
+> **Update 2026-10-20 (Phase 7D): CONTAINED.**
+> - The interim rules were deployed with explicit authorization (`--only storage`, interim config, exit 0).
+> - A read-only export at 04:30Z shows the live ruleset byte-identical to `deploy/interim/storage.interim.rules`
+>   (`630dc9a0…`), with Firestore rules, functions and indexes unchanged.
+> - Test-account smoke tests are pending (owner).
+> - Links obtained before this remain valid until rotation (B15).
+
+### B13. Production has no composite Firestore indexes; the app's completions query needs one — NEW (Phase 7A), CONFIG FIXED, NOT DEPLOYED
+**Evidence:** `firebase firestore:indexes` (read-only) lists none; `firestore.indexes.json`
+defines two, but `firebase.json` never referenced it, so no deploy would have sent them. The
+query `completions where userId == uid orderBy completedAt desc` (home path stream, Journal
+repair, and the first-completion streak lookup in `commitCompletion`) needs the composite index;
+emulators don't enforce indexes, so tests never caught it.
+**Fix:** `firebase.json` now references the file; `test/core/firestore_index_parity_test.dart`
+pins the query shapes to the index. **Status:** ⚠️ PRODUCTION — runbook §5.3 (I-1), safe and
+independent.
+
+### B14. Account deletion doesn't revoke Sign in with Apple tokens — NEW (Phase 7A), OWNER DECISION
+**The gap:** `deleteAccount` deletes the Firebase user but doesn't call Apple's token
+revocation. Apple's account-deletion guidance asks apps using Sign in with Apple to do so
+(**owner to verify the current requirement**). A possible fix — calling
+`FirebaseAuth.instance.revokeTokenWithAuthorizationCode` with the authorization code from the
+re-authentication step — needs testing on a device, so it was not implemented blind.
+
+
+### B15. Photo links collected while the Storage rules were open stay valid — TOOL READY, NEEDS AUTHORIZATION (Phase 7C)
+**Exposure:** a Firebase Storage download URL (`…?alt=media&token=…`) opens the photo for anyone
+holding it, signed in or not. Rules are not evaluated (emulator-proven, P91). Under the live rules any
+signed-in user could list every uid and call `getDownloadURL` on every challenge photo. Deploying S-1
+stops new collection but **revokes nothing**. Whether anyone collected links is unknown (audit logs
+probably off).
+
+**Fix (tool, local):** `functions/src/ops/photoTokenRotation.ts`, run as
+`opsCli.js photo-token-rotate`. It rewrites each completion photo with the same bytes and one new
+token, then updates the owner's `completions` and `users/{uid}/memories` links. It is dry-run by
+default, offers a `--uid` canary, skips uploads from the last 10 minutes, resumes without issuing a
+second token, never recreates a deleted photo, and never outputs tokens or URLs. Emulator: the old URL
+is refused, and the links open identical bytes.
+
+**Order matters:** run it only **after** S-1 is live, or the new tokens can be collected again.
+Profile-photo links are public to signed-in users by design and are not rotated (decision C4).
+
+**Status:** plan and authorization checkpoints in `PHASE_7C_PHOTO_TOKEN_REMEDIATION_PLAN.md`.
+**Not run.**
+
+
+> **Update 2026-10-20 (Phase 7D):** the precondition (S-1 live) is now met.
+> - The tool is now two-phase: add the new token → move the owner's links → remove the old token. A saved link
+>   never points at a dead token (unit invariant + emulator).
+> - The default removal is a metadata patch, so no photo bytes are rewritten.
+> - Whether removal revokes old URLs **in production** is decided by the test-account canary, not assumed: the
+>   emulator merges token lists, and the tool reports that as `verify-failed`.
+> - **Blocked on:** authorization (AC-2 dry-run) and owner-provided credentials (no ADC on this machine).
+
+> **Update 2026-10-20 (Phase 7E):**
+> - **Production evidence:** the live smoke test showed an owner's existing token URL returns HTTP 200 without
+>   sign-in, while a random token returns 403.
+> - The tool gained dry-run aggregates and `--stop-before-remove` for the revocation experiment.
+> - Still not run: needs authorization and owner credentials (`PHASE_7E_TOKEN_ROTATION_STATUS.md`).
+
+> **Update 2026-10-21 (Phase 7F):**
+> - The dry-run was found to write the shared lease document; it is now truly read-only (B17).
+> - A controlled revocation experiment is scripted (`functions/src/ops/revocationExperiment.ts`) and rehearsed on the
+>   emulators; it reports `revoked` only on repeated production evidence.
+> - Still not run: owner credentials (ADC) and approvals AC-2, AC-3a, AC-3b (`PHASE_7F_TOKEN_ROTATION_RESULTS.md`).
+
+### B16. A by-name `deleteAccount` deploy would have demanded the Gemini secret — FIXED LOCALLY (Phase 7E)
+`functions/src/index.ts` also defined the disabled AI callable with `defineSecret("GEMINI_API_KEY")`.
+firebase-tools resolves every declared param (and enables APIs for every function) **before** applying `--only`. So
+`firebase deploy --only functions:deleteAccount` would have prompted for and created that secret in Secret Manager
+(or failed non-interactively), and enabled the Secret Manager API.
+
+The AI callable now lives unchanged in `functions/src/aiVerification.ts`, which isn't imported by the entry point.
+`entryPoint.test.ts` pins "exports only `deleteAccount`, declares no params". AI stays disabled.
+
 ### B8. Store listings, privacy policy, and Data Safety form not yet created
+
+> **Update 2026-10-17 (Phase 3):** the **in-app** privacy policy (`lib/core/constants/privacy_copy.dart`) now lists every data flow, including Open-Meteo, the platform geocoder, Firebase Analytics, Crashlytics and Performance, and the location setting. `STORE_LISTING.md` no longer says location is "never shared with third parties" (inaccurate: approximate location goes to Open-Meteo while the setting is on). Its Data Safety row now flags the precise-vs-approximate and "shared" classification for the owner to decide (X-11). A hosted policy URL is still missing (X-8).
 **Files:** N/A
 **The bug:** No public privacy policy URL, no App Store/Play Store listing content, no Play Data Safety form submitted.
 **Who it affects:** Blocks store submission.
@@ -262,6 +604,97 @@ listed separately so they don't get treated as equivalent to a confirmed defect.
 **Status:** Not started.
 
 ---
+
+### B17. The token-rotation "dry-run" wrote to production Firestore — FIXED LOCALLY (Phase 7F)
+`opsCli.ts` acquired the shared lease `_ops/photoRewrite_lease` (a Firestore transaction that creates or updates the
+document, and another on release) before every `photo-token-rotate` and `photo-metadata-remediate` run, **dry-runs
+included**; `orphan-photos` did the same with its own lease. An "authorized read-only dry-run" would therefore have
+written to production. Never run in production.
+
+Now `leaseFor(args)` returns a lease only with `--execute`. Unit tests cover every command; an emulator test runs the
+real CLI dry-run and asserts no `_ops` document exists and no object's generation or metageneration changed.
+
+> **Update 2026-10-21 (Phase 7G):** every dry-run is now proven read-only, both by fakes that trap any write
+> method (with an `--execute` control) and by an emulator snapshot of all documents and objects across all six
+> dry-run variants. Writes now need `--execute` plus an explicit `--mode test-object-mutation|production-mutation`.
+> Production is an exact allowlist (`touchgrass-today` / `touchgrass-today.firebasestorage.app`), and output goes
+> only to new files under `ops-out/` (`PHASE_7G_DRY_RUN_SAFETY_AUDIT.md`).
+
+### B18. Uploads could land after account deletion (≤1 h) — FIXED LOCALLY IN THE FINAL RULES (Phase 7F)
+A second signed-in device keeps a valid ID token for up to an hour after `deleteAccount` revokes refresh tokens.
+Firestore writes from the app already fail once `users/{uid}` is gone (the completion batch updates it), but Storage
+uploads didn't check anything but the uid. The final `storage.rules` now require the uploader's profile document
+(`hasProfile()`, evaluated last). Not live: it ships with S-2, and the first deploy grants Storage's service agent
+Firestore read access. Residual: a hand-written client re-creating its own profile within that hour
+(`PHASE_7F_LATE_UPLOAD_MITIGATION.md` §5).
+
+> **Update 2026-10-21 (Phase 7G):** the residual case is closed locally. `deleteAccount` writes a server-only marker,
+> `deletedAccounts/{uid}` (timestamps only), before it deletes the profile, and `firestore.rules` refuse to create a
+> profile for a marked uid. Covered by the rules tests and the parity race sequence. Ships with R-1 + S-2.
+
+### B19. The camera advertised AI photo verification ("Coming soon", "premium feature") — FIXED LOCALLY (Phase 7G)
+After a photo uploaded, free-tier users saw "AI verification — Coming soon!" (screen readers heard "AI verification is a
+premium feature, coming soon"). Every completion stored "Honor-system approved — AI verification is a premium feature.",
+which Challenge details displayed. The caption step's button said "Share Adventure" although nothing is shared.
+
+Now:
+- the caption step says "Photo added · Add a note, then save it to your Journal", and the button says "Save to Journal";
+- completions store "Completed on the honor system with your photo.", and legacy wording is never displayed;
+- the legacy Journal badge reads "✓ Verified";
+- the unused "AI Verification — Coming Soon" card is deleted;
+- `test/core/ai_copy_regression_test.dart` scans `lib/` so the copy can't return.
+
+AI photo verification remains disabled.
+
+### B20. A deleted account's stale session could still create Firestore documents (≤1 h) — FIXED LOCALLY (Phase 7H)
+Phase 7G blocked only profile re-creation. A device still holding the deleted account's ID token could still create a
+daily challenge, a completion, a Journal entry, feedback or a username claim, and nothing would ever delete it. Also,
+`deleteAccount` wrote its `deletedAccounts/{uid}` marker only after deleting completions, usernames and feedback.
+
+Now:
+- the marker is written first (right after session revocation);
+- every client create rule in `firestore.rules` checks `accountNotDeleted()`;
+- the marker counts only until its `expiresAt` (2 h), so an abandoned failed deletion can't block an account forever.
+
+Tests: `firestore-tests/test/deleted_account_writes.test.mjs` (17) and the reordered `accountDeletion.test.ts`.
+Not deployed.
+
+### B21. Test suites could fail silently under Node 22 — FIXED (Phase 7H)
+Node 22's test runner exits 0 and reports `fail 0` when a `describe()` callback throws while the suite is being built.
+Every test in that suite is skipped without a trace. Found when a new suite failed this way.
+
+Every package script now runs tests through `tool/strict_node_test.mjs`, which fails on any TAP `not ok` line;
+`tool/test/dev_safety.test.mjs` pins this. Earlier phases' logs were not affected for the suites present now: the
+current runs show no other `not ok`.
+
+### B22. `npm run serve` / `npm run shell` in functions/ used the production project — FIXED (Phase 7H)
+Both scripts used `.firebaserc`'s default project (`touchgrass-today`). `serve` started only the Functions emulator, so
+the Admin SDK reached the REAL Firestore, Storage and Auth: calling `deleteAccount` locally would have deleted
+production data.
+
+Both now pass `--project demo-touchgrass-dev`, and `serve` also starts the data emulators. Pinned by
+`tool/test/dev_safety.test.mjs`.
+
+### B23. Account deletion showed no progress and no confirmation — FIXED LOCALLY (Phase 7H)
+After the password prompt, the Settings screen looked idle for up to 5 minutes. The user could leave it, or start a
+second deletion. On success, the app silently returned to sign-in.
+
+Now a blocking, screen-reader-announced overlay is shown, back navigation is disabled, a second start is ignored, and
+"Your account and the data saved with it were deleted." appears only after the server confirms.
+
+### B24. The AC-1 inventory would have lost its results — FIXED LOCALLY (Phase 7H)
+`ops-out/rotation/` did not exist, and the CLI writes `--out` only after every read: the first real run would have read
+everything and then failed. Also:
+- any folder named `ops-out` anywhere was accepted;
+- a run without Application Default Credentials started anyway;
+- the read-only file stored object paths (with uids) it doesn't need.
+
+Now:
+- `--out` must be inside this repository's `ops-out/`;
+- the folder is created before any read;
+- a missing ADC file is refused before anything is contacted;
+- the read-only rotation file keeps only aggregates and hashed per-photo outcomes;
+- errors show the class and a short code only.
 
 ## FIRESTORE SECURITY — field-by-field audit (analysis only, no rules changed this pass)
 

@@ -45,41 +45,40 @@ abstract class CompanionPainter extends CustomPainter {
     required double jumpOffset,
     required double smileAmount,
     required bool isDark,
-  }) =>
-      switch (type) {
-        CompanionType.leafy => _LeafyPainter(
-            bobOffset: bobOffset,
-            eyeOpenness: eyeOpenness,
-            armAngle: armAngle,
-            jumpOffset: jumpOffset,
-            smileAmount: smileAmount,
-            isDark: isDark,
-          ),
-        CompanionType.pebble => _PebblePainter(
-            bobOffset: bobOffset,
-            eyeOpenness: eyeOpenness,
-            armAngle: armAngle,
-            jumpOffset: jumpOffset,
-            smileAmount: smileAmount,
-            isDark: isDark,
-          ),
-        CompanionType.sunny => _SunnyPainter(
-            bobOffset: bobOffset,
-            eyeOpenness: eyeOpenness,
-            armAngle: armAngle,
-            jumpOffset: jumpOffset,
-            smileAmount: smileAmount,
-            isDark: isDark,
-          ),
-        CompanionType.sprout => _SproutPainter(
-            bobOffset: bobOffset,
-            eyeOpenness: eyeOpenness,
-            armAngle: armAngle,
-            jumpOffset: jumpOffset,
-            smileAmount: smileAmount,
-            isDark: isDark,
-          ),
-      };
+  }) => switch (type) {
+    CompanionType.leafy => _LeafyPainter(
+      bobOffset: bobOffset,
+      eyeOpenness: eyeOpenness,
+      armAngle: armAngle,
+      jumpOffset: jumpOffset,
+      smileAmount: smileAmount,
+      isDark: isDark,
+    ),
+    CompanionType.pebble => _PebblePainter(
+      bobOffset: bobOffset,
+      eyeOpenness: eyeOpenness,
+      armAngle: armAngle,
+      jumpOffset: jumpOffset,
+      smileAmount: smileAmount,
+      isDark: isDark,
+    ),
+    CompanionType.sunny => _SunnyPainter(
+      bobOffset: bobOffset,
+      eyeOpenness: eyeOpenness,
+      armAngle: armAngle,
+      jumpOffset: jumpOffset,
+      smileAmount: smileAmount,
+      isDark: isDark,
+    ),
+    CompanionType.sprout => _SproutPainter(
+      bobOffset: bobOffset,
+      eyeOpenness: eyeOpenness,
+      armAngle: armAngle,
+      jumpOffset: jumpOffset,
+      smileAmount: smileAmount,
+      isDark: isDark,
+    ),
+  };
 
   @override
   bool shouldRepaint(covariant CompanionPainter old) =>
@@ -97,7 +96,10 @@ abstract class CompanionPainter extends CustomPainter {
     // White
     canvas.drawOval(
       Rect.fromCenter(
-          center: center, width: rx * 2, height: ry * 2 * clampedOpen),
+        center: center,
+        width: rx * 2,
+        height: ry * 2 * clampedOpen,
+      ),
       Paint()..color = Colors.white,
     );
     if (clampedOpen < 0.15) return;
@@ -185,10 +187,23 @@ class _LeafyPainter extends CompanionPainter {
 
     final path = Path()
       ..moveTo(cx, top)
-      ..cubicTo(cx + rx * 0.65, top, cx + rx, mid - s.height * 0.20,
-          cx + rx, mid)
+      ..cubicTo(
+        cx + rx * 0.65,
+        top,
+        cx + rx,
+        mid - s.height * 0.20,
+        cx + rx,
+        mid,
+      )
       ..cubicTo(cx + rx, mid + s.height * 0.22, cx + rx * 0.52, bot, cx, bot)
-      ..cubicTo(cx - rx * 0.52, bot, cx - rx, mid + s.height * 0.22, cx - rx, mid)
+      ..cubicTo(
+        cx - rx * 0.52,
+        bot,
+        cx - rx,
+        mid + s.height * 0.22,
+        cx - rx,
+        mid,
+      )
       ..cubicTo(cx - rx, mid - s.height * 0.20, cx - rx * 0.65, top, cx, top)
       ..close();
 
@@ -233,7 +248,10 @@ class _LeafyPainter extends CompanionPainter {
     canvas.translate(s.width * 0.76, s.height * 0.50);
     canvas.rotate(-armAngle);
     canvas.drawLine(
-        Offset.zero, Offset(s.width * 0.15, -s.height * 0.17), armPaint);
+      Offset.zero,
+      Offset(s.width * 0.15, -s.height * 0.17),
+      armPaint,
+    );
     canvas.restore();
 
     // Left arm — subtle counter-wave
@@ -241,7 +259,10 @@ class _LeafyPainter extends CompanionPainter {
     canvas.translate(s.width * 0.24, s.height * 0.50);
     canvas.rotate(armAngle * 0.38);
     canvas.drawLine(
-        Offset.zero, Offset(-s.width * 0.15, -s.height * 0.17), armPaint);
+      Offset.zero,
+      Offset(-s.width * 0.15, -s.height * 0.17),
+      armPaint,
+    );
     canvas.restore();
   }
 
@@ -326,7 +347,11 @@ class _PebblePainter extends CompanionPainter {
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         Rect.fromLTWH(
-            s.width * 0.22, s.height * 0.30, s.width * 0.25, s.height * 0.14),
+          s.width * 0.22,
+          s.height * 0.30,
+          s.width * 0.25,
+          s.height * 0.14,
+        ),
         Radius.circular(s.width * 0.15),
       ),
       Paint()..color = Colors.white.withValues(alpha: 0.20),
@@ -343,11 +368,22 @@ class _PebblePainter extends CompanionPainter {
 
   void _spots(Canvas canvas, Size s) {
     // Subtle texture dots
-    final spotPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.12);
-    canvas.drawCircle(Offset(s.width * 0.32, s.height * 0.72), s.width * 0.06, spotPaint);
-    canvas.drawCircle(Offset(s.width * 0.60, s.height * 0.78), s.width * 0.04, spotPaint);
-    canvas.drawCircle(Offset(s.width * 0.72, s.height * 0.64), s.width * 0.035, spotPaint);
+    final spotPaint = Paint()..color = Colors.white.withValues(alpha: 0.12);
+    canvas.drawCircle(
+      Offset(s.width * 0.32, s.height * 0.72),
+      s.width * 0.06,
+      spotPaint,
+    );
+    canvas.drawCircle(
+      Offset(s.width * 0.60, s.height * 0.78),
+      s.width * 0.04,
+      spotPaint,
+    );
+    canvas.drawCircle(
+      Offset(s.width * 0.72, s.height * 0.64),
+      s.width * 0.035,
+      spotPaint,
+    );
   }
 
   void _cheeks(Canvas canvas, Size s) {
@@ -414,10 +450,14 @@ class _SunnyPainter extends CompanionPainter {
     final baseAngle = armAngle * 0.15;
     for (var i = 0; i < 8; i++) {
       final angle = baseAngle + i * math.pi / 4;
-      final start =
-          Offset(cx + innerR * math.cos(angle), cy + innerR * math.sin(angle));
-      final end = Offset(cx + (innerR + rayLen) * math.cos(angle),
-          cy + (innerR + rayLen) * math.sin(angle));
+      final start = Offset(
+        cx + innerR * math.cos(angle),
+        cy + innerR * math.sin(angle),
+      );
+      final end = Offset(
+        cx + (innerR + rayLen) * math.cos(angle),
+        cy + (innerR + rayLen) * math.sin(angle),
+      );
       canvas.drawLine(start, end, rayPaint);
     }
   }
@@ -459,31 +499,45 @@ class _SunnyPainter extends CompanionPainter {
     // White base
     canvas.drawOval(
       Rect.fromCenter(
-          center: Offset(s.width * 0.37, s.height * 0.44),
-          width: rx * 2,
-          height: ry * 2 * clampedOpen),
+        center: Offset(s.width * 0.37, s.height * 0.44),
+        width: rx * 2,
+        height: ry * 2 * clampedOpen,
+      ),
       Paint()..color = Colors.white,
     );
     canvas.drawOval(
       Rect.fromCenter(
-          center: Offset(s.width * 0.63, s.height * 0.44),
-          width: rx * 2,
-          height: ry * 2 * clampedOpen),
+        center: Offset(s.width * 0.63, s.height * 0.44),
+        width: rx * 2,
+        height: ry * 2 * clampedOpen,
+      ),
       Paint()..color = Colors.white,
     );
     // Pupils
     final pupilR = rx * 0.52 * clampedOpen;
     final pupilPaint = Paint()..color = const Color(0xFF7B3F00);
     canvas.drawCircle(
-        Offset(s.width * 0.38, s.height * 0.44), pupilR, pupilPaint);
+      Offset(s.width * 0.38, s.height * 0.44),
+      pupilR,
+      pupilPaint,
+    );
     canvas.drawCircle(
-        Offset(s.width * 0.64, s.height * 0.44), pupilR, pupilPaint);
+      Offset(s.width * 0.64, s.height * 0.44),
+      pupilR,
+      pupilPaint,
+    );
     // Highlights
     final hlPaint = Paint()..color = Colors.white;
     canvas.drawCircle(
-        Offset(s.width * 0.40, s.height * 0.425), pupilR * 0.32, hlPaint);
+      Offset(s.width * 0.40, s.height * 0.425),
+      pupilR * 0.32,
+      hlPaint,
+    );
     canvas.drawCircle(
-        Offset(s.width * 0.66, s.height * 0.425), pupilR * 0.32, hlPaint);
+      Offset(s.width * 0.66, s.height * 0.425),
+      pupilR * 0.32,
+      hlPaint,
+    );
   }
 
   void _smile(Canvas canvas, Size s) {
@@ -534,11 +588,14 @@ class _SproutPainter extends CompanionPainter {
     canvas.drawRRect(
       stemRect,
       Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [AppColors.grassGreenLight, AppColors.forestGreen],
-        ).createShader(Rect.fromLTWH(0, s.height * 0.60, s.width, s.height * 0.34)),
+        ..shader =
+            const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [AppColors.grassGreenLight, AppColors.forestGreen],
+            ).createShader(
+              Rect.fromLTWH(0, s.height * 0.60, s.width, s.height * 0.34),
+            ),
     );
   }
 
@@ -562,16 +619,24 @@ class _SproutPainter extends CompanionPainter {
     final rx = s.width * 0.14;
     final ry = s.width * 0.20;
     final path = Path()
-      ..addOval(Rect.fromCenter(center: Offset.zero, width: rx * 2, height: ry * 2));
+      ..addOval(
+        Rect.fromCenter(center: Offset.zero, width: rx * 2, height: ry * 2),
+      );
     canvas.drawPath(
       path,
       Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [AppColors.grassGreenLight, AppColors.forestGreen],
-        ).createShader(Rect.fromCenter(
-            center: Offset.zero, width: rx * 2, height: ry * 2)),
+        ..shader =
+            const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [AppColors.grassGreenLight, AppColors.forestGreen],
+            ).createShader(
+              Rect.fromCenter(
+                center: Offset.zero,
+                width: rx * 2,
+                height: ry * 2,
+              ),
+            ),
     );
     // Vein
     canvas.drawLine(

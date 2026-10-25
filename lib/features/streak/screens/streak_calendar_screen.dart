@@ -21,8 +21,8 @@ class _StreakCalendarScreenState extends ConsumerState<StreakCalendarScreen> {
   DateTime _displayMonth = DateTime.now();
 
   void _prevMonth() => setState(() {
-        _displayMonth = DateTime(_displayMonth.year, _displayMonth.month - 1);
-      });
+    _displayMonth = DateTime(_displayMonth.year, _displayMonth.month - 1);
+  });
 
   void _nextMonth() {
     final now = DateTime.now();
@@ -49,12 +49,11 @@ class _StreakCalendarScreenState extends ConsumerState<StreakCalendarScreen> {
     final progression = progressionAsync.valueOrNull;
 
     final bg = isDark ? AppColors.backgroundDark : AppColors.backgroundLight;
-    final surface =
-        isDark ? AppColors.surfaceDark : AppColors.surfaceLight;
-    final onSurface =
-        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
-    final outline =
-        isDark ? AppColors.outlineDark : AppColors.outlineLight;
+    final surface = isDark ? AppColors.surfaceDark : AppColors.surfaceLight;
+    final onSurface = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
+    final outline = isDark ? AppColors.outlineDark : AppColors.outlineLight;
 
     return Scaffold(
       backgroundColor: bg,
@@ -63,10 +62,7 @@ class _StreakCalendarScreenState extends ConsumerState<StreakCalendarScreen> {
         elevation: 0,
         title: const Text(
           'Streak Calendar',
-          style: TextStyle(
-            fontFamily: 'Nunito',
-            fontWeight: FontWeight.w900,
-          ),
+          style: TextStyle(fontFamily: 'Nunito', fontWeight: FontWeight.w900),
         ),
         leading: const BackButton(),
       ),
@@ -76,7 +72,11 @@ class _StreakCalendarScreenState extends ConsumerState<StreakCalendarScreen> {
             // ── Top stats ──────────────────────────────────────────────────
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.screenHorizontal, 8, AppSpacing.screenHorizontal, 0),
+                AppSpacing.screenHorizontal,
+                8,
+                AppSpacing.screenHorizontal,
+                0,
+              ),
               sliver: SliverToBoxAdapter(
                 child: _TopStats(
                   user: user,
@@ -93,7 +93,8 @@ class _StreakCalendarScreenState extends ConsumerState<StreakCalendarScreen> {
             // ── Month navigator ────────────────────────────────────────────
             SliverPadding(
               padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.screenHorizontal),
+                horizontal: AppSpacing.screenHorizontal,
+              ),
               sliver: SliverToBoxAdapter(
                 child: _MonthNavigator(
                   displayMonth: _displayMonth,
@@ -111,7 +112,8 @@ class _StreakCalendarScreenState extends ConsumerState<StreakCalendarScreen> {
             // ── Calendar grid ──────────────────────────────────────────────
             SliverPadding(
               padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.screenHorizontal),
+                horizontal: AppSpacing.screenHorizontal,
+              ),
               sliver: SliverToBoxAdapter(
                 child: _CalendarGrid(
                   displayMonth: _displayMonth,
@@ -130,7 +132,8 @@ class _StreakCalendarScreenState extends ConsumerState<StreakCalendarScreen> {
             // ── Legend ─────────────────────────────────────────────────────
             SliverPadding(
               padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.screenHorizontal),
+                horizontal: AppSpacing.screenHorizontal,
+              ),
               sliver: SliverToBoxAdapter(
                 child: _Legend(surface: surface, outline: outline),
               ),
@@ -239,7 +242,9 @@ class _StatBox extends StatelessWidget {
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(
-              vertical: AppSpacing.md, horizontal: AppSpacing.sm),
+            vertical: AppSpacing.md,
+            horizontal: AppSpacing.sm,
+          ),
           child: Column(
             children: [
               Text(icon, style: const TextStyle(fontSize: 20)),
@@ -300,8 +305,18 @@ class _MonthNavigator extends StatelessWidget {
   final Color outline;
 
   static const _months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
   ];
 
   @override
@@ -377,8 +392,11 @@ CalendarDayState resolveCalendarDayState({
 
   // If the user was created after this date, it's not a missed day.
   if (userCreatedAt != null) {
-    final created =
-        DateTime(userCreatedAt.year, userCreatedAt.month, userCreatedAt.day);
+    final created = DateTime(
+      userCreatedAt.year,
+      userCreatedAt.month,
+      userCreatedAt.day,
+    );
     if (dayOnly.isBefore(created)) return CalendarDayState.future;
   }
 
@@ -441,27 +459,32 @@ class _CalendarGrid extends StatelessWidget {
     final firstOfMonth = DateTime(displayMonth.year, displayMonth.month, 1);
     // weekday: 1=Mon…7=Sun, grid starts Monday
     final startOffset = (firstOfMonth.weekday - 1) % 7;
-    final daysInMonth =
-        DateTime(displayMonth.year, displayMonth.month + 1, 0).day;
+    final daysInMonth = DateTime(
+      displayMonth.year,
+      displayMonth.month + 1,
+      0,
+    ).day;
 
     return Column(
       children: [
         // Weekday headers
         Row(
           children: _weekdays
-              .map((d) => Expanded(
-                    child: Center(
-                      child: Text(
-                        d,
-                        style: TextStyle(
-                          fontFamily: 'Nunito',
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: onSurface.withValues(alpha: 0.45),
-                        ),
+              .map(
+                (d) => Expanded(
+                  child: Center(
+                    child: Text(
+                      d,
+                      style: TextStyle(
+                        fontFamily: 'Nunito',
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: onSurface.withValues(alpha: 0.45),
                       ),
                     ),
-                  ))
+                  ),
+                ),
+              )
               .toList(),
         ),
         const SizedBox(height: 6),
@@ -514,8 +537,18 @@ class _DayCell extends StatelessWidget {
   final Color outline;
 
   static const _months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
   ];
 
   String get _semanticLabel {
@@ -614,8 +647,14 @@ class _Legend extends StatelessWidget {
           runSpacing: AppSpacing.sm,
           children: [
             const _LegendItem(color: AppColors.grassGreen, label: 'Completed'),
-            _LegendItem(color: AppColors.skyBlue.withValues(alpha: 0.5), label: 'Rainy Day'),
-            _LegendItem(color: AppColors.error.withValues(alpha: 0.4), label: 'Missed'),
+            _LegendItem(
+              color: AppColors.skyBlue.withValues(alpha: 0.5),
+              label: 'Rainy Day',
+            ),
+            _LegendItem(
+              color: AppColors.error.withValues(alpha: 0.4),
+              label: 'Missed',
+            ),
             _LegendItem(
               color: AppColors.forestGreen.withValues(alpha: 0.25),
               label: 'Today',

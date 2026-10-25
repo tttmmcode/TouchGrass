@@ -29,10 +29,10 @@ abstract final class AppElevation {
   /// primary CTA, streak/XP highlights) — layer over [medium] or [high]
   /// rather than replacing the neutral tiers above.
   static List<BoxShadow> glow(Color color, {double opacity = 0.35}) => [
-        BoxShadow(
-          color: color.withValues(alpha: opacity),
-          blurRadius: 24,
-          offset: const Offset(0, 10),
-        ),
-      ];
+    BoxShadow(
+      color: color.withValues(alpha: opacity),
+      blurRadius: 24,
+      offset: const Offset(0, 10),
+    ),
+  ];
 }

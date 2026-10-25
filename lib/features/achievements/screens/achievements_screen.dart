@@ -72,9 +72,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen>
           ),
         );
       }
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     final earned = models.where((m) => m.isUnlocked).toList();
@@ -124,8 +122,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen>
                 AppSpacing.md,
               ),
               sliver: SliverGrid.builder(
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 2,
                   crossAxisSpacing: AppSpacing.md,
                   mainAxisSpacing: AppSpacing.md,
@@ -162,8 +159,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen>
               AppSpacing.xxxl,
             ),
             sliver: SliverGrid.builder(
-              gridDelegate:
-                  const SliverGridDelegateWithFixedCrossAxisCount(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
                 crossAxisSpacing: AppSpacing.md,
                 mainAxisSpacing: AppSpacing.md,
@@ -190,10 +186,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen>
 // ── Companion banner ──────────────────────────────────────────────────────────
 
 class _CompanionBanner extends StatelessWidget {
-  const _CompanionBanner({
-    required this.companion,
-    required this.onChangeTap,
-  });
+  const _CompanionBanner({required this.companion, required this.onChangeTap});
 
   final CompanionType companion;
   final VoidCallback onChangeTap;
@@ -201,8 +194,12 @@ class _CompanionBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? AppColors.surfaceVariantDark : AppColors.surfaceVariantLight;
-    final textStrong = isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final bg = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.surfaceVariantLight;
+    final textStrong = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
     final textMuted = isDark
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
@@ -274,7 +271,9 @@ class _CompanionBanner extends StatelessWidget {
                 style: TextButton.styleFrom(
                   foregroundColor: AppColors.grassGreen,
                   padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+                    horizontal: AppSpacing.sm,
+                    vertical: AppSpacing.xs,
+                  ),
                   textStyle: const TextStyle(
                     fontFamily: 'Nunito',
                     fontSize: 13,
@@ -307,13 +306,13 @@ class _ProgressHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final progress = total > 0 ? earned / total : 0.0;
-    final textStrong =
-        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final textStrong = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
     final textMuted = isDark
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
-    final trackColor =
-        isDark ? AppColors.outlineDark : AppColors.dividerLight;
+    final trackColor = isDark ? AppColors.outlineDark : AppColors.dividerLight;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -340,8 +339,7 @@ class _ProgressHeader extends StatelessWidget {
               DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: AppColors.gradientGold,
-                  borderRadius:
-                      BorderRadius.circular(AppSpacing.radiusFull),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
@@ -351,8 +349,11 @@ class _ProgressHeader extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.emoji_events_rounded,
-                          size: 14, color: Colors.white),
+                      const Icon(
+                        Icons.emoji_events_rounded,
+                        size: 14,
+                        color: Colors.white,
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         '$earned',
@@ -382,18 +383,19 @@ class _ProgressHeader extends StatelessWidget {
                     DecoratedBox(
                       decoration: BoxDecoration(
                         color: trackColor,
-                        borderRadius:
-                            BorderRadius.circular(AppSpacing.radiusFull),
+                        borderRadius: BorderRadius.circular(
+                          AppSpacing.radiusFull,
+                        ),
                       ),
-                      child: SizedBox(
-                          height: 8, width: constraints.maxWidth),
+                      child: SizedBox(height: 8, width: constraints.maxWidth),
                     ),
                     if (fillWidth > 0)
                       DecoratedBox(
                         decoration: BoxDecoration(
                           gradient: AppColors.gradientGold,
-                          borderRadius:
-                              BorderRadius.circular(AppSpacing.radiusFull),
+                          borderRadius: BorderRadius.circular(
+                            AppSpacing.radiusFull,
+                          ),
                         ),
                         child: SizedBox(height: 8, width: fillWidth),
                       ),
@@ -436,8 +438,9 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textStrong =
-        isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final textStrong = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
     final mutedBg = isDark
         ? AppColors.onSurfaceVariantDark.withValues(alpha: 0.12)
         : AppColors.onSurfaceVariantLight.withValues(alpha: 0.12);
@@ -528,16 +531,14 @@ class _AchievementCardState extends State<_AchievementCard>
     _slide = Tween<Offset>(
       begin: const Offset(0, 0.12),
       end: Offset.zero,
-    ).animate(
-        CurvedAnimation(parent: _entryCtrl, curve: Curves.easeOutCubic));
+    ).animate(CurvedAnimation(parent: _entryCtrl, curve: Curves.easeOutCubic));
 
     if (widget.reducedMotion) {
       // Skip the staggered slide-in entirely — jump straight to final state.
       _entryCtrl.value = 1.0;
       return;
     }
-    final delay = Duration(
-        milliseconds: (widget.index * 50).clamp(0, 500));
+    final delay = Duration(milliseconds: (widget.index * 50).clamp(0, 500));
     Future<void>.delayed(delay, () {
       if (mounted) _entryCtrl.forward();
     });
@@ -557,10 +558,10 @@ class _AchievementCardState extends State<_AchievementCard>
       button: true,
       label: widget.model.isUnlocked
           ? '${widget.model.rarity.label} achievement, ${widget.model.title}, '
-              'unlocked. ${widget.model.description}'
+                'unlocked. ${widget.model.description}'
           : '${widget.model.rarity.label} achievement, ${widget.model.title}, '
-              'locked. ${widget.model.progressLabel}, '
-              '${widget.model.completionPercentage.round()} percent complete.',
+                'locked. ${widget.model.progressLabel}, '
+                '${widget.model.completionPercentage.round()} percent complete.',
       // Card content is emoji/title/description/progress Text widgets that
       // would each contribute their own semantics node otherwise — the
       // label above already composes everything a screen reader needs, so
@@ -584,10 +585,26 @@ class _AchievementCardState extends State<_AchievementCard>
     if (!widget.model.isUnlocked) {
       card = ColorFiltered(
         colorFilter: const ColorFilter.matrix([
-          0.6063, 0.3576, 0.0361, 0, 0,
-          0.1063, 0.6576, 0.0361, 0, 0,
-          0.1063, 0.3576, 0.5361, 0, 0,
-          0,      0,      0,      0.82, 0,
+          0.6063,
+          0.3576,
+          0.0361,
+          0,
+          0,
+          0.1063,
+          0.6576,
+          0.0361,
+          0,
+          0,
+          0.1063,
+          0.3576,
+          0.5361,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0.82,
+          0,
         ]),
         child: card,
       );
@@ -644,8 +661,8 @@ class _CardShell extends StatelessWidget {
 
     final bg = isEarned
         ? (isDark
-            ? AppColors.surfaceVariantDark
-            : AppColors.surfaceVariantLight)
+              ? AppColors.surfaceVariantDark
+              : AppColors.surfaceVariantLight)
         : (isDark ? AppColors.surfaceDark : AppColors.surfaceLight);
 
     final borderColor = isEarned
@@ -693,13 +710,12 @@ class _CardContent extends ConsumerWidget {
     final titleColor = model.isUnlocked
         ? (isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight)
         : (isDark
-            ? AppColors.onSurfaceVariantDark
-            : AppColors.onSurfaceVariantLight);
+              ? AppColors.onSurfaceVariantDark
+              : AppColors.onSurfaceVariantLight);
     final descColor = isDark
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
-    final trackColor =
-        isDark ? AppColors.outlineDark : AppColors.dividerLight;
+    final trackColor = isDark ? AppColors.outlineDark : AppColors.dividerLight;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -752,10 +768,7 @@ class _CardContent extends ConsumerWidget {
         if (!model.isUnlocked) ...[
           const SizedBox(height: AppSpacing.sm),
           TweenAnimationBuilder<double>(
-            tween: Tween<double>(
-              begin: 0.0,
-              end: model.progressFraction,
-            ),
+            tween: Tween<double>(begin: 0.0, end: model.progressFraction),
             duration: reducedMotion ? Duration.zero : AppMotion.reveal,
             curve: Curves.easeOutCubic,
             builder: (context, value, _) => LayoutBuilder(
@@ -770,21 +783,25 @@ class _CardContent extends ConsumerWidget {
                           decoration: BoxDecoration(
                             color: trackColor,
                             borderRadius: BorderRadius.circular(
-                                AppSpacing.radiusFull),
+                              AppSpacing.radiusFull,
+                            ),
                           ),
                           child: SizedBox(
-                              height: 5, width: constraints.maxWidth),
+                            height: 5,
+                            width: constraints.maxWidth,
+                          ),
                         ),
                         if (fillWidth > 0)
                           DecoratedBox(
                             decoration: BoxDecoration(
-                              color: AppColors.grassGreen
-                                  .withValues(alpha: 0.75),
+                              color: AppColors.grassGreen.withValues(
+                                alpha: 0.75,
+                              ),
                               borderRadius: BorderRadius.circular(
-                                  AppSpacing.radiusFull),
+                                AppSpacing.radiusFull,
+                              ),
                             ),
-                            child:
-                                SizedBox(height: 5, width: fillWidth),
+                            child: SizedBox(height: 5, width: fillWidth),
                           ),
                       ],
                     ),
@@ -852,7 +869,9 @@ class _AchievementDetailSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? AppColors.surfaceDark : AppColors.surfaceLight;
-    final textStrong = isDark ? AppColors.onSurfaceDark : AppColors.onSurfaceLight;
+    final textStrong = isDark
+        ? AppColors.onSurfaceDark
+        : AppColors.onSurfaceLight;
     final textMuted = isDark
         ? AppColors.onSurfaceVariantDark
         : AppColors.onSurfaceVariantLight;
@@ -882,8 +901,7 @@ class _AchievementDetailSheet extends ConsumerWidget {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   color: textMuted.withValues(alpha: 0.25),
-                  borderRadius:
-                      BorderRadius.circular(AppSpacing.radiusFull),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
                 ),
                 child: const SizedBox(width: 40, height: 4),
               ),
@@ -902,13 +920,14 @@ class _AchievementDetailSheet extends ConsumerWidget {
                         // Large emoji with rarity glow
                         DecoratedBox(
                           decoration: BoxDecoration(
-                            color: model.rarity.color
-                                .withValues(alpha: isDark ? 0.15 : 0.10),
-                            borderRadius:
-                                BorderRadius.circular(AppSpacing.radiusLg),
+                            color: model.rarity.color.withValues(
+                              alpha: isDark ? 0.15 : 0.10,
+                            ),
+                            borderRadius: BorderRadius.circular(
+                              AppSpacing.radiusLg,
+                            ),
                             border: Border.all(
-                              color:
-                                  model.rarity.color.withValues(alpha: 0.4),
+                              color: model.rarity.color.withValues(alpha: 0.4),
                               width: 1.5,
                             ),
                           ),
@@ -974,13 +993,17 @@ class _AchievementDetailSheet extends ConsumerWidget {
                           DecoratedBox(
                             decoration: BoxDecoration(
                               gradient: AppColors.gradientGold,
-                              borderRadius:
-                                  BorderRadius.circular(AppSpacing.radiusFull),
+                              borderRadius: BorderRadius.circular(
+                                AppSpacing.radiusFull,
+                              ),
                             ),
                             child: const Padding(
                               padding: EdgeInsets.all(AppSpacing.sm),
-                              child: Icon(Icons.emoji_events_rounded,
-                                  color: Colors.white, size: 18),
+                              child: Icon(
+                                Icons.emoji_events_rounded,
+                                color: Colors.white,
+                                size: 18,
+                              ),
                             ),
                           ),
                           const SizedBox(width: AppSpacing.md),
@@ -1025,38 +1048,51 @@ class _AchievementDetailSheet extends ConsumerWidget {
                       // Animated progress bar
                       if (user != null)
                         TweenAnimationBuilder<double>(
-                          tween:
-                              Tween<double>(begin: 0, end: model.progressFraction),
-                          duration:
-                              reducedMotion ? Duration.zero : AppMotion.reveal,
+                          tween: Tween<double>(
+                            begin: 0,
+                            end: model.progressFraction,
+                          ),
+                          duration: reducedMotion
+                              ? Duration.zero
+                              : AppMotion.reveal,
                           curve: Curves.easeOutCubic,
                           builder: (_, value, _) => Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              LayoutBuilder(builder: (_, constraints) {
-                                final fill = constraints.maxWidth * value;
-                                return Stack(children: [
-                                  DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      color: trackColor,
-                                      borderRadius: BorderRadius.circular(
-                                          AppSpacing.radiusFull),
-                                    ),
-                                    child: SizedBox(
-                                        height: 8,
-                                        width: constraints.maxWidth),
-                                  ),
-                                  if (fill > 0)
-                                    DecoratedBox(
-                                      decoration: BoxDecoration(
-                                        color: AppColors.grassGreen,
-                                        borderRadius: BorderRadius.circular(
-                                            AppSpacing.radiusFull),
+                              LayoutBuilder(
+                                builder: (_, constraints) {
+                                  final fill = constraints.maxWidth * value;
+                                  return Stack(
+                                    children: [
+                                      DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          color: trackColor,
+                                          borderRadius: BorderRadius.circular(
+                                            AppSpacing.radiusFull,
+                                          ),
+                                        ),
+                                        child: SizedBox(
+                                          height: 8,
+                                          width: constraints.maxWidth,
+                                        ),
                                       ),
-                                      child: SizedBox(height: 8, width: fill),
-                                    ),
-                                ]);
-                              }),
+                                      if (fill > 0)
+                                        DecoratedBox(
+                                          decoration: BoxDecoration(
+                                            color: AppColors.grassGreen,
+                                            borderRadius: BorderRadius.circular(
+                                              AppSpacing.radiusFull,
+                                            ),
+                                          ),
+                                          child: SizedBox(
+                                            height: 8,
+                                            width: fill,
+                                          ),
+                                        ),
+                                    ],
+                                  );
+                                },
+                              ),
                               const SizedBox(height: AppSpacing.xs),
                               Row(
                                 mainAxisAlignment:
@@ -1120,8 +1156,18 @@ class _AchievementDetailSheet extends ConsumerWidget {
 
   String _formatDate(DateTime dt) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
   }
@@ -1153,8 +1199,7 @@ class _CategoryChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(category.emoji,
-                style: const TextStyle(fontSize: 10)),
+            Text(category.emoji, style: const TextStyle(fontSize: 10)),
             const SizedBox(width: 3),
             Text(
               category.label,

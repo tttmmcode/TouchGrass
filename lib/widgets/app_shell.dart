@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 
 import '../core/constants/route_names.dart';
 import '../providers/connectivity_providers.dart';
+import '../providers/location_privacy_providers.dart';
 import '../providers/map_providers.dart';
 import '../providers/notification_providers.dart';
 import '../services/notification_service.dart';
@@ -70,6 +71,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     await maybeShowPermissionPrimer(context, PermissionPrimerKind.location);
     if (!mounted) return;
     setState(() => _readyForLocation = true);
+    ref.read(locationPrimerDoneProvider.notifier).state = true;
   }
 
   @override
@@ -87,9 +89,9 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   void _navigateFromMessage(RemoteMessage message) {
     if (!mounted) return;
-    // Senders may include a 'route' key in the data payload to deep-link.
-    final route = message.data['route'] as String? ?? RouteNames.home;
-    context.go(route);
+    // Senders may include a 'route' key in the data payload to deep-link;
+    // only known in-app routes are followed (audit S-10).
+    context.go(safeNotificationRoute(message.data['route']));
   }
 
   void _onTabSelected(int index) {

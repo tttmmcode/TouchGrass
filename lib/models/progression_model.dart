@@ -88,7 +88,7 @@ class ProgressionModel {
       longestStreak: user.longestStreak,
       rainyDaysAvailable: user.rainyDaysAvailable,
       rainyDaysUsed: user.rainyDaysUsed,
-      lastChallengeCompletionDate: user.lastActiveDate.toLocal(),
+      lastChallengeCompletionDate: user.lastCompletionDate?.toLocal(),
       totalChallengesCompleted: user.totalCompletions,
       levelUpCount: (user.level - 1).clamp(0, double.maxFinite.toInt()),
     );

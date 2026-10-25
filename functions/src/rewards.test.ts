@@ -6,7 +6,10 @@
 
 import {test, describe} from "node:test";
 import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+import {join} from "node:path";
 import {
+  AI_VERIFICATION_ENABLED,
   levelForXp,
   leagueForXp,
   nextMondayMidnightUtc,
@@ -312,5 +315,23 @@ describe("parseGeminiResponse", () => {
   test("throws when confidence is missing or non-numeric", () => {
     assert.throws(() => parseGeminiResponse('{"reason": "no confidence field"}'));
     assert.throws(() => parseGeminiResponse('{"confidence": "high", "reason": "bad type"}'));
+  });
+});
+
+describe("AI verification stays off (owner decision)", () => {
+  test("the master switch is off", () => {
+    assert.equal(AI_VERIFICATION_ENABLED, false);
+  });
+  test("verifyChallengeCompletion checks it before auth, data or the Gemini secret", () => {
+    // The AI callable lives in aiVerification.ts (not exported for deploy; 7E).
+    const src = readFileSync(join(__dirname, "..", "src", "aiVerification.ts"), "utf8");
+    const start = src.indexOf("export const verifyChallengeCompletion");
+    const guard = src.indexOf("if (!AI_VERIFICATION_ENABLED)", start);
+    assert.ok(start > 0 && guard > start, "guard inside the handler");
+    // Everything that reads data, Storage or Gemini comes after the guard.
+    for (const later of ["request.auth", "challengeRef", ".download()", "verifyWithGemini("]) {
+      const at = src.indexOf(later, start);
+      assert.ok(at > guard, later);
+    }
   });
 });

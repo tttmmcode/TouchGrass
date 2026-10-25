@@ -23,8 +23,7 @@ void main() {
       expect(service.isTopPerformer(1, 5), isFalse);
     });
 
-    test('rank 1 on a board larger than the threshold is a top performer',
-        () {
+    test('rank 1 on a board larger than the threshold is a top performer', () {
       expect(service.isTopPerformer(1, 10), isTrue);
     });
 

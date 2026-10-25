@@ -13,7 +13,6 @@ dependencies:
 
   # ── State management ──────────────────────────────────────────────────────────
   flutter_riverpod: ^2.5.1
-  riverpod_annotation: ^2.3.5
 
   # ── Navigation ────────────────────────────────────────────────────────────────
   go_router: ^14.0.0
@@ -37,7 +36,6 @@ dependencies:
   google_fonts: ^6.0.0
   cached_network_image: ^3.3.0
   shimmer: ^3.0.0
-  lottie: ^3.0.0
 
   # ── Camera & media ────────────────────────────────────────────────────────────
   image_picker: ^1.0.7
@@ -47,10 +45,11 @@ dependencies:
   # ── Maps ──────────────────────────────────────────────────────────────────────
   google_maps_flutter: ^2.5.0
   geolocator: ^13.0.0
-  geocoding: ^3.0.0
+  geocoding: ^4.0.0
 
   # ── AI ────────────────────────────────────────────────────────────────────────
-  google_generative_ai: ^0.4.0
+  # No client-side AI SDK: an AI key in the client ships in the public bundle
+  # (audit D-06). AI features run server-side only (functions/).
 
   # ── Animations ────────────────────────────────────────────────────────────────
   confetti: ^0.7.0
@@ -58,7 +57,6 @@ dependencies:
   # ── Utilities ─────────────────────────────────────────────────────────────────
   intl: ^0.19.0
   shared_preferences: ^2.2.3
-  path_provider: ^2.1.2
   permission_handler: ^11.3.0
   http: ^1.2.0
   connectivity_plus: ^6.0.5
@@ -67,10 +65,8 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  riverpod_generator: ^2.4.0
-  build_runner: ^2.4.8
-  mockito: ^5.4.4
   flutter_launcher_icons: ^0.14.3
+  fake_cloud_firestore: ^3.1.0
 
 flutter:
   uses-material-design: true

@@ -15,8 +15,7 @@
 double combinedTextScale({
   required double systemTextScale,
   required double appTextScale,
-}) =>
-    systemTextScale * appTextScale;
+}) => systemTextScale * appTextScale;
 
 /// True if either the OS-level "Reduce Motion" accessibility setting or
 /// TouchGrass's own in-app Reduce Motion toggle is enabled. Motion should
@@ -24,13 +23,11 @@ double combinedTextScale({
 bool combinedReducedMotion({
   required bool systemReducedMotion,
   required bool appReducedMotion,
-}) =>
-    systemReducedMotion || appReducedMotion;
+}) => systemReducedMotion || appReducedMotion;
 
 /// True if either the OS-level "Increase Contrast" accessibility setting or
 /// TouchGrass's own in-app high-contrast toggle is enabled.
 bool combinedHighContrast({
   required bool systemHighContrast,
   required bool appHighContrast,
-}) =>
-    systemHighContrast || appHighContrast;
+}) => systemHighContrast || appHighContrast;

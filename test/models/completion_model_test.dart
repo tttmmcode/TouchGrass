@@ -21,7 +21,8 @@ void main() {
         verificationResult: verificationResult,
         completedAt: DateTime(2026, 3, 10),
         xpAwarded: 25,
-        overrideUsed: verificationResult['reason'] ==
+        overrideUsed:
+            verificationResult['reason'] ==
             'Manually submitted by user after verification failed.',
       );
 

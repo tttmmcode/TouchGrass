@@ -12,8 +12,10 @@ import 'package:go_router/go_router.dart';
 import '../../../companions/companion.dart';
 import '../../../companions/companion_widget.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/constants/privacy_copy.dart';
 import '../../../core/constants/route_names.dart';
 import '../../../core/services/error_service.dart';
+import '../../../core/utils/calendar_days.dart';
 import '../../../models/user_model.dart';
 import '../../../models/weather_model.dart';
 import '../../../providers/assignment_providers.dart';
@@ -1635,26 +1637,48 @@ class _HeaderAvatar extends ConsumerWidget {
 
 // ── Header weather — compact icon + temperature only ─────────────────────────
 
+/// Screen-reader label for the header weather chip: always says the unit,
+/// and says why weather is missing when the location setting is off.
+@visibleForTesting
+String weatherChipSemanticsLabel({
+  required bool locationOff,
+  required WeatherModel? weather,
+}) {
+  if (locationOff) {
+    return 'Weather off: saving location is turned off. Tap for details.';
+  }
+  if (weather == null) return 'Weather unavailable. Tap for details.';
+  return 'Weather: ${weather.condition}, '
+      '${weather.tempFahrenheitRounded} degrees Fahrenheit. Tap for details.';
+}
+
 class _HeaderWeather extends ConsumerWidget {
   const _HeaderWeather();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final weather = ref.watch(weatherProvider).valueOrNull;
+    // Weather needs the optional-location setting (audit D-09). Say so
+    // instead of showing a generic "unavailable" when the user turned it off.
+    final locationOff =
+        ref.watch(currentUserProvider).valueOrNull?.settings.locationEnabled ==
+        false;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textColor = isDark ? Colors.white : AppColors.forestGreen;
 
     return Semantics(
       button: true,
-      label: weather != null
-          ? 'Weather: ${weather.condition}, '
-                '${weather.tempFahrenheitRounded} degrees. Tap for details.'
-          : 'Weather unavailable',
+      label: weatherChipSemanticsLabel(
+        locationOff: locationOff,
+        weather: weather,
+      ),
       excludeSemantics: true,
       child: PressableScale(
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: () => _showWeatherDetail(context, weather),
+          onTap: () => locationOff
+              ? _showLocationOff(context)
+              : _showWeatherDetail(context, weather),
           child: ConstrainedBox(
             // Minimum 48x48 touch target even though the visible chip is
             // more compact.
@@ -1698,7 +1722,9 @@ class _HeaderWeather extends ConsumerWidget {
                           ],
                         )
                       : Icon(
-                          Icons.cloud_outlined,
+                          locationOff
+                              ? Icons.location_off_outlined
+                              : Icons.cloud_outlined,
                           size: AppSpacing.iconSm,
                           color: textColor.withValues(alpha: 0.55),
                         ),
@@ -1707,6 +1733,30 @@ class _HeaderWeather extends ConsumerWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _showLocationOff(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        scrollable: true,
+        title: const Text(PrivacyCopy.locationOffChipLabel),
+        content: const Text(PrivacyCopy.locationOffEffects),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              context.go(RouteNames.settings);
+            },
+            child: const Text('Open Settings'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Got it'),
+          ),
+        ],
       ),
     );
   }
@@ -1728,8 +1778,9 @@ class _HeaderWeather extends ConsumerWidget {
         content: Text(
           weather != null
               ? '${weather.tempFahrenheitRounded}°F · ${weather.outdoorAdvice}'
-              : "We couldn't get your local weather. Check location "
-                    'permission in Settings to enable it.',
+              : "We couldn't get your local weather right now. Check "
+                    'your internet connection, or allow location access in '
+                    'Settings → Manage Permissions.',
         ),
         actions: [
           TextButton(
@@ -1869,9 +1920,8 @@ class _TrailCompanionState extends ConsumerState<_TrailCompanion> {
     final user = ref.watch(currentUserProvider).valueOrNull;
     if (user == null) return const SizedBox.shrink();
 
-    final dayOfYear = DateTime.now()
-        .difference(DateTime(DateTime.now().year))
-        .inDays;
+    final now = DateTime.now();
+    final dayOfYear = calendarDaysBetween(DateTime(now.year), now);
     final pool = user.streak >= 3
         ? companionType.streakMessages
         : companionType.encouragementMessages;

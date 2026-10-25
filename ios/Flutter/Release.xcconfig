@@ -1,1 +1,5 @@
 #include "Generated.xcconfig"
+// Google Maps key (git-ignored; see MapsApiKey.xcconfig.example). REQUIRED
+// for Release/Profile: the build stops if the file is missing, like the
+// Android release gate (PHASE_7A_RELEASE_RUNBOOK.md).
+#include "MapsApiKey.xcconfig"

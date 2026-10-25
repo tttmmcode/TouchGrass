@@ -44,7 +44,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       emoji: '📸',
       title: 'Complete\ndaily challenges',
       subtitle:
-          'Each day you\'ll receive a new nature challenge. Head outside, snap a photo, and our AI will verify your completion.',
+          'Each day you\'ll receive a new nature challenge. Head outside, snap a photo, and add it to your Journal.',
       gradient: LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,

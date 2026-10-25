@@ -30,10 +30,9 @@ class _CompanionSelectScreenState extends ConsumerState<CompanionSelectScreen> {
     unawaited(HapticFeedback.selectionClick());
     setState(() => _saving = type);
 
-    await ref.read(userRepositoryProvider).updateCompanionType(
-          uid: uid,
-          companionType: type.name,
-        );
+    await ref
+        .read(userRepositoryProvider)
+        .updateCompanionType(uid: uid, companionType: type.name);
 
     if (!mounted) return;
     setState(() => _saving = null);
@@ -50,10 +49,7 @@ class _CompanionSelectScreenState extends ConsumerState<CompanionSelectScreen> {
       appBar: AppBar(
         title: const Text(
           'Choose Your Companion',
-          style: TextStyle(
-            fontFamily: 'Nunito',
-            fontWeight: FontWeight.w900,
-          ),
+          style: TextStyle(fontFamily: 'Nunito', fontWeight: FontWeight.w900),
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -131,9 +127,7 @@ class _CompanionCard extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primary = type.primaryColor;
     final borderColor = isSelected ? primary : Colors.transparent;
-    final bgColor = isDark
-        ? AppColors.surfaceDark
-        : AppColors.surfaceLight;
+    final bgColor = isDark ? AppColors.surfaceDark : AppColors.surfaceLight;
 
     return GestureDetector(
       onTap: onTap,
@@ -143,10 +137,7 @@ class _CompanionCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-          border: Border.all(
-            color: borderColor,
-            width: isSelected ? 2.5 : 1.0,
-          ),
+          border: Border.all(color: borderColor, width: isSelected ? 2.5 : 1.0),
           boxShadow: isSelected
               ? [
                   BoxShadow(
@@ -176,7 +167,9 @@ class _CompanionCard extends StatelessWidget {
                 children: [
                   CompanionView(
                     type: type,
-                    mood: isSelected ? CompanionMood.bounce : CompanionMood.idle,
+                    mood: isSelected
+                        ? CompanionMood.bounce
+                        : CompanionMood.idle,
                     size: 88,
                   ),
                   const SizedBox(height: AppSpacing.sm),

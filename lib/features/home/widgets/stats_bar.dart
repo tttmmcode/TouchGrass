@@ -52,7 +52,8 @@ class _StatsContent extends ConsumerWidget {
             _LevelBadge(level: user.level),
             const SizedBox(width: AppSpacing.md),
             Expanded(
-                child: _XpBar(user: user, reducedMotion: reducedMotion)),
+              child: _XpBar(user: user, reducedMotion: reducedMotion),
+            ),
             const SizedBox(width: AppSpacing.md),
             _StreakPill(streak: user.streak, reducedMotion: reducedMotion),
           ],
@@ -111,58 +112,60 @@ class _XpBar extends StatelessWidget {
     final target = user.levelProgress.clamp(0.0, 1.0);
 
     return Semantics(
-      label: '${user.xpInCurrentLevel} of ${AppConstants.xpPerLevel} '
+      label:
+          '${user.xpInCurrentLevel} of ${AppConstants.xpPerLevel} '
           'XP to next level',
       child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          '${user.xpInCurrentLevel} / ${AppConstants.xpPerLevel} XP',
-          style: TextStyle(
-            fontFamily: 'Nunito',
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: isDark
-                ? AppColors.onSurfaceVariantDark
-                : AppColors.onSurfaceVariantLight,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '${user.xpInCurrentLevel} / ${AppConstants.xpPerLevel} XP',
+            style: TextStyle(
+              fontFamily: 'Nunito',
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: isDark
+                  ? AppColors.onSurfaceVariantDark
+                  : AppColors.onSurfaceVariantLight,
+            ),
           ),
-        ),
-        const SizedBox(height: 4),
-        TweenAnimationBuilder<double>(
-          tween: Tween<double>(begin: 0, end: target),
-          duration: reducedMotion
-              ? Duration.zero
-              : const Duration(milliseconds: 1000),
-          curve: Curves.easeOutCubic,
-          builder: (_, progress, _) => LayoutBuilder(
-            builder: (_, constraints) {
-              final fillWidth = constraints.maxWidth * progress;
-              return Stack(
-                children: [
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: trackColor,
-                      borderRadius:
-                          BorderRadius.circular(AppSpacing.radiusFull),
+          const SizedBox(height: 4),
+          TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: 0, end: target),
+            duration: reducedMotion
+                ? Duration.zero
+                : const Duration(milliseconds: 1000),
+            curve: Curves.easeOutCubic,
+            builder: (_, progress, _) => LayoutBuilder(
+              builder: (_, constraints) {
+                final fillWidth = constraints.maxWidth * progress;
+                return Stack(
+                  children: [
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: trackColor,
+                        borderRadius: BorderRadius.circular(
+                          AppSpacing.radiusFull,
+                        ),
+                      ),
+                      child: SizedBox(height: 8, width: constraints.maxWidth),
                     ),
-                    child: SizedBox(
-                        height: 8, width: constraints.maxWidth),
-                  ),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: AppColors.gradientForest,
-                      borderRadius:
-                          BorderRadius.circular(AppSpacing.radiusFull),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: AppColors.gradientForest,
+                        borderRadius: BorderRadius.circular(
+                          AppSpacing.radiusFull,
+                        ),
+                      ),
+                      child: SizedBox(height: 8, width: fillWidth),
                     ),
-                    child: SizedBox(height: 8, width: fillWidth),
-                  ),
-                ],
-              );
-            },
+                  ],
+                );
+              },
+            ),
           ),
-        ),
-      ],
+        ],
       ),
     );
   }
@@ -191,9 +194,10 @@ class _StreakPillState extends State<_StreakPill>
       vsync: this,
       duration: const Duration(milliseconds: 850),
     );
-    _scale = Tween<double>(begin: 1.0, end: 1.07).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
-    );
+    _scale = Tween<double>(
+      begin: 1.0,
+      end: 1.07,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
     // Continuous ambient loop — never runs when Reduce Motion is on.
     if (!widget.reducedMotion) _ctrl.repeat(reverse: true);
   }
@@ -209,42 +213,42 @@ class _StreakPillState extends State<_StreakPill>
     return Semantics(
       label: '${widget.streak} day streak',
       child: ScaleTransition(
-      scale: _scale,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: AppColors.gradientStreak,
-          borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.streakOrange.withValues(alpha: 0.35),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md,
-            vertical: AppSpacing.xs + 2,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('🔥', style: TextStyle(fontSize: 14)),
-              const SizedBox(width: 4),
-              Text(
-                '${widget.streak}',
-                style: const TextStyle(
-                  fontFamily: 'Nunito',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                ),
+        scale: _scale,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: AppColors.gradientStreak,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.streakOrange.withValues(alpha: 0.35),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.md,
+              vertical: AppSpacing.xs + 2,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('🔥', style: TextStyle(fontSize: 14)),
+                const SizedBox(width: 4),
+                Text(
+                  '${widget.streak}',
+                  style: const TextStyle(
+                    fontFamily: 'Nunito',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
-      ),
       ),
     );
   }
@@ -306,8 +310,9 @@ class _Bone extends StatelessWidget {
       decoration: BoxDecoration(
         color: color,
         shape: circle ? BoxShape.circle : BoxShape.rectangle,
-        borderRadius:
-            circle ? null : BorderRadius.circular(AppSpacing.radiusFull),
+        borderRadius: circle
+            ? null
+            : BorderRadius.circular(AppSpacing.radiusFull),
       ),
       child: SizedBox(width: width, height: height),
     );

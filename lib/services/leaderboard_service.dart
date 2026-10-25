@@ -20,10 +20,9 @@ class LeaderboardService {
   List<LeaderboardEntryModel> buildEntries(List<UserModel> users) {
     final visible = users.where((u) => u.settings.profilePublic).toList();
     return visible.indexed
-        .map((pair) => LeaderboardEntryModel.fromUser(
-              pair.$2,
-              rank: pair.$1 + 1,
-            ))
+        .map(
+          (pair) => LeaderboardEntryModel.fromUser(pair.$2, rank: pair.$1 + 1),
+        )
         .toList();
   }
 

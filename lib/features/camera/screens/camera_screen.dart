@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:confetti/confetti.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,7 +11,6 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../../companions/companion.dart';
 import '../../../companions/companion_widget.dart';
-import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/route_names.dart';
 import '../../../core/utils/image_compression.dart';
 import '../../../models/achievement_definition.dart';
@@ -964,7 +963,7 @@ class _PermissionDeniedView extends StatelessWidget {
               Text(
                 permanent
                     ? 'Camera access was permanently denied. Open Settings to allow TouchGrass to access your camera.'
-                    : 'TouchGrass needs camera access to verify your outdoor adventures. Please allow camera access to continue.',
+                    : 'TouchGrass needs camera access to photograph your outdoor adventures. Please allow camera access to continue.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontFamily: 'Nunito',
@@ -1220,25 +1219,21 @@ class _PreviewView extends ConsumerWidget {
                             borderRadius: BorderRadius.circular(
                               AppSpacing.radiusButton,
                             ),
-                            child: SizedBox(
+                            child: const SizedBox(
                               height: AppSpacing.buttonHeight,
                               child: Center(
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Icon(
-                                      AppConstants.geminiApiKey.isEmpty
-                                          ? Icons.check_circle_outline_rounded
-                                          : Icons.auto_awesome_rounded,
+                                      Icons.check_circle_outline_rounded,
                                       color: Colors.white,
                                       size: AppSpacing.iconSm,
                                     ),
-                                    const SizedBox(width: AppSpacing.sm),
+                                    SizedBox(width: AppSpacing.sm),
                                     Text(
-                                      AppConstants.geminiApiKey.isEmpty
-                                          ? 'Submit Photo'
-                                          : 'Verify with AI',
-                                      style: const TextStyle(
+                                      'Submit Photo',
+                                      style: TextStyle(
                                         fontFamily: 'Nunito',
                                         fontSize: 16,
                                         fontWeight: FontWeight.w800,
@@ -1290,8 +1285,8 @@ class _VerifyingViewState extends ConsumerState<_VerifyingView>
     with SingleTickerProviderStateMixin {
   static const _stageMessages = {
     VerifyingStage.analyzing: 'Checking your adventure…',
-    VerifyingStage.uploading: 'Saving your adventure…',
-    VerifyingStage.saving: 'Finalizing your adventure…',
+    VerifyingStage.uploading: 'Uploading your photo…',
+    VerifyingStage.saving: 'Saving to your Journal…',
   };
 
   late final AnimationController _pulse;
@@ -1612,45 +1607,41 @@ class _CaptionViewState extends ConsumerState<_CaptionView> {
                                     ),
                                     const SizedBox(height: AppSpacing.sm),
                                   ],
-                                  // Free-tier honor-system approval — AI verification is
-                                  // a paid feature (see camera_providers.dart's `aiLocked`
-                                  // branch). Still counts as a real completion (XP
-                                  // awarded normally), just without an AI-verified badge.
-                                  if (widget
-                                          .state
-                                          .pendingVerificationResult['aiLocked'] ==
-                                      true) ...[
-                                    Semantics(
-                                      label:
-                                          'AI verification is a premium feature, '
-                                          'coming soon. Your adventure was accepted.',
-                                      excludeSemantics: true,
-                                      child: Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          Icon(
-                                            Icons.auto_awesome_rounded,
-                                            size: 15,
-                                            color: AppColors.achievementGold
-                                                .withValues(alpha: 0.9),
-                                          ),
-                                          const SizedBox(width: 5),
-                                          Text(
-                                            'AI verification — Coming soon!',
+                                  // What has happened so far: the photo is uploaded, the
+                                  // adventure isn't saved until the button below. Phase
+                                  // 7G replaced an "AI verification — Coming soon!"
+                                  // banner here: photos are never sent to an AI service.
+                                  Semantics(
+                                    label: captionStepStatus,
+                                    excludeSemantics: true,
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.photo_camera_rounded,
+                                          size: 15,
+                                          color: AppColors.grassGreen
+                                              .withValues(alpha: 0.9),
+                                        ),
+                                        const SizedBox(width: 5),
+                                        Flexible(
+                                          child: Text(
+                                            captionStepStatus,
+                                            textAlign: TextAlign.center,
                                             style: TextStyle(
                                               fontFamily: 'Nunito',
                                               fontSize: 12,
                                               fontWeight: FontWeight.w800,
-                                              color: AppColors.achievementGold
+                                              color: AppColors.grassGreen
                                                   .withValues(alpha: 0.9),
                                             ),
                                           ),
-                                        ],
-                                      ),
+                                        ),
+                                      ],
                                     ),
-                                    const SizedBox(height: AppSpacing.sm),
-                                  ],
+                                  ),
+                                  const SizedBox(height: AppSpacing.sm),
                                   // AI prompt
                                   DecoratedBox(
                                     decoration: BoxDecoration(
@@ -1776,7 +1767,7 @@ class _CaptionViewState extends ConsumerState<_CaptionView> {
                                                           ),
                                                     )
                                                   : const Text(
-                                                      'Share Adventure',
+                                                      captionStepSaveLabel,
                                                       style: TextStyle(
                                                         fontFamily: 'Nunito',
                                                         fontSize: 16,
@@ -2258,8 +2249,12 @@ class _SuccessViewState extends ConsumerState<_SuccessView>
                         ),
                       ),
                     ],
-                    // ── Location recorded ──
-                    if (hasLocation) ...[
+                    // ── Saved to the Journal (only once committed) ──
+                    if (journalSavedLabel(
+                          savedToJournal: widget.state.savedToJournal,
+                          hasLocation: hasLocation,
+                        )
+                        case final savedLabel?) ...[
                       const SizedBox(height: AppSpacing.xs),
                       FadeTransition(
                         opacity: detailFade,
@@ -2268,13 +2263,13 @@ class _SuccessViewState extends ConsumerState<_SuccessView>
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                              Icons.location_on_rounded,
+                              Icons.menu_book_rounded,
                               size: 13,
                               color: Colors.white.withValues(alpha: 0.6),
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              'Location recorded',
+                              savedLabel,
                               style: TextStyle(
                                 fontFamily: 'Nunito',
                                 fontSize: 12,
@@ -2593,7 +2588,49 @@ class _SuccessViewState extends ConsumerState<_SuccessView>
   }
 }
 
+// ── Caption step copy (Phase 7G) ─────────────────────────────────────────────
+
+/// Status line on the caption step: the photo is uploaded, and the adventure
+/// is saved only when the user taps [captionStepSaveLabel]. Says nothing about
+/// verification — completions are on the honor system and no photo is sent
+/// to an AI service.
+@visibleForTesting
+const captionStepStatus =
+    'Photo added · Add a note, then save it to your Journal';
+
+/// The caption step's button. It saves the adventure to the user's own
+/// Journal; nothing is shared with other users, so it doesn't say "Share".
+@visibleForTesting
+const captionStepSaveLabel = 'Save to Journal';
+
 // ── Failure ───────────────────────────────────────────────────────────────────
+
+/// Headline for a failure: says what was (not) saved (audit D-13). Only an
+/// AI verdict (which carries a confidence score) is a "verification" result.
+@visibleForTesting
+String failureHeadline(CameraFailure state) {
+  if (state.confidence != null) return 'Verification Failed';
+  return switch (state.kind) {
+    CameraFailureKind.uploadFailed => 'Photo not uploaded',
+    CameraFailureKind.saveFailed => 'Not saved yet',
+    CameraFailureKind.alreadyCompleted => 'Already completed',
+    CameraFailureKind.other => 'Something went wrong',
+  };
+}
+
+/// The success screen's "saved" line — shown only when the Journal entry
+/// was committed with the completion, so the app never claims a photo is
+/// saved before it is.
+@visibleForTesting
+String? journalSavedLabel({
+  required bool savedToJournal,
+  required bool hasLocation,
+}) {
+  if (!savedToJournal) return null;
+  return hasLocation
+      ? 'Photo saved to your Journal · location saved'
+      : 'Photo saved to your Journal';
+}
 
 class _FailureView extends ConsumerWidget {
   const _FailureView({required this.state});
@@ -2608,7 +2645,12 @@ class _FailureView extends ConsumerWidget {
     // After a couple of retries, gently point toward Submit Anyway instead
     // of leaving the user to loop the same failure indefinitely.
     final retryCount = ref.watch(verificationRetryCountProvider);
-    final showOverrideNudge = retryCount >= 2 && state.bytes != null;
+    // "Submit Anyway" only makes sense after an AI verdict, which carries a
+    // confidence score. AI verification is disabled (audit D-06), so today
+    // every failure is an upload/save problem: retrying is the way out.
+    final showOverride = state.bytes != null && confidence != null;
+    final showOverrideNudge = retryCount >= 2 && showOverride;
+    final isFinal = state.kind == CameraFailureKind.alreadyCompleted;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -2682,9 +2724,7 @@ class _FailureView extends ConsumerWidget {
                               // confidence score); anything without one is a
                               // service problem, not a verdict on the photo.
                               Text(
-                                confidence != null
-                                    ? 'Verification Failed'
-                                    : 'Verification Unavailable',
+                                failureHeadline(state),
                                 style: const TextStyle(
                                   fontFamily: 'Nunito',
                                   fontSize: 16,
@@ -2769,28 +2809,32 @@ class _FailureView extends ConsumerWidget {
                         color: Colors.transparent,
                         child: Semantics(
                           button: true,
-                          label: 'Retake photo',
+                          label: isFinal ? 'Back to Home' : 'Retake photo',
                           excludeSemantics: true,
                           child: InkWell(
-                            onTap: notifier.retake,
+                            onTap: isFinal
+                                ? () => context.go(RouteNames.home)
+                                : notifier.retake,
                             borderRadius: BorderRadius.circular(
                               AppSpacing.radiusButton,
                             ),
-                            child: const SizedBox(
+                            child: SizedBox(
                               height: AppSpacing.buttonHeight,
                               child: Center(
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Icon(
-                                      Icons.camera_alt_rounded,
+                                      isFinal
+                                          ? Icons.home_rounded
+                                          : Icons.camera_alt_rounded,
                                       color: Colors.white,
                                       size: AppSpacing.iconSm,
                                     ),
-                                    SizedBox(width: AppSpacing.sm),
+                                    const SizedBox(width: AppSpacing.sm),
                                     Text(
-                                      'Retake Photo',
-                                      style: TextStyle(
+                                      isFinal ? 'Back to Home' : 'Retake Photo',
+                                      style: const TextStyle(
                                         fontFamily: 'Nunito',
                                         fontSize: 16,
                                         fontWeight: FontWeight.w800,
@@ -2821,9 +2865,10 @@ class _FailureView extends ConsumerWidget {
                     ),
                   ],
 
-                  if (state.bytes != null) ...[
+                  if (state.canRetry) ...[
                     const SizedBox(height: AppSpacing.sm),
-                    // Retry verification on the same photo (no retake needed)
+                    // Retry with the same photo (no retake needed). Safe to
+                    // repeat: nothing is ever saved or counted twice.
                     PressableScale(
                       child: DecoratedBox(
                         decoration: BoxDecoration(
@@ -2842,21 +2887,23 @@ class _FailureView extends ConsumerWidget {
                             borderRadius: BorderRadius.circular(
                               AppSpacing.radiusButton,
                             ),
-                            child: const SizedBox(
+                            child: SizedBox(
                               height: AppSpacing.buttonHeight,
                               child: Center(
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(
+                                    const Icon(
                                       Icons.refresh_rounded,
                                       color: Colors.white,
                                       size: AppSpacing.iconSm,
                                     ),
-                                    SizedBox(width: AppSpacing.sm),
+                                    const SizedBox(width: AppSpacing.sm),
                                     Text(
-                                      'Retry Verification',
-                                      style: TextStyle(
+                                      confidence != null
+                                          ? 'Retry Verification'
+                                          : 'Retry',
+                                      style: const TextStyle(
                                         fontFamily: 'Nunito',
                                         fontSize: 15,
                                         fontWeight: FontWeight.w800,
@@ -2871,6 +2918,8 @@ class _FailureView extends ConsumerWidget {
                         ),
                       ),
                     ),
+                  ],
+                  if (showOverride) ...[
                     const SizedBox(height: AppSpacing.sm),
                     // Manual override
                     PressableScale(

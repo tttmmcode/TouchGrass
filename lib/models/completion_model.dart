@@ -3,6 +3,12 @@ import 'package:flutter/foundation.dart';
 
 import 'challenge_model.dart';
 
+/// What every completion records today. Completions are on the honor
+/// system: no AI or other automated check looks at the photo (AI photo
+/// verification is disabled, audit D-06). Phase 7G replaced the earlier
+/// wording, which advertised AI verification as a "premium feature".
+const honorSystemReason = 'Completed on the honor system with your photo.';
+
 @immutable
 class CompletionModel {
   const CompletionModel({
@@ -43,11 +49,39 @@ class CompletionModel {
   String get verificationExplanation =>
       verificationResult['reason'] as String? ?? '';
 
-  DateTime get dateOnly => DateTime(
-        completedAt.year,
-        completedAt.month,
-        completedAt.day,
-      );
+  /// The line Challenge details shows for how this was completed. Only a
+  /// result with a confidence score came from an AI check (older app
+  /// versions); everything else was an honor-system completion, whatever
+  /// wording its app version stored ("AI verification is a premium
+  /// feature", "AI verification not configured"), so it shows
+  /// [honorSystemReason] — never a claim about AI (Phase 7G).
+  String get verificationDisplayText =>
+      verificationResult.containsKey('confidence')
+      ? verificationExplanation
+      : honorSystemReason;
+
+  DateTime get dateOnly =>
+      DateTime(completedAt.year, completedAt.month, completedAt.day);
+
+  /// This completion with [xpAwarded] replaced — used to record the XP that
+  /// was actually committed (0 for a same-day resubmission), so the Journal
+  /// and challenge detail never show XP the user didn't receive (audit D-01).
+  CompletionModel withXpAwarded(int xp) => CompletionModel(
+    id: id,
+    userId: userId,
+    challengeId: challengeId,
+    challengeTitle: challengeTitle,
+    challengeEmoji: challengeEmoji,
+    challengeCategory: challengeCategory,
+    photoUrl: photoUrl,
+    verificationResult: verificationResult,
+    completedAt: completedAt,
+    xpAwarded: xp,
+    overrideUsed: overrideUsed,
+    assignmentDate: assignmentDate,
+    location: location,
+    caption: caption,
+  );
 
   factory CompletionModel.fromFirestore(
     DocumentSnapshot<Map<String, dynamic>> doc,
@@ -59,7 +93,9 @@ class CompletionModel {
       challengeId: data['challengeId'] as String,
       challengeTitle: data['challengeTitle'] as String? ?? '',
       challengeEmoji: data['challengeEmoji'] as String? ?? '🌿',
-      challengeCategory: ChallengeCategory.fromString(data['challengeCategory'] as String?),
+      challengeCategory: ChallengeCategory.fromString(
+        data['challengeCategory'] as String?,
+      ),
       photoUrl: data['photoUrl'] as String,
       verificationResult: Map<String, dynamic>.from(
         data['verificationResult'] as Map? ?? const {},
@@ -76,19 +112,19 @@ class CompletionModel {
   }
 
   Map<String, dynamic> toFirestore() => {
-        'userId': userId,
-        'challengeId': challengeId,
-        'challengeTitle': challengeTitle,
-        'challengeEmoji': challengeEmoji,
-        'challengeCategory': challengeCategory.name,
-        'photoUrl': photoUrl,
-        'verificationResult': verificationResult,
-        'completedAt': FieldValue.serverTimestamp(),
-        'xpAwarded': xpAwarded,
-        'overrideUsed': overrideUsed,
-        if (assignmentDate != null)
-          'assignmentDate': Timestamp.fromDate(assignmentDate!),
-        if (location != null) 'location': location,
-        if (caption != null) 'caption': caption,
-      };
+    'userId': userId,
+    'challengeId': challengeId,
+    'challengeTitle': challengeTitle,
+    'challengeEmoji': challengeEmoji,
+    'challengeCategory': challengeCategory.name,
+    'photoUrl': photoUrl,
+    'verificationResult': verificationResult,
+    'completedAt': FieldValue.serverTimestamp(),
+    'xpAwarded': xpAwarded,
+    'overrideUsed': overrideUsed,
+    if (assignmentDate != null)
+      'assignmentDate': Timestamp.fromDate(assignmentDate!),
+    if (location != null) 'location': location,
+    if (caption != null) 'caption': caption,
+  };
 }

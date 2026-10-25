@@ -13,26 +13,25 @@ void main() {
     int streak = 0,
     int longestStreak = 0,
     int rainyDayCount = 0,
-  }) =>
-      UserModel(
-        uid: 'u1',
-        email: 'a@b.com',
-        username: 'explorer_ab12',
-        displayName: 'Explorer',
-        xp: xp,
-        weeklyXp: 0,
-        weeklyXpResetDate: DateTime.utc(2026, 3, 16),
-        streak: streak,
-        longestStreak: longestStreak,
-        totalCompletions: 12,
-        totalPhotosUploaded: 12,
-        rainyDayCount: rainyDayCount,
-        currentLeague: 'seedling',
-        createdAt: DateTime.utc(2026, 1, 1),
-        lastActiveDate: DateTime.utc(2026, 3, 10),
-        achievements: const [],
-        settings: UserSettings.defaults(),
-      );
+  }) => UserModel(
+    uid: 'u1',
+    email: 'a@b.com',
+    username: 'explorer_ab12',
+    displayName: 'Explorer',
+    xp: xp,
+    weeklyXp: 0,
+    weeklyXpResetDate: DateTime.utc(2026, 3, 16),
+    streak: streak,
+    longestStreak: longestStreak,
+    totalCompletions: 12,
+    totalPhotosUploaded: 12,
+    rainyDayCount: rainyDayCount,
+    currentLeague: 'seedling',
+    createdAt: DateTime.utc(2026, 1, 1),
+    lastActiveDate: DateTime.utc(2026, 3, 10),
+    achievements: const [],
+    settings: UserSettings.defaults(),
+  );
 
   group('ProgressionModel.fromUser', () {
     test('derives level and in-level XP consistently with UserModel', () {
@@ -43,11 +42,14 @@ void main() {
       expect(p.totalXP, 250);
     });
 
-    test('levelProgressFraction matches currentLevelXP / xpRequiredForNextLevel', () {
-      final user = userWith(xp: 250);
-      final p = ProgressionModel.fromUser(user);
-      expect(p.levelProgressFraction, 0.5);
-    });
+    test(
+      'levelProgressFraction matches currentLevelXP / xpRequiredForNextLevel',
+      () {
+        final user = userWith(xp: 250);
+        final p = ProgressionModel.fromUser(user);
+        expect(p.levelProgressFraction, 0.5);
+      },
+    );
 
     test('xpToNextLevel is the remaining distance to the next boundary', () {
       final user = userWith(xp: 250);

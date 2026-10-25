@@ -1,0 +1,64 @@
+rules_version = '2';
+
+// INTERIM Storage rules for the LIVE project (Phase 7A) — NOT DEPLOYED.
+//
+// The live Storage rules (exported read-only 2026-10-19) let ANY signed-in
+// user read and list EVERY user's completion photos, allow any file type
+// and size, and have no rule for profile photos. The full local
+// storage.rules can't go live on its own: the web app that is live today
+// uploads completion photos as completion_photos/{uid}/{timestamp}.jpg,
+// which those rules refuse.
+//
+// This ruleset closes the exposure while staying compatible with BOTH the
+// live web app and the new app version:
+//   - completion photos: owner-only read/list; owner writes only image
+//     files named {yyyy-MM-dd}.jpg (new app) or {timestamp}.jpg (live
+//     app), under 10 MB; the owner may still delete (the live app's own
+//     account deletion removes its photos client-side);
+//   - profile photos: a signed-in user may GET a single avatar (not list
+//     the folder — `read` would include `list` and let anyone enumerate
+//     every avatar, i.e. uids; Phase 7B); owner writes
+//     user_avatars/{uid}.png only, images under 5 MB;
+//   - everything else (including metadata_backup/) denied.
+// Covered by firestore-tests/test/interim_storage.test.mjs and
+// storage_containment_matrix.test.mjs. Replace with
+// storage.rules as part of the coordinated release
+// (PHASE_7A_DEPLOYMENT_MANIFEST.md, change S-1 → S-2).
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAllowedImage() {
+      return request.resource.contentType in
+        ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+    }
+
+    match /user_avatars/{fileName} {
+      allow get: if isSignedIn();
+      allow create, update: if isSignedIn()
+        && fileName == request.auth.uid + '.png'
+        && request.resource.size < 5 * 1024 * 1024
+        && isAllowedImage();
+    }
+
+    match /completion_photos/{userId}/{fileName} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow create, update: if isSignedIn() && request.auth.uid == userId
+        && fileName.matches('([0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{10,16})[.]jpg')
+        && request.resource.size < 10 * 1024 * 1024
+        && isAllowedImage();
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /completion_photos/{userId} {
+      allow list: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

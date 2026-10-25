@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/challenge_model.dart';
@@ -16,10 +18,58 @@ final challengeRepositoryProvider = Provider<ChallengeRepository>((ref) {
 
 // ── Streams ───────────────────────────────────────────────────────────────────
 
+// ── Calendar date ─────────────────────────────────────────────────────────────
+
+/// Wall clock read by [CalendarDateNotifier]. Overridden in tests, which
+/// drive the midnight timer with fake time.
+final wallClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
+/// The current local calendar date (time stripped). Re-schedules itself at
+/// each local midnight so everything keyed to "today" re-evaluates when the
+/// day rolls over while the app stays open.
+class CalendarDateNotifier extends Notifier<DateTime> {
+  Timer? _timer;
+  late DateTime Function() _now;
+
+  @override
+  DateTime build() {
+    _now = ref.watch(wallClockProvider);
+    final now = _now();
+    final today = DateTime(now.year, now.month, now.day);
+    _scheduleMidnight(today);
+    ref.onDispose(() => _timer?.cancel());
+    return today;
+  }
+
+  void _scheduleMidnight(DateTime current) {
+    // Calendar-field arithmetic (not +24h) so DST days land on midnight.
+    // If the timer fires a little early, the date is unchanged and this
+    // simply re-arms for the remaining time.
+    final midnight = DateTime(current.year, current.month, current.day + 1);
+    _timer?.cancel();
+    _timer = Timer(midnight.difference(_now()), () {
+      final now = _now();
+      state = DateTime(now.year, now.month, now.day);
+      _scheduleMidnight(state);
+    });
+  }
+}
+
+final calendarDateProvider = NotifierProvider<CalendarDateNotifier, DateTime>(
+  CalendarDateNotifier.new,
+);
+
+/// Today's challenge document. Watches [calendarDateProvider] so that after
+/// local midnight it switches to the new day's document instead of staying
+/// subscribed to yesterday's (audit D-11) — previously the document ID was
+/// fixed when the stream was first created.
 final todaysChallengeProvider = StreamProvider<ChallengeModel?>((ref) {
+  final today = ref.watch(calendarDateProvider);
   final uid = ref.watch(authStateProvider).valueOrNull?.uid;
   if (uid == null) return Stream.value(null);
-  return ref.watch(challengeRepositoryProvider).watchTodaysChallenge(uid);
+  return ref
+      .watch(challengeRepositoryProvider)
+      .watchChallengeForDate(uid, today);
 });
 
 final recentCompletionsProvider = StreamProvider<List<CompletionModel>>((ref) {
@@ -37,12 +87,20 @@ sealed class PathNode {
 }
 
 final class ActivePathNode extends PathNode {
-  const ActivePathNode({required super.date, required super.dayNumber, this.challenge});
+  const ActivePathNode({
+    required super.date,
+    required super.dayNumber,
+    this.challenge,
+  });
   final ChallengeModel? challenge;
 }
 
 final class CompletedPathNode extends PathNode {
-  const CompletedPathNode({required super.date, required super.dayNumber, required this.completion});
+  const CompletedPathNode({
+    required super.date,
+    required super.dayNumber,
+    required this.completion,
+  });
   final CompletionModel completion;
 }
 
@@ -101,9 +159,7 @@ List<PathNode> _buildPathNodes(
   final today = DateTime(now.year, now.month, now.day);
   final todayDayNumber = challenge?.dayNumber ?? 1;
 
-  final completedByDate = {
-    for (final c in completions) c.dateOnly: c,
-  };
+  final completedByDate = {for (final c in completions) c.dateOnly: c};
 
   final nodes = <PathNode>[];
 
@@ -111,8 +167,16 @@ List<PathNode> _buildPathNodes(
   final todayCompletion = completedByDate[today];
   nodes.add(
     todayCompletion != null
-        ? CompletedPathNode(date: today, dayNumber: todayDayNumber, completion: todayCompletion)
-        : ActivePathNode(date: today, dayNumber: todayDayNumber, challenge: challenge),
+        ? CompletedPathNode(
+            date: today,
+            dayNumber: todayDayNumber,
+            completion: todayCompletion,
+          )
+        : ActivePathNode(
+            date: today,
+            dayNumber: todayDayNumber,
+            challenge: challenge,
+          ),
   );
 
   // Past 13 days — completed or missed. Skip days before Day 1.
@@ -128,7 +192,11 @@ List<PathNode> _buildPathNodes(
     final completion = completedByDate[day];
     nodes.add(
       completion != null
-          ? CompletedPathNode(date: day, dayNumber: dayNum, completion: completion)
+          ? CompletedPathNode(
+              date: day,
+              dayNumber: dayNum,
+              completion: completion,
+            )
           : MissedPathNode(date: day, dayNumber: dayNum),
     );
   }

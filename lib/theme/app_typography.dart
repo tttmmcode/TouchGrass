@@ -24,14 +24,13 @@ abstract final class AppTypography {
     FontWeight weight, {
     Color? color,
     double letterSpacing = 0,
-  }) =>
-      GoogleFonts.nunito(
-        fontSize: size,
-        fontWeight: weight,
-        height: _lineHeight,
-        letterSpacing: letterSpacing,
-        color: color ?? _onSurface(context),
-      );
+  }) => GoogleFonts.nunito(
+    fontSize: size,
+    fontWeight: weight,
+    height: _lineHeight,
+    letterSpacing: letterSpacing,
+    color: color ?? _onSurface(context),
+  );
 
   /// 40 / Bold — hero numbers, splash moments.
   static TextStyle display(BuildContext context, {Color? color}) =>
