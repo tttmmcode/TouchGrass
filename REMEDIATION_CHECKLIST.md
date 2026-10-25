@@ -1348,6 +1348,21 @@ readiness.
 | P7H-7 | Debug builds send Analytics/Performance data to production; app always uses production Firebase | Code review | Open — part of AC-9 (needs a dev project) |
 | P7H-8 | No app-level iOS privacy manifest (`PrivacyInfo.xcprivacy`) | Inspection | Open — needs Xcode/Mac |
 
+## Phase 7I — Final completion, staged deployment, GitHub release (2026-10-24/25)
+Report: `PHASE_7I_FINAL_RELEASE_REPORT.md`.
+
+**Status:**
+- **Commit:** `cdff4a3`, pushed to `origin/release-hardening-pass` (verified).
+- **Candidate:** built; not deployed (needs the decision in §13 of the report).
+- **AC-1:** still blocked (no ADC).
+- **`touchgrass.web.app`:** untouched.
+
+| # | Finding | Evidence | Status |
+|---|---|---|---|
+| P7I-1 | The candidate's completion batch, feedback and "Remove saved locations" are refused by the LIVE Firestore rules, so the candidate needs the final rules, which in turn break the legacy app (7A) | `candidate_on_live_rules.test.mjs` 10/10 | **Deploy blocker; owner decision** |
+| P7I-2 | Both Hosting sites were always deployed together (`--only hosting`); the candidate needs `--only hosting:today` | Hosting release history (read-only) | Documented |
+| P7I-3 | The deleted-account marker's 2 h expiry reviewed: safe for completed deletions; an abandoned failed deletion resumes normally after 2 h | Analysis + existing tests | Kept |
+
 ## External actions (only you can do these)
 | # | Action | Status |
 |---|---|---|
